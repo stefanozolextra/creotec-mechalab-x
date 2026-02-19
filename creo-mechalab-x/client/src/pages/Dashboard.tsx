@@ -5,7 +5,8 @@
 */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Zap, CheckCircle, ChevronRight, Terminal, BookOpen, Settings, LogOut, Play } from 'lucide-react';
+import { Lock, Zap, CheckCircle, ChevronRight, Terminal, BookOpen, Settings, LogOut, Play, X, User, Shield } from 'lucide-react'; // Added X, User, Shield
+import { AnimatePresence, motion } from 'framer-motion'; // Added Framer Motion for the Modal
 import PageTransition from '../components/PageTransition';
 import { clearAuthRole } from '../utils/auth';
 
@@ -21,6 +22,7 @@ const levels = [
 const Dashboard = () => {
     const navigate = useNavigate();
     const [selectedLevel, setSelectedLevel] = useState<number | null>(2);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false); // NEW: Controls the Modal
 
     /* SECTION: SESSION LOGIC
        - USE: Handles exiting the trainee environment.
@@ -37,7 +39,7 @@ const Dashboard = () => {
            - USE: Ensures smooth transitions between the dashboard and other pages.
         */
         <PageTransition>
-            <div className="min-h-screen bg-slate-900 text-slate-200 font-sans selection:bg-cyan-500 selection:text-white pb-24">
+            <div className="min-h-screen bg-slate-900 text-slate-200 font-sans selection:bg-cyan-500 selection:text-white pb-24 relative">
 
                 {/* SECTION: HUD (HEADER)
                     - USE: Displays the system branding and the logout command.
@@ -125,11 +127,7 @@ const Dashboard = () => {
                         </div>
                     </div>
 
-                    {/* SECTION: MISSION DETAIL PANEL (RIGHT)
-                        - USE: Displays dynamic info based on the module selected in the Left Column.
-                        - KEYPOINT: 'levels.find' is used to pull the correct title from the mock data.
-                        - EDIT: Update 'Start Simulation' button to link to Level 1-10 components.
-                    */}
+                    {/* SECTION: MISSION DETAIL PANEL (RIGHT) */}
                     <div className="lg:col-span-1">
                         {selectedLevel ? (
                             <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 sticky top-24 shadow-2xl">
@@ -146,7 +144,6 @@ const Dashboard = () => {
                                 </p>
 
                                 <div className="space-y-3">
-                                    {/* RESTORED ONCLICK EVENT FOR SIMULATION */}
                                     <button
                                         type="button"
                                         onClick={() => navigate(`/simulation/${selectedLevel}`)}
@@ -155,7 +152,6 @@ const Dashboard = () => {
                                         <Play size={18} fill="currentColor" aria-hidden="true" /> Start Simulation
                                     </button>
 
-                                    {/* RESTORED ONCLICK EVENT FOR MODULE */}
                                     <button
                                         type="button"
                                         onClick={() => navigate(`/module/${selectedLevel}`)}
@@ -175,14 +171,79 @@ const Dashboard = () => {
                 </main>
 
                 {/* SECTION: FLOATING TOOLBAR
-                    - USE: Quick access to system settings.
-                    - HOW TO EDIT: Add more buttons here for 'Profile' or 'Help'.
+                    - USE: Quick access to system settings. Trigger sets 'isSettingsOpen' to true.
                 */}
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800/90 backdrop-blur border border-slate-600 rounded-full px-6 py-2 flex gap-6 shadow-2xl z-20">
-                    <button type="button" className="text-slate-400 hover:text-white transition p-2" aria-label="Open settings">
+                    <button
+                        type="button"
+                        onClick={() => setIsSettingsOpen(true)}
+                        className="text-slate-400 hover:text-white transition p-2"
+                        aria-label="Open settings"
+                    >
                         <Settings size={20} aria-hidden="true" />
                     </button>
                 </div>
+
+                {/* SECTION: PROFILE & SETTINGS MODAL 
+                    - USE: Animated overlay displaying Trainee data.
+                    - HOW IT WORKS: Framer Motion handles the fade/scale in. Uses a backdrop blur to focus attention.
+                */}
+                <AnimatePresence>
+                    {isSettingsOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm select-none">
+                            <motion.div
+                                initial={{ opacity: 0, scale: 0.95 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                exit={{ opacity: 0, scale: 0.95 }}
+                                className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden relative"
+                            >
+                                {/* Close Button */}
+                                <button
+                                    onClick={() => setIsSettingsOpen(false)}
+                                    className="absolute top-4 right-4 text-slate-500 hover:text-white transition"
+                                >
+                                    <X size={24} />
+                                </button>
+
+                                {/* Modal Header */}
+                                <div className="p-6 border-b border-slate-800 flex items-center gap-4 bg-slate-800/30">
+                                    <div className="bg-slate-700 p-3 rounded-full border border-slate-600">
+                                        <User className="text-cyan-400" size={32} />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-xl font-bold text-white">Trainee Profile</h2>
+                                        <p className="text-sm text-cyan-500 font-mono">ID: CREO20067</p>
+                                    </div>
+                                </div>
+
+                                {/* Modal Body */}
+                                <div className="p-6 space-y-6">
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center bg-slate-950 p-3 rounded-lg border border-slate-800">
+                                            <span className="text-slate-400 text-sm flex items-center gap-2"><Shield size={16} /> Clearance Level</span>
+                                            <span className="text-white font-semibold">Student / Cadet</span>
+                                        </div>
+                                        <div className="flex justify-between items-center bg-slate-950 p-3 rounded-lg border border-slate-800">
+                                            <span className="text-slate-400 text-sm">Active Batch</span>
+                                            <span className="text-white font-semibold">Batch 25</span>
+                                        </div>
+                                        <div className="flex justify-between items-center bg-slate-950 p-3 rounded-lg border border-slate-800">
+                                            <span className="text-slate-400 text-sm">System Access Validity</span>
+                                            <span className="text-yellow-500 font-bold">25 Days Remaining</span>
+                                        </div>
+                                    </div>
+
+                                    <button
+                                        onClick={handleLogout}
+                                        className="w-full py-3 rounded-lg bg-red-500/10 text-red-400 font-bold hover:bg-red-500/20 hover:text-red-300 transition flex items-center justify-center gap-2 border border-red-500/20"
+                                    >
+                                        <LogOut size={18} /> Disconnect from Terminal
+                                    </button>
+                                </div>
+                            </motion.div>
+                        </div>
+                    )}
+                </AnimatePresence>
 
             </div>
         </PageTransition>
