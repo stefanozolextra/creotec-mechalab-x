@@ -8,8 +8,9 @@ import { AnimatePresence } from 'framer-motion';
 // Pages
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import ModuleView from './pages/ModuleView'; // Restored
-import SimulationView from './pages/SimulationView'; // Restored
+import ModuleView from './pages/ModuleView';
+import SimulationView from './pages/SimulationView';
+import NotFound from './pages/NotFound';
 
 // Admin Components
 import AdminLayout from './components/admin/AdminLayout';
@@ -128,7 +129,7 @@ const AnimatedRoutes = () => {
         {/* SECTION: CATCH-ALL (404 BEHAVIOR)
             - USE: If a user types a URL that doesn't exist, kick them to the root logic.
         */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFound />} />
       </Routes>
     </AnimatePresence>
   );
