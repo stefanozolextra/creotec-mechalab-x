@@ -3,7 +3,11 @@ import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'r
 import { AnimatePresence } from 'framer-motion';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
-import AdminDashboard from './pages/AdminDashboard';
+import AdminLayout from './components/admin/AdminLayout';
+import OverviewPage from './pages/admin/OverviewPage';
+import UsersPage from './pages/admin/UsersPage';
+import ReportsPage from './pages/admin/ReportsPage';
+import ActivityLogsPage from './pages/admin/ActivityLogsPage';
 import { getAuthRole, type AuthRole } from './utils/auth';
 
 const getLandingRoute = (role: AuthRole): '/dashboard' | '/admin' => {
@@ -61,10 +65,16 @@ const AnimatedRoutes = () => {
           path="/admin"
           element={
             <RequireAuth role="admin">
-              <AdminDashboard />
+              <AdminLayout />
             </RequireAuth>
           }
-        />
+        >
+          <Route index element={<Navigate to="overview" replace />} />
+          <Route path="overview" element={<OverviewPage />} />
+          <Route path="users" element={<UsersPage />} />
+          <Route path="reports" element={<ReportsPage />} />
+          <Route path="activity-logs" element={<ActivityLogsPage />} />
+        </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
