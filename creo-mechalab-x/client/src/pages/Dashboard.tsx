@@ -1,7 +1,8 @@
-import { useState } from 'react'; // Removed 'React' import (not needed in Vite)
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Lock, Zap, CheckCircle, ChevronRight, Terminal, BookOpen, Settings, LogOut, Play } from 'lucide-react';
+import PageTransition from '../components/PageTransition';
 
-// Mock Data
 const levels = [
     { id: 1, title: "Mechatronics Basics", status: "completed", score: 100 },
     { id: 2, title: "Hardwired Relay Logic", status: "unlocked", score: 0 },
@@ -12,8 +13,15 @@ const levels = [
 ];
 
 const Dashboard = () => {
-    // We initialize with Level 2 selected so the UI isn't empty
+    const navigate = useNavigate(); // <--- 2. Initialize Hook
     const [selectedLevel, setSelectedLevel] = useState<number | null>(2);
+
+    // <--- 3. The Logout Function
+    const handleLogout = () => {
+        // In the future, you will clear user session/tokens here
+        console.log("Logging out...");
+        navigate('/login'); // Redirect to Login Page
+    };
 
     return (
         <div className="min-h-screen bg-slate-900 text-slate-200 font-sans selection:bg-cyan-500 selection:text-white pb-24">
@@ -29,10 +37,18 @@ const Dashboard = () => {
                         <p className="text-xs text-slate-400 uppercase tracking-wider">Cadet Interface • Batch 25</p>
                     </div>
                 </div>
-                <button className="p-2 hover:bg-red-500/20 rounded-full hover:text-red-400 transition">
+
+                {/* LOGOUT BUTTON */}
+                <button
+                    onClick={handleLogout} // <--- 4. Attach Event Here
+                    className="p-2 hover:bg-red-500/20 rounded-full hover:text-red-400 transition"
+                    title="Logout"
+                >
                     <LogOut size={20} />
                 </button>
             </header>
+
+            {/* ... (Rest of the code remains exactly the same) ... */}
 
             {/* MAIN CONTENT GRID */}
             <main className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -84,7 +100,7 @@ const Dashboard = () => {
                     </div>
                 </div>
 
-                {/* RIGHT COLUMN: Mission Detail Panel (Solves "selectedLevel unused" error) */}
+                {/* RIGHT COLUMN: Mission Detail Panel */}
                 <div className="lg:col-span-1">
                     {selectedLevel ? (
                         <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 sticky top-24 shadow-2xl">
@@ -108,17 +124,6 @@ const Dashboard = () => {
                                     <BookOpen size={18} /> View PDF Manual
                                 </button>
                             </div>
-
-                            <div className="mt-6 pt-6 border-t border-slate-700">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-slate-500">Difficulty</span>
-                                    <div className="flex gap-1">
-                                        {[1, 2, 3].map(i => <div key={i} className="w-2 h-2 rounded-full bg-cyan-400"></div>)}
-                                        <div className="w-2 h-2 rounded-full bg-slate-600"></div>
-                                        <div className="w-2 h-2 rounded-full bg-slate-600"></div>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     ) : (
                         <div className="h-full flex items-center justify-center text-slate-500 italic border-2 border-dashed border-slate-700 rounded-xl">
@@ -135,6 +140,13 @@ const Dashboard = () => {
             </div>
 
         </div>
+    );
+    return (
+        <PageTransition>
+            <div className="min-h-screen bg-slate-900 text-slate-200...">
+                {/* ... ALL YOUR DASHBOARD CODE ... */}
+            </div>
+        </PageTransition>
     );
 };
 
