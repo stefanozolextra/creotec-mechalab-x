@@ -3,7 +3,7 @@
    - KEYPOINT: Uses 'import type' for Transition and Variants to satisfy strict TypeScript 
      module syntax (verbatimModuleSyntax).
 */
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import type { Transition, Variants } from 'framer-motion';
 import type { ReactNode } from 'react';
 
@@ -42,6 +42,22 @@ const pageTransition: Transition = {
     duration: 0.4
 };
 
+const reducedMotionVariants: Variants = {
+    initial: {
+        opacity: 0.98
+    },
+    in: {
+        opacity: 1
+    },
+    out: {
+        opacity: 1
+    }
+};
+
+const reducedMotionTransition: Transition = {
+    duration: 0
+};
+
 interface Props {
     children: ReactNode;
 }
@@ -53,13 +69,15 @@ interface Props {
      potentially re-introducing the "white flash" effect between page loads.
 */
 const PageTransition = ({ children }: Props) => {
+    const shouldReduceMotion = useReducedMotion();
+
     return (
         <motion.div
             initial="initial"
             animate="in"
             exit="out"
-            variants={pageVariants}
-            transition={pageTransition}
+            variants={shouldReduceMotion ? reducedMotionVariants : pageVariants}
+            transition={shouldReduceMotion ? reducedMotionTransition : pageTransition}
             className="w-full h-full"
         >
             {children}
