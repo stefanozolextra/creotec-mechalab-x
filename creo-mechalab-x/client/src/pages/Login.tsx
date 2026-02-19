@@ -36,8 +36,8 @@ const Login = () => {
             const normalizedUsername = username.trim().toLowerCase();
             const role: AuthRole = normalizedUsername.includes('admin') ? 'admin' : 'student';
             setAuthRole(role);
-            navigate(role === 'admin' ? '/admin' : '/dashboard', { replace: true });
             setLoading(false);
+            navigate(role === 'admin' ? '/admin' : '/dashboard', { replace: true });
         }, 800);
     };
 
