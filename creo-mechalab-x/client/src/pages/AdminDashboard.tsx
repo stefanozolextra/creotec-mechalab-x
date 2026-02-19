@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Users, Shield, Mail, Trash2, LogOut, Terminal, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageTransition from '../components/PageTransition';
+import { clearAuthRole } from '../utils/auth';
 
 interface UserCredential {
   id: number;
@@ -84,6 +85,11 @@ const AdminDashboard = () => {
     }, 2000);
   };
 
+  const handleLogout = () => {
+    clearAuthRole();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <PageTransition>
       <div className="min-h-screen bg-slate-950 text-slate-200 pb-20">
@@ -94,15 +100,15 @@ const AdminDashboard = () => {
         <header className="border-b border-amber-900/30 bg-slate-900/80 backdrop-blur-md px-6 py-4 flex justify-between items-center shadow-lg">
           <div className="flex items-center gap-4">
             <div className="bg-amber-600/20 p-2 rounded-lg border border-amber-500/50">
-              <Shield className="text-amber-500 w-6 h-6" />
+              <Shield className="text-amber-500 w-6 h-6" aria-hidden="true" />
             </div>
             <div>
               <h1 className="font-bold text-lg text-white tracking-wide">ADMIN <span className="text-amber-500">CONSOLE</span></h1>
               <p className="text-xs text-slate-400 uppercase tracking-wider">Batch Management • Email Dispatch</p>
             </div>
           </div>
-          <button onClick={() => navigate('/login')} className="p-2 hover:bg-red-900/20 rounded-full text-red-400 transition">
-            <LogOut size={20} />
+          <button onClick={handleLogout} type="button" className="p-2 hover:bg-red-900/20 rounded-full text-red-400 transition" aria-label="Logout">
+            <LogOut size={20} aria-hidden="true" />
           </button>
         </header>
 
@@ -115,14 +121,15 @@ const AdminDashboard = () => {
           <div className="lg:col-span-4">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl">
               <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
-                <Users className="text-amber-500" /> Trainee Entry
+                <Users className="text-amber-500" aria-hidden="true" /> Trainee Entry
               </h2>
 
               <div className="space-y-4">
-                <label className="text-xs font-mono text-slate-500 uppercase">
+                <label htmlFor="trainee-data" className="text-xs font-mono text-slate-500 uppercase">
                   Format: Full Name, Email (One per line)
                 </label>
                 <textarea
+                  id="trainee-data"
                   className="w-full h-80 bg-slate-950 border border-slate-700 rounded p-3 text-sm font-mono text-cyan-400 focus:border-amber-500 outline-none resize-none"
                   placeholder="Juan Dela Cruz, juan@email.com&#10;Maria Santos, maria@email.com"
                   value={inputData}
@@ -130,10 +137,11 @@ const AdminDashboard = () => {
                 ></textarea>
 
                 <button
+                  type="button"
                   onClick={handleGenerate}
                   className="w-full bg-amber-600 hover:bg-amber-500 text-black font-bold py-3 rounded flex items-center justify-center gap-2 transition-all shadow-lg"
                 >
-                  <Terminal size={18} /> Initialize Batch
+                  <Terminal size={18} aria-hidden="true" /> Initialize Batch
                 </button>
               </div>
             </div>
@@ -147,33 +155,38 @@ const AdminDashboard = () => {
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 shadow-xl min-h-[600px] flex flex-col">
               <div className="flex justify-between items-center mb-6">
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                  <Mail className="text-amber-500" /> Distribution Queue
+                  <Mail className="text-amber-500" aria-hidden="true" /> Distribution Queue
                 </h2>
                 {generatedBatch.length > 0 && (
                   <div className="flex gap-2">
-                    <button onClick={() => setGeneratedBatch([])} className="p-2 text-slate-500 hover:text-red-400 transition">
-                      <Trash2 size={18} />
+                    <button type="button" onClick={() => setGeneratedBatch([])} className="p-2 text-slate-500 hover:text-red-400 transition" aria-label="Clear generated batch">
+                      <Trash2 size={18} aria-hidden="true" />
                     </button>
                     <button
+                      type="button"
                       onClick={handleSendEmails}
                       disabled={isSending}
                       className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-2 rounded font-bold transition disabled:opacity-50"
                     >
-                      {isSending ? "Sending..." : <><Send size={18} /> Dispatch Emails</>}
+                      {isSending ? "Sending..." : <><Send size={18} aria-hidden="true" /> Dispatch Emails</>}
                     </button>
                   </div>
                 )}
               </div>
+
+              <p className="sr-only" role="status" aria-live="polite">
+                {isSending ? 'Dispatch in progress.' : generatedBatch.length > 0 ? `${generatedBatch.length} credentials generated.` : 'No credentials generated yet.'}
+              </p>
 
               {generatedBatch.length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left border-collapse">
                     <thead>
                       <tr className="border-b border-slate-700 text-xs text-slate-500 uppercase font-mono">
-                        <th className="p-3">Trainee & Email</th>
-                        <th className="p-3">Username</th>
-                        <th className="p-3">Password</th>
-                        <th className="p-3 text-right">Status</th>
+                        <th scope="col" className="p-3">Trainee & Email</th>
+                        <th scope="col" className="p-3">Username</th>
+                        <th scope="col" className="p-3">Password</th>
+                        <th scope="col" className="p-3 text-right">Status</th>
                       </tr>
                     </thead>
                     <tbody className="font-mono text-sm">
@@ -198,7 +211,7 @@ const AdminDashboard = () => {
                 </div>
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center text-slate-700">
-                  <Mail size={64} className="opacity-10 mb-4" />
+                  <Mail size={64} className="opacity-10 mb-4" aria-hidden="true" />
                   <p className="font-bold">Queue Empty</p>
                   <p className="text-sm">Input trainee data to generate accounts.</p>
                 </div>

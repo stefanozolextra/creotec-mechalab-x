@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Zap, CheckCircle, ChevronRight, Terminal, BookOpen, Settings, LogOut, Play } from 'lucide-react';
 import PageTransition from '../components/PageTransition';
+import { clearAuthRole } from '../utils/auth';
 
 const levels = [
     { id: 1, title: "Mechatronics Basics", status: "completed", score: 100 },
@@ -27,8 +28,8 @@ const Dashboard = () => {
        - EDIT: Add logic to clear local storage or session tokens here later.
     */
     const handleLogout = () => {
-        console.log("Logging out...");
-        navigate('/login');
+        clearAuthRole();
+        navigate('/login', { replace: true });
     };
 
     return (
@@ -45,7 +46,7 @@ const Dashboard = () => {
                 <header className="border-b border-slate-700 bg-slate-800/50 backdrop-blur-md sticky top-0 z-10 px-6 py-4 flex justify-between items-center shadow-lg">
                     <div className="flex items-center gap-4">
                         <div className="bg-cyan-600/20 p-2 rounded-lg border border-cyan-500/50">
-                            <Terminal className="text-cyan-400 w-6 h-6" />
+                            <Terminal aria-hidden="true" className="text-cyan-400 w-6 h-6" />
                         </div>
                         <div>
                             <h1 className="font-bold text-lg text-white tracking-wide">CREO <span className="text-cyan-400">MECHALAB</span> X</h1>
@@ -55,10 +56,12 @@ const Dashboard = () => {
 
                     <button
                         onClick={handleLogout}
+                        type="button"
                         className="p-2 hover:bg-red-500/20 rounded-full hover:text-red-400 transition"
                         title="Logout"
+                        aria-label="Logout"
                     >
-                        <LogOut size={20} />
+                        <LogOut size={20} aria-hidden="true" />
                     </button>
                 </header>
 
@@ -74,7 +77,7 @@ const Dashboard = () => {
                     */}
                     <div className="lg:col-span-2 relative">
                         <h2 className="text-xl font-bold mb-6 text-white flex items-center gap-2">
-                            <Zap className="text-yellow-400" size={20} /> Simulation Modules
+                            <Zap className="text-yellow-400" size={20} aria-hidden="true" /> Simulation Modules
                         </h2>
 
                         <div className="space-y-4 relative">
@@ -87,13 +90,17 @@ const Dashboard = () => {
                                 const isSelected = selectedLevel === level.id;
 
                                 return (
-                                    <div
+                                    <button
+                                        type="button"
                                         key={level.id}
                                         onClick={() => !isLocked && setSelectedLevel(level.id)}
+                                        disabled={isLocked}
+                                        aria-pressed={isSelected}
+                                        aria-label={`${level.title} module, ${level.status}`}
                                         className={`
-                                            relative flex items-center p-4 rounded-xl border transition-all cursor-pointer
+                                            relative w-full text-left flex items-center p-4 rounded-xl border transition-all
                                             ${isSelected ? 'bg-slate-800 border-cyan-500 shadow-lg shadow-cyan-900/20 translate-x-2' : 'bg-slate-800/40 border-slate-700 hover:border-slate-500'}
-                                            ${isLocked ? 'opacity-50 cursor-not-allowed grayscale' : ''}
+                                            ${isLocked ? 'opacity-50 cursor-not-allowed grayscale' : 'cursor-pointer'}
                                         `}
                                     >
                                         {/* CIRCLE ICON: Shows status (Completed/Locked/Active) */}
@@ -103,7 +110,7 @@ const Dashboard = () => {
                                             ${!isCompleted && !isLocked ? 'bg-slate-900 border-cyan-400 text-cyan-400' : ''}
                                             ${isLocked ? 'bg-slate-800 border-slate-600 text-slate-500' : ''}
                                         `}>
-                                            {isCompleted ? <CheckCircle size={20} /> : isLocked ? <Lock size={16} /> : level.id}
+                                            {isCompleted ? <CheckCircle size={20} aria-hidden="true" /> : isLocked ? <Lock size={16} aria-hidden="true" /> : level.id}
                                         </div>
 
                                         <div className="flex-1">
@@ -111,8 +118,8 @@ const Dashboard = () => {
                                             <div className="text-xs text-slate-500 uppercase font-mono mt-1">{level.status}</div>
                                         </div>
 
-                                        {isSelected && <ChevronRight className="text-cyan-400 animate-pulse" />}
-                                    </div>
+                                        {isSelected && <ChevronRight className="text-cyan-400 animate-pulse" aria-hidden="true" />}
+                                    </button>
                                 );
                             })}
                         </div>
@@ -127,7 +134,7 @@ const Dashboard = () => {
                         {selectedLevel ? (
                             <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 sticky top-24 shadow-2xl">
                                 <div className="h-40 bg-slate-700/50 rounded-lg mb-6 flex items-center justify-center border border-slate-600 border-dashed">
-                                    <Terminal size={48} className="text-slate-500" />
+                                    <Terminal size={48} className="text-slate-500" aria-hidden="true" />
                                 </div>
 
                                 <h2 className="text-2xl font-bold text-white mb-2">
@@ -139,11 +146,11 @@ const Dashboard = () => {
                                 </p>
 
                                 <div className="space-y-3">
-                                    <button className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-900/50">
-                                        <Play size={18} fill="currentColor" /> Start Simulation
+                                    <button type="button" className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-900/50">
+                                        <Play size={18} fill="currentColor" aria-hidden="true" /> Start Simulation
                                     </button>
-                                    <button className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all">
-                                        <BookOpen size={18} /> View PDF Manual
+                                    <button type="button" className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all">
+                                        <BookOpen size={18} aria-hidden="true" /> View PDF Manual
                                     </button>
                                 </div>
                             </div>
@@ -161,7 +168,9 @@ const Dashboard = () => {
                     - HOW TO EDIT: Add more buttons here for 'Profile' or 'Help'.
                 */}
                 <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800/90 backdrop-blur border border-slate-600 rounded-full px-6 py-2 flex gap-6 shadow-2xl z-20">
-                    <button className="text-slate-400 hover:text-white transition p-2"><Settings size={20} /></button>
+                    <button type="button" className="text-slate-400 hover:text-white transition p-2" aria-label="Open settings">
+                        <Settings size={20} aria-hidden="true" />
+                    </button>
                 </div>
 
             </div>

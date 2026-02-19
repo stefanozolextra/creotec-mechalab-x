@@ -6,10 +6,14 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, Settings } from 'lucide-react';
 import PageTransition from '../components/PageTransition';
+import { setAuthRole, type AuthRole } from '../utils/auth';
 
 const Login = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
 
     /* SECTION: LOGIN LOGIC (MOCK)
        - USE: Simulates the authentication process.
@@ -18,9 +22,22 @@ const Login = () => {
     */
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
+        if (loading) return;
+
+        if (!username.trim() || !password.trim()) {
+            setError('Username and password are required.');
+            return;
+        }
+
+        setError('');
         setLoading(true);
+
         setTimeout(() => {
-            navigate('/dashboard');
+            const normalizedUsername = username.trim().toLowerCase();
+            const role: AuthRole = normalizedUsername.includes('admin') ? 'admin' : 'student';
+            setAuthRole(role);
+            setLoading(false);
+            navigate(role === 'admin' ? '/admin' : '/dashboard', { replace: true });
         }, 800);
     };
 
@@ -43,7 +60,7 @@ const Login = () => {
                     */}
                     <div className="text-center mb-8">
                         <div className="bg-blue-900 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                            <Settings className="text-yellow-400 w-10 h-10" />
+                            <Settings aria-hidden="true" className="text-yellow-400 w-10 h-10" />
                         </div>
                         <h1 className="text-2xl font-bold text-slate-800">CREO MechaLabX</h1>
                         <p className="text-slate-500">Mechatronics NC II Trainer</p>
@@ -54,30 +71,52 @@ const Login = () => {
                         - KEYPOINT: Icons are positioned absolutely inside relative wrappers for a modern feel.
                         - EDIT: Add 'value' and 'onChange' props here to bind these inputs to a React state.
                     */ }
-                    <form onSubmit={handleLogin} className="space-y-6">
+                    <form onSubmit={handleLogin} className="space-y-6" aria-busy={loading}>
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Username / E-mail</label>
+                            <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-1">Username / E-mail</label>
                             <div className="relative">
-                                <User className="absolute left-3 top-3 text-slate-400 w-5 h-5" />
+                                <User aria-hidden="true" className="absolute left-3 top-3 text-slate-400 w-5 h-5" />
                                 <input
+                                    id="username"
+                                    name="username"
                                     type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
                                     className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                     placeholder="Enter your ID"
+                                    autoComplete="username"
+                                    disabled={loading}
+                                    required
+                                    aria-invalid={Boolean(error)}
+                                    aria-describedby={error ? 'login-error' : undefined}
                                 />
                             </div>
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-slate-700 mb-1">Password</label>
+                            <label htmlFor="password" className="block text-sm font-medium text-slate-700 mb-1">Password</label>
                             <div className="relative">
-                                <Lock className="absolute left-3 top-3 text-slate-400 w-5 h-5" />
+                                <Lock aria-hidden="true" className="absolute left-3 top-3 text-slate-400 w-5 h-5" />
                                 <input
+                                    id="password"
+                                    name="password"
                                     type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
                                     className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                     placeholder="••••••••"
+                                    autoComplete="current-password"
+                                    disabled={loading}
+                                    required
+                                    aria-invalid={Boolean(error)}
+                                    aria-describedby={error ? 'login-error' : undefined}
                                 />
                             </div>
                         </div>
+
+                        {error && (
+                            <p id="login-error" className="text-sm font-medium text-red-600" role="alert">{error}</p>
+                        )}
 
                         {/* SECTION: SUBMIT BUTTON
                             - USE: Finalizes login and triggers handleLogin.
@@ -93,7 +132,7 @@ const Login = () => {
                     </form>
 
                     <div className="mt-6 text-center text-sm">
-                        <a href="#" className="text-blue-600 hover:underline">Forgot Password?</a>
+                        <button type="button" className="text-blue-600 hover:underline">Forgot Password?</button>
                     </div>
                 </div>
             </div>
