@@ -5,8 +5,8 @@
 */
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Zap, CheckCircle, ChevronRight, Terminal, BookOpen, Settings, LogOut, Play, X, User, Shield } from 'lucide-react'; // Added X, User, Shield
-import { AnimatePresence, motion } from 'framer-motion'; // Added Framer Motion for the Modal
+import { Lock, Zap, CheckCircle, ChevronRight, Terminal, BookOpen, Settings, LogOut, Play, X, User, Shield } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from '../components/PageTransition';
 import { clearAuthRole } from '../utils/auth';
 
@@ -68,11 +68,13 @@ const Dashboard = () => {
                 </header>
 
                 {/* SECTION: MAIN INTERFACE
-                    - USE: Two-column grid for level selection (Left) and mission details (Right).
+                    - USE: Responsive layout. 
+                    - MOBILE: 'flex-col-reverse' puts the Mission Detail Panel (Start Button) at the TOP so users don't have to scroll down after selecting a level.
+                    - DESKTOP: 'lg:grid lg:grid-cols-3' snaps it back to the side-by-side view.
                 */}
-                <main className="max-w-6xl mx-auto p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <main className="max-w-6xl mx-auto p-4 md:p-6 flex flex-col-reverse lg:grid lg:grid-cols-3 gap-6 lg:gap-8">
 
-                    {/* SECTION: LEVEL SELECTION (LEFT)
+                    {/* SECTION: LEVEL SELECTION (LEFT ON DESKTOP, BOTTOM ON MOBILE)
                         - USE: Interactive vertical map of training modules.
                         - KEYPOINT: Clicking a level updates 'selectedLevel' unless it is 'locked'.
                         - IF REWRITTEN: Ensure the 'Connecting Line' div remains relative to its parent.
@@ -127,45 +129,48 @@ const Dashboard = () => {
                         </div>
                     </div>
 
-                    {/* SECTION: MISSION DETAIL PANEL (RIGHT) */}
+                    {/* SECTION: MISSION DETAIL PANEL (RIGHT ON DESKTOP, TOP ON MOBILE) */}
                     <div className="lg:col-span-1">
-                        {selectedLevel ? (
-                            <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 sticky top-24 shadow-2xl">
-                                <div className="h-40 bg-slate-700/50 rounded-lg mb-6 flex items-center justify-center border border-slate-600 border-dashed">
-                                    <Terminal size={48} className="text-slate-500" aria-hidden="true" />
+                        {/* Sticky wrapper so the panel follows the user on desktop */}
+                        <div className="sticky top-24 z-10">
+                            {selectedLevel ? (
+                                <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 shadow-2xl">
+                                    <div className="h-32 md:h-40 bg-slate-700/50 rounded-lg mb-6 flex items-center justify-center border border-slate-600 border-dashed">
+                                        <Terminal size={48} className="text-slate-500" aria-hidden="true" />
+                                    </div>
+
+                                    <h2 className="text-xl md:text-2xl font-bold text-white mb-2">
+                                        {levels.find(l => l.id === selectedLevel)?.title}
+                                    </h2>
+
+                                    <p className="text-slate-400 text-sm mb-6 leading-relaxed">
+                                        Initialize the wiring interface for this module. Ensure all components are grounded before testing the circuit.
+                                    </p>
+
+                                    <div className="space-y-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate(`/simulation/${selectedLevel}`)}
+                                            className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-900/50"
+                                        >
+                                            <Play size={18} fill="currentColor" aria-hidden="true" /> Start Simulation
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            onClick={() => navigate(`/module/${selectedLevel}`)}
+                                            className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all"
+                                        >
+                                            <BookOpen size={18} aria-hidden="true" /> View PDF Manual
+                                        </button>
+                                    </div>
                                 </div>
-
-                                <h2 className="text-2xl font-bold text-white mb-2">
-                                    {levels.find(l => l.id === selectedLevel)?.title}
-                                </h2>
-
-                                <p className="text-slate-400 text-sm mb-6 leading-relaxed">
-                                    Initialize the wiring interface for this module. Ensure all components are grounded before testing the circuit.
-                                </p>
-
-                                <div className="space-y-3">
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate(`/simulation/${selectedLevel}`)}
-                                        className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-900/50"
-                                    >
-                                        <Play size={18} fill="currentColor" aria-hidden="true" /> Start Simulation
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => navigate(`/module/${selectedLevel}`)}
-                                        className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all"
-                                    >
-                                        <BookOpen size={18} aria-hidden="true" /> View PDF Manual
-                                    </button>
+                            ) : (
+                                <div className="h-64 flex items-center justify-center text-slate-500 italic border-2 border-dashed border-slate-700 rounded-xl">
+                                    Select a module to view details
                                 </div>
-                            </div>
-                        ) : (
-                            <div className="h-full flex items-center justify-center text-slate-500 italic border-2 border-dashed border-slate-700 rounded-xl">
-                                Select a module to view details
-                            </div>
-                        )}
+                            )}
+                        </div>
                     </div>
 
                 </main>

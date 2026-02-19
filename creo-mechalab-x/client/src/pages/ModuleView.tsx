@@ -1,23 +1,32 @@
-/* SECTION: IMPORTS
-   - USE: Standard React hooks, routing parameters, and UI icons.
-   - KEYPOINT: 'react-pdf' is used to render the document directly onto the canvas to prevent easy downloading.
-*/
-import { useState } from 'react';
+import { useState, useEffect } from 'react'; // Added useEffect
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, BookOpen, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import PageTransition from '../components/PageTransition';
 
-// Set up the PDF.js worker (Required for react-pdf to process files in the background)
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const ModuleView = () => {
     const navigate = useNavigate();
-    const { id } = useParams(); // Gets the module ID from the URL
+    const { id } = useParams();
 
-    // SECTION: PDF STATE MANAGEMENT
     const [numPages, setNumPages] = useState<number | null>(null);
     const [pageNumber, setPageNumber] = useState<number>(1);
+
+    // NEW: Mobile Responsiveness State
+    const [pdfWidth, setPdfWidth] = useState(800);
+
+    // NEW: Dynamically adjust PDF width based on the user's screen size
+    useEffect(() => {
+        const handleResize = () => {
+            // Screen width minus padding (64px) to fit nicely on mobile
+            const screenWidth = window.innerWidth;
+            setPdfWidth(screenWidth < 864 ? screenWidth - 64 : 800);
+        };
+        handleResize(); // Fire once on load
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
 
     const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
         setNumPages(numPages);
@@ -31,7 +40,6 @@ const ModuleView = () => {
     return (
         <PageTransition>
             <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col select-none">
-
                 {/* SECTION: TOP NAVIGATION BAR
                     - USE: Allows the trainee to exit back to the mission map.
                 */}
@@ -77,24 +85,18 @@ const ModuleView = () => {
 
                 {/* SECTION: CONTENT VIEWER 
                     - USE: Renders the PDF page-by-page.
-                    - KEYPOINT: Uses a placeholder PDF path. We disable text selection overlays for security and cleaner UI.
+                    - EDIT: Adjusted min-heights so the PDF viewer doesn't overflow drastically on landscape phones.
                 */}
-                <main className="flex-1 overflow-y-auto p-8 flex justify-center">
-                    <div className="bg-white rounded-sm shadow-2xl min-h-[800px] overflow-hidden border border-slate-800 flex justify-center items-start">
+                <main className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center items-start">
+                    <div className="bg-white rounded-sm shadow-2xl overflow-hidden border border-slate-800 flex justify-center items-start max-h-[85vh]">
                         {/* Ensure you place a dummy file named 'mock-module.pdf' in your public/ folder */}
                         <Document
                             file="/mock-module.pdf"
                             onLoadSuccess={onDocumentLoadSuccess}
                             loading={
-                                <div className="flex flex-col items-center justify-center h-[800px] w-[600px] text-slate-400">
-                                    <Loader2 size={48} className="animate-spin mb-4 text-cyan-500" />
+                                <div className="flex flex-col items-center justify-center h-[500px] w-full text-slate-400 p-8 text-center">
+                                    <Loader2 size={48} className="animate-spin mb-4 text-cyan-500 mx-auto" />
                                     <p>Loading Module {id} data...</p>
-                                </div>
-                            }
-                            error={
-                                <div className="flex flex-col items-center justify-center h-[800px] w-[600px] text-red-400 bg-slate-900">
-                                    <p>Failed to load PDF file.</p>
-                                    <p className="text-sm text-slate-500 mt-2">Did you add 'mock-module.pdf' to the public folder?</p>
                                 </div>
                             }
                         >
@@ -102,13 +104,11 @@ const ModuleView = () => {
                                 pageNumber={pageNumber}
                                 renderTextLayer={false}
                                 renderAnnotationLayer={false}
-                                className="max-w-4xl"
-                                width={800} // Locks width for consistent reading experience
+                                width={pdfWidth} // DYNAMIC WIDTH APPLIED HERE
                             />
                         </Document>
                     </div>
                 </main>
-
             </div>
         </PageTransition>
     );
