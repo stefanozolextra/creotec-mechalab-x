@@ -6,10 +6,14 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, Settings } from 'lucide-react';
 import PageTransition from '../components/PageTransition';
+import { setAuthRole, type AuthRole } from '../utils/auth';
 
 const Login = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
+    const [username, setUsername] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
 
     /* SECTION: LOGIN LOGIC (MOCK)
        - USE: Simulates the authentication process.
@@ -18,9 +22,22 @@ const Login = () => {
     */
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
+        if (loading) return;
+
+        if (!username.trim() || !password.trim()) {
+            setError('Username and password are required.');
+            return;
+        }
+
+        setError('');
         setLoading(true);
+
         setTimeout(() => {
-            navigate('/dashboard');
+            const normalizedUsername = username.trim().toLowerCase();
+            const role: AuthRole = normalizedUsername.includes('admin') ? 'admin' : 'student';
+            setAuthRole(role);
+            navigate(role === 'admin' ? '/admin' : '/dashboard', { replace: true });
+            setLoading(false);
         }, 800);
     };
 
@@ -61,8 +78,11 @@ const Login = () => {
                                 <User className="absolute left-3 top-3 text-slate-400 w-5 h-5" />
                                 <input
                                     type="text"
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
                                     className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                     placeholder="Enter your ID"
+                                    disabled={loading}
                                 />
                             </div>
                         </div>
@@ -73,11 +93,18 @@ const Login = () => {
                                 <Lock className="absolute left-3 top-3 text-slate-400 w-5 h-5" />
                                 <input
                                     type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
                                     className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none"
                                     placeholder="••••••••"
+                                    disabled={loading}
                                 />
                             </div>
                         </div>
+
+                        {error && (
+                            <p className="text-sm font-medium text-red-600">{error}</p>
+                        )}
 
                         {/* SECTION: SUBMIT BUTTON
                             - USE: Finalizes login and triggers handleLogin.

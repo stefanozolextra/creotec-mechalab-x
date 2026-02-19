@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Users, Shield, Mail, Trash2, LogOut, Terminal, Send } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import PageTransition from '../components/PageTransition';
+import { clearAuthRole } from '../utils/auth';
 
 interface UserCredential {
   id: number;
@@ -84,6 +85,11 @@ const AdminDashboard = () => {
     }, 2000);
   };
 
+  const handleLogout = () => {
+    clearAuthRole();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <PageTransition>
       <div className="min-h-screen bg-slate-950 text-slate-200 pb-20">
@@ -101,7 +107,7 @@ const AdminDashboard = () => {
               <p className="text-xs text-slate-400 uppercase tracking-wider">Batch Management • Email Dispatch</p>
             </div>
           </div>
-          <button onClick={() => navigate('/login')} className="p-2 hover:bg-red-900/20 rounded-full text-red-400 transition">
+          <button onClick={handleLogout} className="p-2 hover:bg-red-900/20 rounded-full text-red-400 transition">
             <LogOut size={20} />
           </button>
         </header>

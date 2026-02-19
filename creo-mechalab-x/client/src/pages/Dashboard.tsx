@@ -7,6 +7,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, Zap, CheckCircle, ChevronRight, Terminal, BookOpen, Settings, LogOut, Play } from 'lucide-react';
 import PageTransition from '../components/PageTransition';
+import { clearAuthRole } from '../utils/auth';
 
 const levels = [
     { id: 1, title: "Mechatronics Basics", status: "completed", score: 100 },
@@ -27,8 +28,8 @@ const Dashboard = () => {
        - EDIT: Add logic to clear local storage or session tokens here later.
     */
     const handleLogout = () => {
-        console.log("Logging out...");
-        navigate('/login');
+        clearAuthRole();
+        navigate('/login', { replace: true });
     };
 
     return (

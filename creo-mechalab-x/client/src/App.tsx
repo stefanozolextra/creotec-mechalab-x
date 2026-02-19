@@ -1,45 +1,76 @@
-/* SECTION: IMPORTS 
-   - USE: Loads routing tools, animation libraries, and page components[cite: 32].
-   - EDIT: Add new imports here when you create new features or pages.
-   - IF REMOVED: The app will fail to compile as it won't find the necessary files.
-*/
+import type { ReactElement } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AdminDashboard from './pages/AdminDashboard';
+import { getAuthRole, type AuthRole } from './utils/auth';
 
-/* SECTION: ANIMATION WRAPPER (AnimatedRoutes)
-   - USE: Syncs page transitions with URL changes.
-   - HOW IT WORKS: 'useLocation' tracks the current path to trigger Framer Motion animations.
-   - IF REWRITTEN: Transitions will become instant/abrupt rather than fluid.
-   - HOW TO EDIT: Adjust 'mode' to change how pages exit and enter.
-*/
+const getLandingRoute = (role: AuthRole): '/dashboard' | '/admin' => {
+  return role === 'admin' ? '/admin' : '/dashboard';
+};
+
+interface RequireAuthProps {
+  children: ReactElement;
+  role?: AuthRole;
+}
+
+const RequireAuth = ({ children, role }: RequireAuthProps) => {
+  const currentRole = getAuthRole();
+  if (!currentRole) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (role && currentRole !== role) {
+    return <Navigate to={getLandingRoute(currentRole)} replace />;
+  }
+
+  return children;
+};
+
 const AnimatedRoutes = () => {
   const location = useLocation();
+  const currentRole = getAuthRole();
 
   return (
     <AnimatePresence mode="wait">
-      {/* SECTION: ROUTE DEFINITIONS
-          - [cite_start]USE: Defines the app structure and URLs[cite: 20, 107].
-          - HOW IT WORKS: Maps a specific URL path to a React component.
-          - HOW TO EDIT: Add a new <Route /> tag here to add a new page to the app.
-      */}
       <Routes location={location} key={location.pathname}>
-        <Route path="/" element={<Navigate to="/login" replace />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/admin" element={<AdminDashboard />} />
+        <Route
+          path="/"
+          element={
+            currentRole ? (
+              <Navigate to={getLandingRoute(currentRole)} replace />
+            ) : (
+              <Navigate to="/login" replace />
+            )
+          }
+        />
+        <Route
+          path="/login"
+          element={currentRole ? <Navigate to={getLandingRoute(currentRole)} replace /> : <Login />}
+        />
+        <Route
+          path="/dashboard"
+          element={
+            <RequireAuth role="student">
+              <Dashboard />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <RequireAuth role="admin">
+              <AdminDashboard />
+            </RequireAuth>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
   );
 };
 
-/* SECTION: MAIN APP COMPONENT
-   - USE: The root entry point of the frontend.
-   - HOW IT WORKS: Wraps the app in a Router to enable browser navigation.
-   - IF REWRITTEN: Navigation links and redirects will stop functioning globally.
-*/
 function App() {
   return (
     <Router>
