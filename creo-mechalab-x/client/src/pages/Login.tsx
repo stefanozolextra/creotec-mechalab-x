@@ -1,6 +1,6 @@
 /* SECTION: IMPORTS 
    - USE: Standard React hooks, navigation tools, and UI icons from Lucide.
-   - [cite_start]KEYPOINT: PageTransition is the motion wrapper that prevents the "white flash" on entry[cite: 104].
+   - KEYPOINT: PageTransition is the motion wrapper that prevents the "white flash" on entry[cite: 104].
 */
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -16,9 +16,9 @@ const Login = () => {
     const [error, setError] = useState('');
 
     /* SECTION: LOGIN LOGIC (MOCK)
-       - USE: Simulates the authentication process.
-       - HOW IT WORKS: Prevents page reload, triggers a 'Loading' state, and redirects to Dashboard after 800ms.
-       - [cite_start]EDIT: Replace the setTimeout with an actual API call to your MySQL backend later[cite: 33, 40].
+        - USE: Simulates the authentication process.
+        - HOW IT WORKS: Prevents page reload, triggers a 'Loading' state, and redirects to Dashboard after 800ms.
+        - EDIT: Replace the setTimeout with an actual API call to your MySQL backend later[cite: 33, 40].
     */
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
@@ -43,19 +43,20 @@ const Login = () => {
 
     return (
         /* SECTION: ANIMATION WRAPPER
-           - [cite_start]USE: Encapsulates the entire view to provide a fluid "Morph" transition[cite: 104].
-           - HOW TO EDIT: Changing variants in the PageTransition component affects this page.
+            - USE: Encapsulates the entire view to provide a fluid "Morph" transition[cite: 104].
+            - HOW TO EDIT: Changing variants in the PageTransition component affects this page.
         */
         <PageTransition>
             {/* SECTION: UI LAYOUT
-                - [cite_start]USE: Centered flex container with a dark background to match the "Industrial" aesthetic[cite: 106].
+                - USE: Centered flex container with a dark background to match the "Industrial" aesthetic.
                 - KEYPOINT: Uses a max-width container to ensure the form remains scannable on desktops.
+                - EDIT: Added 'select-none' to prevent accidental text selection on the background/wrapper.
             */}
-            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+            <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4 select-none">
                 <div className="bg-white rounded-lg shadow-2xl p-8 w-full max-w-md">
 
                     {/* SECTION: BRANDING AREA
-                        - [cite_start]USE: Displays the CREO MechaLabX logo and project title[cite: 92, 108].
+                        - USE: Displays the CREO MechaLabX logo and project title[cite: 92, 108].
                         - HOW TO EDIT: Change the icon or h1 text to update the app name globally.
                     */}
                     <div className="text-center mb-8">
@@ -67,7 +68,7 @@ const Login = () => {
                     </div>
 
                     {/* SECTION: INPUT FIELDS
-                        - [cite_start]USE: Captures Trainee credentials[cite: 99, 100].
+                        - USE: Captures Trainee credentials.
                         - KEYPOINT: Icons are positioned absolutely inside relative wrappers for a modern feel.
                         - EDIT: Add 'value' and 'onChange' props here to bind these inputs to a React state.
                     */ }
