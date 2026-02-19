@@ -16,7 +16,7 @@ import NotFound from './pages/NotFound';
 import AdminLayout from './components/admin/AdminLayout';
 import OverviewPage from './pages/admin/OverviewPage';
 import UsersPage from './pages/admin/UsersPage';
-import ReportsPage from './pages/admin/ReportsPage';
+import LessonsPage from './pages/admin/LessonsPage';
 import ActivityLogsPage from './pages/admin/ActivityLogsPage';
 
 // Security Utilities
@@ -25,8 +25,8 @@ import { getAuthRole, type AuthRole } from './utils/auth';
 /* SECTION: ROUTING ARCHITECTURE & SECURITY LOGIC
    - USE: Determines where a user should land based on their role.
 */
-const getLandingRoute = (role: AuthRole): '/dashboard' | '/admin' => {
-  return role === 'admin' ? '/admin' : '/dashboard';
+const getLandingRoute = (role: AuthRole): '/dashboard' | '/admin/dashboard' => {
+  return role === 'admin' ? '/admin/dashboard' : '/dashboard';
 };
 
 interface RequireAuthProps {
@@ -119,11 +119,12 @@ const AnimatedRoutes = () => {
             </RequireAuth>
           }
         >
-          <Route index element={<Navigate to="overview" replace />} />
-          <Route path="overview" element={<OverviewPage />} />
+          <Route index element={<Navigate to="dashboard" replace />} />
+          <Route path="dashboard" element={<OverviewPage />} />
           <Route path="users" element={<UsersPage />} />
-          <Route path="reports" element={<ReportsPage />} />
+          <Route path="lessons" element={<LessonsPage />} />
           <Route path="activity-logs" element={<ActivityLogsPage />} />
+          <Route path="*" element={<Navigate to="dashboard" replace />} />
         </Route>
 
         {/* SECTION: CATCH-ALL (404 BEHAVIOR)
