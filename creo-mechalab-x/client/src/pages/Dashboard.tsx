@@ -1,6 +1,6 @@
 /* SECTION: IMPORTS & MOCK DATA
    - USE: Standard React hooks, navigation, and custom industrial-style icons.
-   - [cite_start]DATA: 'levels' represents the core Mechatronics NC II subjects [cite: 6, 115-123].
+   - DATA: 'levels' represents the core Mechatronics NC II subjects.
    - HOW TO EDIT: Add or change objects in the 'levels' array to update the simulation map.
 */
 import { useState } from 'react';
@@ -146,10 +146,21 @@ const Dashboard = () => {
                                 </p>
 
                                 <div className="space-y-3">
-                                    <button type="button" className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-900/50">
+                                    {/* RESTORED ONCLICK EVENT FOR SIMULATION */}
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate(`/simulation/${selectedLevel}`)}
+                                        className="w-full bg-cyan-600 hover:bg-cyan-500 text-white py-3 rounded-lg font-bold flex items-center justify-center gap-2 transition-all shadow-lg shadow-cyan-900/50"
+                                    >
                                         <Play size={18} fill="currentColor" aria-hidden="true" /> Start Simulation
                                     </button>
-                                    <button type="button" className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all">
+
+                                    {/* RESTORED ONCLICK EVENT FOR MODULE */}
+                                    <button
+                                        type="button"
+                                        onClick={() => navigate(`/module/${selectedLevel}`)}
+                                        className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-3 rounded-lg font-semibold flex items-center justify-center gap-2 transition-all"
+                                    >
                                         <BookOpen size={18} aria-hidden="true" /> View PDF Manual
                                     </button>
                                 </div>

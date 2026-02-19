@@ -1,15 +1,29 @@
+/* SECTION: IMPORTS 
+   - USE: Loads routing tools, animation libraries, security utilities, and page components.
+*/
 import type { ReactElement } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
+
+// Pages
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import ModuleView from './pages/ModuleView'; // Restored
+import SimulationView from './pages/SimulationView'; // Restored
+
+// Admin Components
 import AdminLayout from './components/admin/AdminLayout';
 import OverviewPage from './pages/admin/OverviewPage';
 import UsersPage from './pages/admin/UsersPage';
 import ReportsPage from './pages/admin/ReportsPage';
 import ActivityLogsPage from './pages/admin/ActivityLogsPage';
+
+// Security Utilities
 import { getAuthRole, type AuthRole } from './utils/auth';
 
+/* SECTION: ROUTING ARCHITECTURE & SECURITY LOGIC
+   - USE: Determines where a user should land based on their role.
+*/
 const getLandingRoute = (role: AuthRole): '/dashboard' | '/admin' => {
   return role === 'admin' ? '/admin' : '/dashboard';
 };
@@ -19,6 +33,11 @@ interface RequireAuthProps {
   role?: AuthRole;
 }
 
+/* SECTION: AUTHENTICATION WRAPPER
+   - USE: Protects URLs from unauthorized access.
+   - HOW IT WORKS: If a user has no role, they are kicked back to '/login'. 
+     If they try to access the wrong role's page, they are redirected to their proper dashboard.
+*/
 const RequireAuth = ({ children, role }: RequireAuthProps) => {
   const currentRole = getAuthRole();
   if (!currentRole) {
@@ -32,6 +51,10 @@ const RequireAuth = ({ children, role }: RequireAuthProps) => {
   return children;
 };
 
+/* SECTION: ANIMATION WRAPPER (AnimatedRoutes)
+   - USE: Syncs page transitions with URL changes.
+   - HOW IT WORKS: 'useLocation' tracks the current path to trigger Framer Motion animations.
+*/
 const AnimatedRoutes = () => {
   const location = useLocation();
   const currentRole = getAuthRole();
@@ -39,6 +62,8 @@ const AnimatedRoutes = () => {
   return (
     <AnimatePresence mode="wait">
       <Routes location={location} key={location.pathname}>
+
+        {/* DEFAULT & LOGIN ROUTES */}
         <Route
           path="/"
           element={
@@ -53,6 +78,10 @@ const AnimatedRoutes = () => {
           path="/login"
           element={currentRole ? <Navigate to={getLandingRoute(currentRole)} replace /> : <Login />}
         />
+
+        {/* SECTION: TRAINEE PROTECTED ROUTES
+            - USE: Pages accessible only to students. 
+        */}
         <Route
           path="/dashboard"
           element={
@@ -61,6 +90,26 @@ const AnimatedRoutes = () => {
             </RequireAuth>
           }
         />
+        <Route
+          path="/module/:id"
+          element={
+            <RequireAuth role="student">
+              <ModuleView />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/simulation/:id"
+          element={
+            <RequireAuth role="student">
+              <SimulationView />
+            </RequireAuth>
+          }
+        />
+
+        {/* SECTION: ADMIN PROTECTED ROUTES
+            - USE: Nested layout for the Admin Control Panel.
+        */}
         <Route
           path="/admin"
           element={
@@ -75,12 +124,17 @@ const AnimatedRoutes = () => {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="activity-logs" element={<ActivityLogsPage />} />
         </Route>
+
+        {/* SECTION: CATCH-ALL (404 BEHAVIOR)
+            - USE: If a user types a URL that doesn't exist, kick them to the root logic.
+        */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </AnimatePresence>
   );
 };
 
+/* SECTION: MAIN APP COMPONENT */
 function App() {
   return (
     <Router>
