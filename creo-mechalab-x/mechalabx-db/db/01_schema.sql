@@ -92,7 +92,7 @@ CREATE INDEX idx_sims_module_id ON simulations(module_id);
 -- A module is completed when all required sims are COMPLETED.
 -- =========================
 
-CREATE VIEW v_trainee_module_status AS
+CREATE OR REPLACE VIEW v_trainee_module_status AS
 SELECT
   t.trainee_id,
   m.module_id,
