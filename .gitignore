@@ -16,3 +16,15 @@ node_modules/
 # node
 node_modules/
 **/node_modules/
+
+# env files (do not commit real secrets)
+.env
+**/.env
+
+# allow committing example templates
+.env.example
+**/.env.example
+
+# but ignore other env variants (optional)
+.env.*
+**/.env.*
