@@ -80,15 +80,18 @@ app.get("/api/trainees/:traineeId/dashboard", async (req, res) => {
         const traineeId = parsePositiveIntParam(req.params.traineeId);
         if (!traineeId) return res.status(400).json({ error: "Invalid traineeId" });
 
-        const [profile, moduleStatus, modules, resources, simulations] = await Promise.all([
-            pool.query(
-                `SELECT t.trainee_id, t.trainee_code, t.first_name, t.middle_name, t.last_name,
-                t.email, t.contact_number, t.address, t.birth_date, b.batch_code
-         FROM trainees t
-         JOIN batches b ON b.batch_id = t.batch_id
-         WHERE t.trainee_id = $1`,
-                [traineeId]
-            ),
+        const profile = await pool.query(
+            `SELECT t.trainee_id, t.trainee_code, t.first_name, t.middle_name, t.last_name,
+            t.email, t.contact_number, t.address, t.birth_date, b.batch_code
+     FROM trainees t
+     JOIN batches b ON b.batch_id = t.batch_id
+     WHERE t.trainee_id = $1`,
+            [traineeId]
+        );
+
+        if (profile.rows.length === 0) return res.status(404).json({ error: "Trainee not found" });
+
+        const [moduleStatus, modules, resources, simulations, simulationProgress] = await Promise.all([
             pool.query(
                 `SELECT module_id, module_code, module_title, required_sims, completed_required_sims, module_status
          FROM v_trainee_module_status
@@ -99,9 +102,20 @@ app.get("/api/trainees/:traineeId/dashboard", async (req, res) => {
             pool.query("SELECT * FROM modules ORDER BY order_no"),
             pool.query("SELECT * FROM module_resources ORDER BY module_id, order_no"),
             pool.query("SELECT * FROM simulations ORDER BY module_id, order_no"),
+            pool.query(
+                `SELECT
+           tsp.simulation_id,
+           (tsp.status = 'COMPLETED') AS is_completed,
+           tsp.best_score,
+           tsp.completed_at,
+           COALESCE(tsp.last_accessed_at, tsp.completed_at, tsp.started_at) AS updated_at
+         FROM trainee_simulation_progress tsp
+         JOIN simulations s ON s.simulation_id = tsp.simulation_id
+         WHERE tsp.trainee_id = $1
+         ORDER BY s.module_id, s.order_no, tsp.simulation_id`,
+                [traineeId]
+            ),
         ]);
-
-        if (profile.rows.length === 0) return res.status(404).json({ error: "Trainee not found" });
 
         res.json({
             trainee: profile.rows[0],
@@ -111,17 +125,39 @@ app.get("/api/trainees/:traineeId/dashboard", async (req, res) => {
                 resources: resources.rows,
                 simulations: simulations.rows,
             },
+            simulationProgress: simulationProgress.rows,
         });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error("Dashboard endpoint failed:", e);
+        res.status(500).json({ error: "Internal server error" });
     }
 });
 app.post("/api/trainees/:traineeId/simulations/:simulationId/complete", async (req, res) => {
     try {
-        const traineeId = Number(req.params.traineeId);
-        const simulationId = Number(req.params.simulationId);
+        const traineeId = parsePositiveIntParam(req.params.traineeId);
+        if (!traineeId) return res.status(400).json({ error: "Invalid traineeId" });
 
-        const { bestScore = null } = req.body ?? {};
+        const simulationId = parsePositiveIntParam(req.params.simulationId);
+        if (!simulationId) return res.status(400).json({ error: "Invalid simulationId" });
+
+        const rawBestScore = req.body?.bestScore;
+        let bestScore = null;
+
+        if (rawBestScore !== undefined && rawBestScore !== null) {
+            const isValidScore =
+                typeof rawBestScore === "number" && Number.isFinite(rawBestScore) && rawBestScore >= 0;
+
+            if (!isValidScore) return res.status(400).json({ error: "Invalid bestScore" });
+            bestScore = rawBestScore;
+        }
+
+        const [traineeExists, simulationExists] = await Promise.all([
+            pool.query("SELECT 1 FROM trainees WHERE trainee_id = $1", [traineeId]),
+            pool.query("SELECT 1 FROM simulations WHERE simulation_id = $1", [simulationId]),
+        ]);
+
+        if (traineeExists.rowCount === 0) return res.status(404).json({ error: "Trainee not found" });
+        if (simulationExists.rowCount === 0) return res.status(404).json({ error: "Simulation not found" });
 
         await pool.query(
             `INSERT INTO trainee_simulation_progress
@@ -139,7 +175,8 @@ app.post("/api/trainees/:traineeId/simulations/:simulationId/complete", async (r
 
         res.json({ ok: true });
     } catch (e) {
-        res.status(500).json({ error: e.message });
+        console.error("Simulation completion endpoint failed:", e);
+        res.status(500).json({ error: "Internal server error" });
     }
 });
 
