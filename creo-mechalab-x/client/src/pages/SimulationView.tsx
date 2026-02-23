@@ -2,19 +2,57 @@
    - USE: Routing, UI icons, and the Konva Canvas engine.
 */
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Play, RotateCcw, Zap } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Loader2, Play, RotateCcw, Zap } from 'lucide-react';
 import { Stage, Layer, Rect, Text, Group } from 'react-konva';
 import { useState, useEffect, useRef } from 'react';
 import PageTransition from '../components/PageTransition';
-import PortraitGuard from '../components/PortraitGuard'; // <-- Import it here
+import PortraitGuard from '../components/PortraitGuard';
+import { completeSimulation, getDefaultTraineeId, getTraineeDashboard } from '../api/trainees';
+
+const getErrorMessage = (error: unknown, fallback: string): string => {
+    if (error instanceof Error && error.message) return error.message;
+    return fallback;
+};
+
+const isAbortError = (error: unknown): boolean => {
+    return (
+        (error instanceof DOMException && error.name === 'AbortError') ||
+        (error instanceof Error && error.name === 'AbortError')
+    );
+};
+
+const toNumber = (value: string | number | null | undefined): number => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const isCompletedValue = (value: boolean | string | number | null | undefined): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value.toLowerCase() === 'true';
+    if (typeof value === 'number') return value === 1;
+    return false;
+};
 
 const SimulationView = () => {
     const navigate = useNavigate();
     const { id } = useParams();
 
+    const traineeId = getDefaultTraineeId();
+    const simulationId = Number(id);
+    const hasValidSimulationId = Number.isInteger(simulationId) && simulationId > 0;
+
+    const [isCompleting, setIsCompleting] = useState(false);
+    const [completeError, setCompleteError] = useState<string | null>(null);
+    const [isCheckingCompletion, setIsCheckingCompletion] = useState(true);
+    const [isAlreadyCompleted, setIsAlreadyCompleted] = useState(false);
+    const [completionLookupError, setCompletionLookupError] = useState<string | null>(null);
+
     // State to handle the responsive size of our Canvas window
     const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
     const containerRef = useRef<HTMLDivElement>(null);
+    const completeControllerRef = useRef<AbortController | null>(null);
+    const completionLookupControllerRef = useRef<AbortController | null>(null);
+    const isMountedRef = useRef(true);
 
     // Keep the canvas sized correctly if the user resizes their browser
     useEffect(() => {
@@ -22,20 +60,100 @@ const SimulationView = () => {
             if (containerRef.current) {
                 setDimensions({
                     width: containerRef.current.offsetWidth,
-                    height: containerRef.current.offsetHeight
+                    height: containerRef.current.offsetHeight,
                 });
             }
         };
         checkSize();
-        window.addEventListener("resize", checkSize);
-        return () => window.removeEventListener("resize", checkSize);
+        window.addEventListener('resize', checkSize);
+        return () => window.removeEventListener('resize', checkSize);
     }, []);
+
+    useEffect(() => {
+        return () => {
+            isMountedRef.current = false;
+            completeControllerRef.current?.abort();
+            completionLookupControllerRef.current?.abort();
+        };
+    }, []);
+
+    useEffect(() => {
+        completionLookupControllerRef.current?.abort();
+
+        if (!hasValidSimulationId) {
+            setIsCheckingCompletion(false);
+            setIsAlreadyCompleted(false);
+            setCompletionLookupError(null);
+            return;
+        }
+
+        const controller = new AbortController();
+        completionLookupControllerRef.current = controller;
+
+        setIsCheckingCompletion(true);
+        setCompletionLookupError(null);
+
+        const loadCompletionState = async () => {
+            try {
+                const dashboard = await getTraineeDashboard(traineeId, { signal: controller.signal });
+                if (!isMountedRef.current || controller.signal.aborted) return;
+
+                const progressRow = dashboard.simulationProgress.find(
+                    (progress) => toNumber(progress.simulation_id) === simulationId
+                );
+                setIsAlreadyCompleted(isCompletedValue(progressRow?.is_completed));
+            } catch (error) {
+                if (controller.signal.aborted || isAbortError(error)) return;
+                if (!isMountedRef.current) return;
+
+                setCompletionLookupError(getErrorMessage(error, 'Unable to verify completion status.'));
+                setIsAlreadyCompleted(false);
+            } finally {
+                if (!isMountedRef.current || controller.signal.aborted) return;
+                setIsCheckingCompletion(false);
+            }
+        };
+
+        void loadCompletionState();
+
+        return () => {
+            controller.abort();
+        };
+    }, [hasValidSimulationId, simulationId, traineeId]);
+
+    const handleComplete = async () => {
+        if (!hasValidSimulationId) {
+            setCompleteError('Invalid simulation id from route.');
+            return;
+        }
+        if (isCheckingCompletion || isAlreadyCompleted) return;
+
+        completeControllerRef.current?.abort();
+        const controller = new AbortController();
+        completeControllerRef.current = controller;
+
+        setCompleteError(null);
+        setIsCompleting(true);
+
+        try {
+            await completeSimulation(traineeId, simulationId, undefined, { signal: controller.signal });
+            if (!isMountedRef.current || controller.signal.aborted) return;
+            setIsAlreadyCompleted(true);
+            navigate('/dashboard', { replace: true });
+        } catch (error) {
+            if (controller.signal.aborted || isAbortError(error)) return;
+            if (!isMountedRef.current) return;
+            setCompleteError(getErrorMessage(error, 'Failed to complete this simulation.'));
+        } finally {
+            if (!isMountedRef.current || controller.signal.aborted) return;
+            setIsCompleting(false);
+        }
+    };
 
     return (
         <PageTransition>
             <PortraitGuard>
                 <div className="h-screen flex flex-col bg-slate-950 text-slate-200 select-none overflow-hidden">
-
                     {/* SECTION: SIMULATION TOOLBAR */}
                     <header className="bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between z-10 shadow-lg shrink-0">
                         <div className="flex items-center gap-4">
@@ -48,19 +166,73 @@ const SimulationView = () => {
                             </button>
                             <h1 className="font-bold text-lg text-white flex items-center gap-2 border-l border-slate-700 pl-4">
                                 <Zap className="text-yellow-400" size={20} />
-                                Level {id} Workspace
+                                Simulation {id} Workspace
                             </h1>
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <button className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition text-slate-300">
+                            <button
+                                type="button"
+                                className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 px-4 py-2 rounded-lg text-sm font-semibold transition text-slate-300"
+                            >
                                 <RotateCcw size={16} /> Reset Board
                             </button>
-                            <button className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 px-6 py-2 rounded-lg text-sm font-bold transition text-white shadow-lg shadow-cyan-900/50">
-                                <Play size={16} fill="currentColor" /> Energize Circuit
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    void handleComplete();
+                                }}
+                                disabled={
+                                    isCompleting ||
+                                    isCheckingCompletion ||
+                                    isAlreadyCompleted ||
+                                    !hasValidSimulationId
+                                }
+                                className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed px-6 py-2 rounded-lg text-sm font-bold transition text-white shadow-lg shadow-cyan-900/50"
+                            >
+                                {isCompleting || isCheckingCompletion ? (
+                                    <Loader2 size={16} className="animate-spin" />
+                                ) : (
+                                    <Play size={16} fill="currentColor" />
+                                )}
+                                {isAlreadyCompleted
+                                    ? 'Completed'
+                                    : isCheckingCompletion
+                                      ? 'Checking...'
+                                      : isCompleting
+                                        ? 'Completing...'
+                                        : 'Mark Complete'}
                             </button>
+                            {isAlreadyCompleted && (
+                                <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs font-semibold text-emerald-300">
+                                    <CheckCircle2 size={14} />
+                                    Completed
+                                </span>
+                            )}
                         </div>
                     </header>
+
+                    {completionLookupError && (
+                        <div className="px-4 pt-3">
+                            <div
+                                className="rounded-lg border border-amber-500/40 bg-amber-500/10 text-amber-200 px-4 py-3 text-sm"
+                                role="status"
+                            >
+                                {completionLookupError}
+                            </div>
+                        </div>
+                    )}
+
+                    {completeError && (
+                        <div className="px-4 pt-3">
+                            <div
+                                className="rounded-lg border border-red-500/40 bg-red-500/10 text-red-200 px-4 py-3 text-sm"
+                                role="alert"
+                            >
+                                {completeError}
+                            </div>
+                        </div>
+                    )}
 
                     {/* SECTION: INTERACTIVE CANVAS (Konva)
                     - USE: The dynamic area where components are dragged and wires are drawn.
@@ -68,15 +240,24 @@ const SimulationView = () => {
                     <main
                         ref={containerRef}
                         className="flex-1 relative bg-[#0f172a]"
-                        style={{ backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px)', backgroundSize: '20px 20px' }}
+                        style={{
+                            backgroundImage: 'radial-gradient(#1e293b 1px, transparent 1px)',
+                            backgroundSize: '20px 20px',
+                        }}
                     >
                         {/* The Stage is the root container for Konva */}
                         <Stage width={dimensions.width} height={dimensions.height}>
                             <Layer>
-
                                 {/* MOCK COMPONENT: 24V Power Supply */}
                                 <Group draggable x={50} y={50}>
-                                    <Rect width={120} height={80} fill="#1e293b" stroke="#334155" strokeWidth={2} cornerRadius={8} />
+                                    <Rect
+                                        width={120}
+                                        height={80}
+                                        fill="#1e293b"
+                                        stroke="#334155"
+                                        strokeWidth={2}
+                                        cornerRadius={8}
+                                    />
                                     <Rect width={120} height={20} fill="#0ea5e9" cornerRadius={[8, 8, 0, 0]} />
                                     <Text text="24V PSU" x={10} y={5} fill="white" fontSize={12} fontStyle="bold" />
 
@@ -91,13 +272,29 @@ const SimulationView = () => {
 
                                 {/* MOCK COMPONENT: Push Button (PB1) */}
                                 <Group draggable x={250} y={50}>
-                                    <Rect width={80} height={80} fill="#1e293b" stroke="#334155" strokeWidth={2} cornerRadius={8} />
+                                    <Rect
+                                        width={80}
+                                        height={80}
+                                        fill="#1e293b"
+                                        stroke="#334155"
+                                        strokeWidth={2}
+                                        cornerRadius={8}
+                                    />
                                     <Text text="PB 1" x={25} y={10} fill="white" fontSize={12} fontStyle="bold" />
 
                                     {/* The Button Graphic */}
-                                    <Rect x={20} y={30} width={40} height={40} fill="#10b981" cornerRadius={20} shadowBlur={5} shadowColor="black" shadowOffsetY={2} />
+                                    <Rect
+                                        x={20}
+                                        y={30}
+                                        width={40}
+                                        height={40}
+                                        fill="#10b981"
+                                        cornerRadius={20}
+                                        shadowBlur={5}
+                                        shadowColor="black"
+                                        shadowOffsetY={2}
+                                    />
                                 </Group>
-
                             </Layer>
                         </Stage>
                     </main>
