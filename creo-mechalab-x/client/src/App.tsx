@@ -62,7 +62,8 @@ const AnimatedRoutes = () => {
 
   return (
     <AnimatePresence mode="wait">
-      <Routes location={location} key={location.pathname}>
+      {/* KEY FIX: Split limits animation triggers to the top-level route changes */}
+      <Routes location={location} key={location.pathname.split('/')[1]}>
 
         {/* DEFAULT & LOGIN ROUTES */}
         <Route
@@ -124,7 +125,9 @@ const AnimatedRoutes = () => {
           <Route path="users" element={<UsersPage />} />
           <Route path="lessons" element={<LessonsPage />} />
           <Route path="activity-logs" element={<ActivityLogsPage />} />
-          <Route path="*" element={<Navigate to="dashboard" replace />} />
+
+          {/* THE FIX: Absolute redirect path stops the infinite loop */}
+          <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
         </Route>
 
         {/* SECTION: CATCH-ALL (404 BEHAVIOR)
