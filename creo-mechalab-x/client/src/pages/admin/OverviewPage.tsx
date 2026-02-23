@@ -1,5 +1,5 @@
 /* SECTION: IMPORTS & MOCK DATA */
-import { Plus } from 'lucide-react'; // Restored the Plus icon
+import { Plus } from 'lucide-react';
 
 const barColors = [
   '#93C5FD', '#5EEAD4', '#0B1B3D', '#60A5FA', '#C084FC', '#4ADE80'
@@ -19,7 +19,6 @@ const mockNotifications = [
   { text: "New user registered.", time: "59 minutes ago", icon: "👤" },
   { text: "You fixed a bug.", time: "12 hours ago", icon: "🐞" },
   { text: "Andi Lane subscribed to you.", time: "Today, 11:59 AM", icon: "📡" },
-  // Added an extra to demonstrate internal scrolling perfectly fitting the column
   { text: "System backup complete.", time: "Yesterday", icon: "💾" },
 ];
 
@@ -33,8 +32,11 @@ const mockActivities = [
 
 export default function OverviewPage() {
   return (
-    // Height lock prevents the page from scrolling
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-140px)] min-h-[600px] pb-4">
+    /* THE FIX: 
+       - Replaced the fragile `h-[calc(...)]` math with `flex-1 min-h-0`.
+       - This mathematically guarantees the dashboard perfectly hugs the edge of the screen without ever spilling over!
+    */
+    <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-6 min-h-0 lg:overflow-hidden">
 
       {/* SECTION: LEFT COLUMN (Cards & Chart) */}
       <div className="col-span-1 lg:col-span-8 flex flex-col gap-6 h-full min-h-0">
@@ -42,7 +44,6 @@ export default function OverviewPage() {
         {/* SUMMARY CARDS */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0">
 
-          {/* TRAINEES CARD WITH '+ ADD' BUTTON RESTORED HERE */}
           <div className="bg-white dark:bg-[#17233B] rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] dark:shadow-none flex justify-between items-start transition-colors">
             <div>
               <div className="text-slate-500 dark:text-slate-400 font-semibold mb-2 text-sm transition-colors">Trainees</div>
@@ -111,8 +112,6 @@ export default function OverviewPage() {
 
       {/* SECTION: RIGHT COLUMN (Notifications & Activities) */}
       <div className="col-span-1 lg:col-span-4 flex flex-col gap-6 h-full min-h-0">
-
-        {/* Large Add Trainee button removed! The layout will now perfectly split 50/50 between Notifications and Activities */}
 
         {/* NOTIFICATIONS PANEL */}
         <div className="bg-white dark:bg-[#17233B] rounded-3xl p-6 shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] dark:shadow-none flex-1 flex flex-col min-h-0 transition-colors">

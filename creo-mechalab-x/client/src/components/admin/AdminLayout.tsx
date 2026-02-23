@@ -102,16 +102,16 @@ const AdminLayout = () => {
                 <Sun
                   size={22}
                   className={`absolute transition-all duration-500 ease-in-out ${!isDark
-                      ? 'text-[#0B1B3D] opacity-100 rotate-0 scale-100'
-                      : 'text-slate-500 opacity-0 rotate-90 scale-50'
+                    ? 'text-[#0B1B3D] opacity-100 rotate-0 scale-100'
+                    : 'text-slate-500 opacity-0 rotate-90 scale-50'
                     }`}
                 />
                 {/* Moon icon (Spins in during Dark Mode) */}
                 <Moon
                   size={22}
                   className={`absolute transition-all duration-500 ease-in-out ${isDark
-                      ? 'text-white opacity-100 rotate-0 scale-100'
-                      : 'text-slate-500 opacity-0 -rotate-90 scale-50'
+                    ? 'text-white opacity-100 rotate-0 scale-100'
+                    : 'text-slate-500 opacity-0 -rotate-90 scale-50'
                     }`}
                 />
               </button>
@@ -179,7 +179,7 @@ const AdminLayout = () => {
           </header>
 
           {/* Scrollable Content Area */}
-          <main className="flex-1 overflow-auto p-4 md:p-8 pt-0 select-text">
+          <main className="flex-1 overflow-auto p-4 md:p-8 pt-0 select-text flex flex-col">
             <Outlet />
           </main>
         </div>
