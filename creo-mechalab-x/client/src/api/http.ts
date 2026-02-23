@@ -1,3 +1,5 @@
+import { getAuthToken } from "../utils/auth";
+
 const DEFAULT_API_BASE_URL = "http://localhost:4000";
 
 // NOTE: The backend API must run from server/index.js.
@@ -53,6 +55,11 @@ export const requestJson = async <T>(path: string, options: ApiRequestOptions = 
 
     if (body !== undefined && !headers.has("Content-Type")) {
         headers.set("Content-Type", "application/json");
+    }
+
+    const authToken = getAuthToken();
+    if (authToken && !headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${authToken}`);
     }
 
     let response: Response;

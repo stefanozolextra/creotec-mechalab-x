@@ -1,5 +1,6 @@
 import { Activity, BookOpen, LayoutDashboard, LogOut, UserRound } from 'lucide-react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { clearAuthSession } from '../../utils/auth';
 
 type TitleMap = Record<string, string>;
 
@@ -29,7 +30,13 @@ const getHeaderTitle = (pathname: string): string => {
 
 const AdminLayout = () => {
   const { pathname } = useLocation();
+  const navigate = useNavigate();
   const headerTitle = getHeaderTitle(pathname);
+
+  const handleLogout = () => {
+    clearAuthSession();
+    navigate('/login', { replace: true });
+  };
 
   return (
     <div className="h-screen bg-[#E6E6E6] flex overflow-hidden">
@@ -59,6 +66,7 @@ const AdminLayout = () => {
         <div className="mt-auto border-t border-white/30 p-6">
           <button
             type="button"
+            onClick={handleLogout}
             className="w-full flex items-center gap-3 text-white hover:text-slate-200 font-medium"
           >
             <LogOut size={20} aria-hidden="true" />

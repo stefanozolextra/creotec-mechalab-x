@@ -6,12 +6,20 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, Settings, Eye, EyeOff } from 'lucide-react'; // Restored Eye icons
 import PageTransition from '../components/PageTransition';
-import { setAuthRole, type AuthRole } from '../utils/auth'; // Colleague's Auth System
+import { requestJson } from '../api/http';
+import { setAuthSession, type AuthRole } from '../utils/auth';
+
+type LoginResponse = {
+    token: string;
+    role: AuthRole;
+    sub: number;
+    account_id: number;
+};
 
 const Login = () => {
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
-    const [username, setUsername] = useState('');
+    const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false); // Restored Toggle State
@@ -19,25 +27,36 @@ const Login = () => {
     /* SECTION: LOGIN LOGIC 
         - USE: Handles authentication via colleague's setAuthRole utility.
     */
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         if (loading) return;
 
-        if (!username.trim() || !password.trim()) {
-            setError('Username and password are required.');
+        const normalizedEmail = email.trim().toLowerCase();
+        if (!normalizedEmail || !password.trim()) {
+            setError('Email and password are required.');
             return;
         }
 
         setError('');
         setLoading(true);
 
-        setTimeout(() => {
-            const normalizedUsername = username.trim().toLowerCase();
-            const role: AuthRole = normalizedUsername.includes('admin') ? 'admin' : 'student';
-            setAuthRole(role);
+        try {
+            const auth = await requestJson<LoginResponse>('/api/auth/login', {
+                method: 'POST',
+                body: {
+                    email: normalizedEmail,
+                    password,
+                },
+            });
+
+            setAuthSession(auth.role, auth.token);
+            navigate(auth.role === 'admin' ? '/admin' : '/dashboard', { replace: true });
+        } catch (err) {
+            const message = err instanceof Error && err.message ? err.message : 'Login failed.';
+            setError(message);
+        } finally {
             setLoading(false);
-            navigate(role === 'admin' ? '/admin' : '/dashboard', { replace: true });
-        }, 800);
+        }
     };
 
     return (
@@ -56,18 +75,18 @@ const Login = () => {
 
                     <form onSubmit={handleLogin} className="space-y-6" aria-busy={loading}>
                         <div>
-                            <label htmlFor="username" className="block text-sm font-medium text-slate-700 mb-1">Username / E-mail</label>
+                            <label htmlFor="email" className="block text-sm font-medium text-slate-700 mb-1">Username / E-mail</label>
                             <div className="relative">
                                 {/* Restored 'pointer-events-none' on icon */}
                                 <User aria-hidden="true" className="absolute left-3 top-3 text-slate-400 w-5 h-5 pointer-events-none" />
                                 <input
-                                    id="username"
-                                    name="username"
+                                    id="email"
+                                    name="email"
                                     type="text"
-                                    value={username}
-                                    onChange={(e) => setUsername(e.target.value)}
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
                                     className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-blue-500 focus:outline-none select-text"
-                                    placeholder="Enter your ID"
+                                    placeholder="Enter your e-mail"
                                     autoComplete="username"
                                     disabled={loading}
                                     required
