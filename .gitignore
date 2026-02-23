@@ -1,42 +1,13 @@
+# Node dependencies
+node_modules/
+**/node_modules/
 
-# env files
+# Real environment files (never commit)
 .env
 **/.env
 .env.*
 **/.env.*
 
-# node
-node_modules/
-**/node_modules/
-
-# node
-node_modules/
-**/node_modules/
-
-# node
-node_modules/
-**/node_modules/
-
-# env files (do not commit real secrets)
-.env
-**/.env
-
-# allow committing example templates
-.env.example
-**/.env.example
-
-# but ignore other env variants (optional)
-.env.*
-**/.env.*
-
-# env files (do not commit real secrets)
-.env
-**/.env
-
-# allow committing example templates
-.env.example
-**/.env.example
-
-# ignore other env variants
-.env.*
-**/.env.*
+# Keep example templates versioned
+!.env.example
+!**/.env.example
