@@ -179,8 +179,3 @@ Common optional values used by the API:
 - `GET /api/admin/trainees/export-csv`
 - `POST /api/admin/system/reset`
 
-## Future cleanups (recommended)
-
-- Replace the default template README inside `client/` with a short client-focused guide.
-- Align/progress all admin pages from mock UI states to API-backed data.
-- Remove unused dependencies and legacy schema artifacts when no longer needed.
