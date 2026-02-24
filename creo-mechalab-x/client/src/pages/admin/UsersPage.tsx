@@ -194,7 +194,14 @@ export default function UsersPage() {
     setCreateBatchModalOpen(false);
   };
 
+  const ensureBatchSelected = (actionLabel: string): boolean => {
+    if (selectedBatch) return true;
+    setError(`Select a batch first to ${actionLabel}.`);
+    return false;
+  };
+
   const openFinalizeModal = () => {
+    if (!ensureBatchSelected("finalize this cohort cycle")) return;
     setFinalizeModalOpen(true);
   };
 
@@ -203,6 +210,7 @@ export default function UsersPage() {
   };
 
   const openImportModal = () => {
+    if (!ensureBatchSelected("import trainees")) return;
     setImportModalOpen(true);
   };
 

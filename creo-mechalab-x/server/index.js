@@ -24,7 +24,7 @@ const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN?.trim() || "8h";
 const DEFAULT_TRAINEE_PASSWORD = process.env.DEFAULT_TRAINEE_PASSWORD?.trim() || "";
 const SHOULD_RETURN_GENERATED_PASSWORD =
     process.env.RETURN_GENERATED_PASSWORD?.trim().toLowerCase() === "true" && process.env.NODE_ENV !== "production";
-const BATCH_CODE_REGEX = /^\d{4}-CTT\d{2}$/;
+const BATCH_CODE_REGEX = /^\d{4}-(CTT|IMM)\d{2}$/;
 
 function normalizeEmail(value) {
     return String(value || "")
@@ -834,12 +834,12 @@ app.get("/api/admin/batches", async (req, res) => {
 
 app.post("/api/admin/batches", async (req, res) => {
     const rawBatchCode = req.body?.batch_code;
-    const batchCode = typeof rawBatchCode === "string" ? rawBatchCode.trim() : "";
+    const batchCode = typeof rawBatchCode === "string" ? rawBatchCode.trim().toUpperCase() : "";
     if (!batchCode) {
         return res.status(400).json({ error: "batch_code is required" });
     }
     if (!validateBatchCodeFormat(batchCode)) {
-        return res.status(400).json({ error: "batch_code must match YYYY-CTT##" });
+        return res.status(400).json({ error: "batch_code must match YYYY-CTT## or YYYY-IMM##" });
     }
 
     try {

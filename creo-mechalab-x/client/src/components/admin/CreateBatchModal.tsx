@@ -11,7 +11,7 @@ type CreateBatchModalProps = {
   onCreated: (item: BatchFilter) => Promise<void> | void;
 };
 
-const BATCH_CODE_REGEX = /^\d{4}-CTT\d{2}$/;
+const BATCH_CODE_REGEX = /^\d{4}-(CTT|IMM)\d{2}$/;
 
 const toApiMessage = (error: unknown): string => {
   if (error instanceof ApiError) return error.message;
@@ -43,7 +43,7 @@ export default function CreateBatchModal({ open, onClose, onCreated }: CreateBat
       return;
     }
     if (!BATCH_CODE_REGEX.test(normalized)) {
-      setError("Batch code must match YYYY-CTT## (example: 2026-CTT03).");
+      setError("Batch code must match YYYY-CTT## or YYYY-IMM## (example: 2026-CTT03 or 2026-IMM03).");
       return;
     }
 
@@ -87,7 +87,7 @@ export default function CreateBatchModal({ open, onClose, onCreated }: CreateBat
               disabled={saving}
               required
             />
-            <p className="text-xs text-slate-500">Format: YYYY-CTT##</p>
+              <p className="text-xs text-slate-500">Format: YYYY-CTT## or YYYY-IMM##</p>
           </label>
 
           {error ? <p className="text-sm font-semibold text-red-600">{error}</p> : null}
