@@ -1,73 +1,59 @@
-# React + TypeScript + Vite
+# CREO MechaLab X Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Frontend application for trainee and admin interfaces of CREO MechaLab X.
 
-Currently, two official plugins are available:
+For full repository documentation (architecture, backend, DB, setup), see the root README:
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- `../README.md`
 
-## React Compiler
+## Tech stack
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- React 19 + TypeScript
+- Vite
+- React Router
+- Tailwind CSS
+- Framer Motion
+- Lucide React icons
+- react-pdf / pdfjs-dist
+- react-konva / konva
 
-## Expanding the ESLint configuration
+## Main pages
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+- `/login` – authentication
+- `/dashboard` – trainee dashboard and progress
+- `/module/:id` – trainee module viewer (PDF)
+- `/simulation/:id` – trainee simulation workspace
+- `/admin/*` – admin dashboard, trainees, lessons, activity logs
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## API integration
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+Configured in `src/api/http.ts`.
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Default API base URL: `http://localhost:4000`
+- Override via `VITE_API_BASE_URL`
+- Bearer token is attached from session storage
+
+## Environment variables
+
+Create `client/.env` when needed:
+
+```bash
+VITE_API_BASE_URL=http://localhost:4000
+VITE_ENABLE_CSV_IMPORT=true
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Run locally
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
+npm run dev
 ```
+
+Then open the Vite URL shown in terminal (typically `http://localhost:5173`).
+
+## Scripts
+
+- `npm run dev` – start dev server
+- `npm run build` – type-check + build
+- `npm run lint` – lint source
+- `npm run preview` – preview production build
