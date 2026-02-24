@@ -19,7 +19,7 @@ import {
 import { AnimatePresence, motion } from 'framer-motion';
 import PageTransition from '../components/PageTransition';
 import { clearAuthRole } from '../utils/auth';
-import { getDefaultTraineeId, getTraineeDashboard } from '../api/trainees';
+import { getTraineeDashboard } from '../api/trainees';
 import type {
     DashboardState,
     ModuleStatusApi,
@@ -112,7 +112,6 @@ const getNextSimulationByModuleId = (
 
 const Dashboard = () => {
     const navigate = useNavigate();
-    const traineeId = getDefaultTraineeId();
 
     const [dashboardState, setDashboardState] = useState<DashboardState>({
         data: null,
@@ -134,7 +133,7 @@ const Dashboard = () => {
         setDashboardState((prev) => ({ ...prev, loading: true, error: null }));
 
         try {
-            const data = await getTraineeDashboard(traineeId, { signal: controller.signal });
+            const data = await getTraineeDashboard({ signal: controller.signal });
 
             const moduleIds = data.moduleContent.modules
                 .map((module) => toNumber(module.module_id))
@@ -165,7 +164,7 @@ const Dashboard = () => {
             }));
             setSelectedLevel(null);
         }
-    }, [traineeId]);
+    }, []);
 
     useEffect(() => {
         void loadDashboard();

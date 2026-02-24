@@ -14,6 +14,7 @@ type LoginResponse = {
     role: AuthRole;
     sub: number;
     account_id: number;
+    trainee_id: number | null;
 };
 
 const Login = () => {
@@ -49,7 +50,22 @@ const Login = () => {
                 },
             });
 
-            setAuthSession(auth.role, auth.token);
+            if (!Number.isInteger(auth.account_id) || auth.account_id < 1) {
+                throw new Error('Invalid account identity from login response.');
+            }
+            if (
+                auth.role === 'trainee' &&
+                (!Number.isInteger(auth.trainee_id) || Number(auth.trainee_id) < 1)
+            ) {
+                throw new Error('Invalid trainee identity from login response.');
+            }
+
+            setAuthSession({
+                role: auth.role,
+                token: auth.token,
+                account_id: auth.account_id,
+                trainee_id: auth.trainee_id,
+            });
             navigate(auth.role === 'admin' ? '/admin' : '/dashboard', { replace: true });
         } catch (err) {
             const message = err instanceof Error && err.message ? err.message : 'Login failed.';

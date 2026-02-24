@@ -16,13 +16,20 @@ type FormState = {
   batch_code: string;
 };
 
+export type TraineeFormSaveResult = {
+  mode: FormMode;
+  item: AdminTraineeItem;
+  generated_password?: string;
+  password_delivery?: "manual";
+};
+
 type TraineeFormModalProps = {
   open: boolean;
   mode: FormMode;
   initial?: AdminTraineeItem | null;
   batches: BatchFilter[];
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (result: TraineeFormSaveResult) => void;
 };
 
 const buildInitialFormState = (
@@ -107,12 +114,17 @@ export default function TraineeFormModal({
 
     try {
       if (mode === "create") {
-        await createAdminTrainee(payload);
+        const result = await createAdminTrainee(payload);
+        onSaved({
+          mode: "create",
+          item: result.item,
+          generated_password: result.generated_password,
+          password_delivery: result.password_delivery,
+        });
       } else if (initial) {
-        await updateAdminTrainee(String(initial.trainee_id), payload);
+        const result = await updateAdminTrainee(String(initial.trainee_id), payload);
+        onSaved({ mode: "edit", item: result.item });
       }
-
-      onSaved();
     } catch (submitError) {
       setError(toApiMessage(submitError));
     } finally {

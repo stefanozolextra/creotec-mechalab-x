@@ -1,9 +1,15 @@
-import { Search, Plus, Upload, Pencil, Power } from "lucide-react";
+import { Search, Plus, Upload, Pencil, Power, Download, Layers, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { listAdminTrainees, setAdminTraineeStatus } from "../../api/adminTrainees";
-import { ApiError } from "../../api/http";
-import TraineeFormModal from "../../components/admin/TraineeFormModal";
+import { getAdminBatches } from "../../api/adminImport";
+import { API_BASE_URL, ApiError } from "../../api/http";
+import CreateBatchModal from "../../components/admin/CreateBatchModal";
+import FinalizeBatchWizardModal from "../../components/admin/FinalizeBatchWizardModal";
+import GeneratedPasswordModal from "../../components/admin/GeneratedPasswordModal";
+import ImportTraineesModal from "../../components/admin/ImportTraineesModal";
+import TraineeFormModal, { type TraineeFormSaveResult } from "../../components/admin/TraineeFormModal";
 import type { AdminTraineeItem, BatchFilter } from "../../types/adminTrainee";
+import { getAuthToken } from "../../utils/auth";
 
 type StatusFilter = "all" | "active" | "inactive";
 type PillStatus = "Passed" | "Active" | "Inactive";
@@ -34,6 +40,8 @@ const toErrorMessage = (error: unknown): string => {
   return "Failed to load trainee list.";
 };
 
+const ENABLE_CSV_IMPORT = String(import.meta.env.VITE_ENABLE_CSV_IMPORT ?? "false").toLowerCase() === "true";
+
 export default function UsersPage() {
   const [items, setItems] = useState<AdminTraineeItem[]>([]);
   const [batches, setBatches] = useState<BatchFilter[]>([]);
@@ -47,7 +55,15 @@ export default function UsersPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [selectedItem, setSelectedItem] = useState<AdminTraineeItem | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [createBatchModalOpen, setCreateBatchModalOpen] = useState(false);
+  const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
+  const [generatedPasswordState, setGeneratedPasswordState] = useState<{
+    email: string;
+    password: string;
+  } | null>(null);
   const [statusActionId, setStatusActionId] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -124,9 +140,83 @@ export default function UsersPage() {
     setModalOpen(false);
   };
 
-  const handleSaved = () => {
+  const refreshBatchFilters = async (): Promise<BatchFilter[]> => {
+    const response = await getAdminBatches();
+    setBatches(response.items);
+    return response.items;
+  };
+
+  const openCreateBatchModal = () => {
+    setCreateBatchModalOpen(true);
+  };
+
+  const closeCreateBatchModal = () => {
+    setCreateBatchModalOpen(false);
+  };
+
+  const openFinalizeModal = () => {
+    setFinalizeModalOpen(true);
+  };
+
+  const closeFinalizeModal = () => {
+    setFinalizeModalOpen(false);
+  };
+
+  const openImportModal = () => {
+    setImportModalOpen(true);
+  };
+
+  const closeImportModal = () => {
+    setImportModalOpen(false);
+  };
+
+  const handleSaved = (result: TraineeFormSaveResult) => {
     setModalOpen(false);
     setSelectedItem(null);
+    setRefreshKey((prev) => prev + 1);
+
+    if (result.mode === "create" && result.generated_password) {
+      setGeneratedPasswordState({
+        email: result.item.email,
+        password: result.generated_password,
+      });
+    }
+  };
+
+  const closeGeneratedPasswordModal = () => {
+    setGeneratedPasswordState(null);
+  };
+
+  const handleBatchCreated = async (batch: BatchFilter) => {
+    setCreateBatchModalOpen(false);
+    setSelectedBatch(batch.batch_code);
+    setRefreshKey((prev) => prev + 1);
+
+    try {
+      await refreshBatchFilters();
+      setSelectedBatch(batch.batch_code);
+    } catch (refreshError) {
+      setError(toErrorMessage(refreshError));
+      setBatches((prev) => {
+        if (prev.some((item) => item.batch_code === batch.batch_code)) return prev;
+        return [...prev, batch].sort((a, b) => a.batch_code.localeCompare(b.batch_code));
+      });
+    }
+  };
+
+  const handleResetCompleted = async () => {
+    setRefreshKey((prev) => prev + 1);
+    try {
+      await refreshBatchFilters();
+      setSelectedBatch("");
+    } catch (refreshError) {
+      setError(toErrorMessage(refreshError));
+    }
+  };
+
+  const handleImported = (batchCode: string, refreshedBatches: BatchFilter[]) => {
+    setBatches(refreshedBatches);
+    setSelectedBatch(batchCode);
     setRefreshKey((prev) => prev + 1);
   };
 
@@ -145,6 +235,62 @@ export default function UsersPage() {
       setError(toErrorMessage(statusError));
     } finally {
       setStatusActionId(null);
+    }
+  };
+
+  const handleExportCsv = async () => {
+    if (exporting) return;
+
+    const token = getAuthToken();
+    if (!token) {
+      setError("Unauthorized");
+      return;
+    }
+
+    setExporting(true);
+    setError(null);
+
+    try {
+      const searchParams = new URLSearchParams();
+      if (selectedBatch) {
+        searchParams.set("batch_code", selectedBatch);
+      }
+      const queryString = searchParams.toString();
+      const url = `${API_BASE_URL}/api/admin/trainees/export-csv${queryString ? `?${queryString}` : ""}`;
+
+      const response = await fetch(url, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        let message = `Request failed with status ${response.status}`;
+        try {
+          const data = await response.json();
+          if (data && typeof data === "object" && "error" in data && typeof data.error === "string") {
+            message = data.error;
+          }
+        } catch {
+          // no-op
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      const datePart = new Date().toISOString().slice(0, 10);
+      link.href = objectUrl;
+      link.download = `trainees-${selectedBatch || "all"}-${datePart}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (exportError) {
+      setError(toErrorMessage(exportError));
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -196,11 +342,37 @@ export default function UsersPage() {
           </button>
           <button
             type="button"
-            disabled
-            className="bg-white border border-slate-300 text-slate-500 px-6 py-2 rounded-lg font-semibold flex items-center gap-2 cursor-not-allowed"
+            onClick={openCreateBatchModal}
+            className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-6 py-2 rounded-lg font-semibold flex items-center gap-2"
           >
-            <Upload size={18} aria-hidden="true" /> Import CSV (Phase 2)
+            <Layers size={18} aria-hidden="true" /> Create Batch
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              void handleExportCsv();
+            }}
+            disabled={exporting}
+            className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-6 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-60"
+          >
+            <Download size={18} aria-hidden="true" /> {exporting ? "Exporting..." : "Export CSV"}
+          </button>
+          <button
+            type="button"
+            onClick={openFinalizeModal}
+            className="bg-[#8B1E2D] text-white hover:bg-[#721826] px-6 py-2 rounded-lg font-semibold flex items-center gap-2"
+          >
+            <RotateCcw size={18} aria-hidden="true" /> Finalize Batch
+          </button>
+          {ENABLE_CSV_IMPORT ? (
+            <button
+              type="button"
+              onClick={openImportModal}
+              className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-6 py-2 rounded-lg font-semibold flex items-center gap-2"
+            >
+              <Upload size={18} aria-hidden="true" /> Import CSV
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -321,7 +493,33 @@ export default function UsersPage() {
         onClose={closeModal}
         onSaved={handleSaved}
       />
+
+      <CreateBatchModal open={createBatchModalOpen} onClose={closeCreateBatchModal} onCreated={handleBatchCreated} />
+
+      <FinalizeBatchWizardModal
+        open={finalizeModalOpen}
+        batches={batches}
+        initialBatchCode={selectedBatch}
+        onClose={closeFinalizeModal}
+        onResetCompleted={handleResetCompleted}
+      />
+
+      <GeneratedPasswordModal
+        open={Boolean(generatedPasswordState)}
+        email={generatedPasswordState?.email ?? ""}
+        password={generatedPasswordState?.password ?? ""}
+        onClose={closeGeneratedPasswordModal}
+      />
+
+      {ENABLE_CSV_IMPORT ? (
+        <ImportTraineesModal
+          open={importModalOpen}
+          batches={batches}
+          initialBatchCode={selectedBatch}
+          onClose={closeImportModal}
+          onImported={handleImported}
+        />
+      ) : null}
     </div>
   );
 }
-
