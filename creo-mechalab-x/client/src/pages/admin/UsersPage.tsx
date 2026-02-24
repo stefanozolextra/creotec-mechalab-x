@@ -1,6 +1,6 @@
-import { Search, Plus, Upload, Pencil, Power, Download, Layers, RotateCcw } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
-import { listAdminTrainees, setAdminTraineeStatus } from "../../api/adminTrainees";
+import { Search, Plus, Upload, Pencil, Power, Download, Layers, RotateCcw, Trash2 } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { deleteAdminTrainee, listAdminTrainees, setAdminTraineeStatus } from "../../api/adminTrainees";
 import { getAdminBatches } from "../../api/adminImport";
 import { API_BASE_URL, ApiError } from "../../api/http";
 import CreateBatchModal from "../../components/admin/CreateBatchModal";
@@ -64,6 +64,12 @@ export default function UsersPage() {
   } | null>(null);
   const [statusActionId, setStatusActionId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteTargetIds, setDeleteTargetIds] = useState<number[]>([]);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const selectAllRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -113,9 +119,11 @@ export default function UsersPage() {
         item.progress.percent === 100 ? "Passed" : item.status === "active" ? "Active" : "Inactive";
       const fullName = toDisplayName(item);
       const id = String(item.trainee_id);
+      const numericId = Number(item.trainee_id);
 
       return {
         id,
+        numericId,
         raw: item,
         displayStatus,
         fullName,
@@ -123,6 +131,38 @@ export default function UsersPage() {
       };
     });
   }, [items]);
+
+  const listedIds = useMemo(
+    () => rows.map((row) => row.numericId).filter((value) => Number.isInteger(value) && value > 0),
+    [rows]
+  );
+
+  const allListedSelected = listedIds.length > 0 && listedIds.every((id) => selectedIds.has(id));
+  const someListedSelected = listedIds.some((id) => selectedIds.has(id));
+
+  useEffect(() => {
+    if (!selectAllRef.current) return;
+    selectAllRef.current.indeterminate = someListedSelected && !allListedSelected;
+  }, [someListedSelected, allListedSelected]);
+
+  useEffect(() => {
+    setSelectedIds((previous) => {
+      if (previous.size === 0) return previous;
+      const listedIdSet = new Set(listedIds);
+      let changed = false;
+      const next = new Set<number>();
+
+      previous.forEach((id) => {
+        if (listedIdSet.has(id)) {
+          next.add(id);
+        } else {
+          changed = true;
+        }
+      });
+
+      return changed ? next : previous;
+    });
+  }, [listedIds]);
 
   const openCreateModal = () => {
     setSelectedItem(null);
@@ -238,6 +278,71 @@ export default function UsersPage() {
     }
   };
 
+  const handleToggleSelectAll = () => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (allListedSelected) {
+        listedIds.forEach((id) => next.delete(id));
+      } else {
+        listedIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+  };
+
+  const handleToggleSelectOne = (traineeId: number, checked: boolean) => {
+    setSelectedIds((previous) => {
+      const next = new Set(previous);
+      if (checked) {
+        next.add(traineeId);
+      } else {
+        next.delete(traineeId);
+      }
+      return next;
+    });
+  };
+
+  const openDeleteModal = (traineeIds: number[]) => {
+    const uniqueIds = Array.from(
+      new Set(traineeIds.filter((value) => Number.isInteger(value) && value > 0))
+    );
+    if (uniqueIds.length === 0 || deleting) return;
+    setDeleteTargetIds(uniqueIds);
+    setDeleteError(null);
+    setDeleteModalOpen(true);
+  };
+
+  const closeDeleteModal = () => {
+    if (deleting) return;
+    setDeleteModalOpen(false);
+    setDeleteTargetIds([]);
+    setDeleteError(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (deleting || deleteTargetIds.length === 0) return;
+
+    setDeleting(true);
+    setDeleteError(null);
+    setError(null);
+
+    try {
+      for (const traineeId of deleteTargetIds) {
+        await deleteAdminTrainee(traineeId);
+      }
+      setSelectedIds(new Set());
+      setDeleteModalOpen(false);
+      setDeleteTargetIds([]);
+      setRefreshKey((previous) => previous + 1);
+    } catch (deleteActionError) {
+      const message = toErrorMessage(deleteActionError);
+      setDeleteError(message);
+      setError(message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const handleExportCsv = async () => {
     if (exporting) return;
 
@@ -294,95 +399,6 @@ export default function UsersPage() {
     }
   };
 
-  // Derived state for pending trainees only
-  const pendingTrainees = useMemo(() => mockUsers.filter(u => u.status === 'Pending'), []);
-
-  const handleSelectRow = (id: string) => {
-    setSelectedRows(prev =>
-      prev.includes(id) ? prev.filter(rowId => rowId !== id) : [...prev, id]
-    );
-  };
-
-  // --- ADD MODAL HANDLERS ---
-  const handleOpenAddModal = () => {
-    setIsAddModalOpen(true);
-    setTimeout(() => setIsModalVisible(true), 10);
-  };
-
-  const handleCloseAddModal = () => {
-    setIsModalVisible(false);
-    setTimeout(() => {
-      setIsAddModalOpen(false);
-      setTraineesToAdd([{ name: '', email: '' }]);
-    }, 300);
-  };
-
-  const handleCountChange = (newCount: number) => {
-    const count = Math.max(1, Math.min(50, newCount));
-    const updated = [...traineesToAdd];
-    if (count > updated.length) {
-      while (updated.length < count) updated.push({ name: '', email: '' });
-    } else {
-      updated.length = count;
-    }
-    setTraineesToAdd(updated);
-  };
-
-  const handleTraineeAddChange = (index: number, field: 'name' | 'email', value: string) => {
-    const updated = [...traineesToAdd];
-    updated[index][field] = value;
-    setTraineesToAdd(updated);
-  };
-
-  // --- EDIT MODAL HANDLERS ---
-  const handleOpenEditModal = () => {
-    const selectedData = mockUsers
-      .filter(u => selectedRows.includes(u.id))
-      .map(u => ({ id: u.id, name: u.name, email: u.email }));
-
-    setTraineesToEdit(selectedData);
-    setIsEditModalOpen(true);
-    setTimeout(() => setIsEditModalVisible(true), 10);
-  };
-
-  const handleCloseEditModal = () => {
-    setIsEditModalVisible(false);
-    setTimeout(() => {
-      setIsEditModalOpen(false);
-      setTraineesToEdit([]);
-    }, 300);
-  };
-
-  const handleTraineeEditChange = (id: string, field: 'name' | 'email', value: string) => {
-    setTraineesToEdit(prev =>
-      prev.map(t => t.id === id ? { ...t, [field]: value } : t)
-    );
-  };
-
-  // --- EMAIL MODAL HANDLERS (NEW) ---
-  const handleOpenEmailModal = () => {
-    // Pre-select everyone who is pending to save the admin time
-    setSelectedPending(pendingTrainees.map(t => t.id));
-    setIsEmailModalOpen(true);
-    setTimeout(() => setIsEmailModalVisible(true), 10);
-  };
-
-  const handleCloseEmailModal = () => {
-    setIsEmailModalVisible(false);
-    setTimeout(() => {
-      setIsEmailModalOpen(false);
-      setSelectedPending([]);
-    }, 300);
-  };
-
-  const handleTogglePendingTrainee = (id: string) => {
-    setSelectedPending(prev =>
-      prev.includes(id) ? prev.filter(rowId => rowId !== id) : [...prev, id]
-    );
-  };
-
-  const statusOptions: ('All' | UserStatus)[] = ['All', 'Active', 'Inactive', 'Done', 'Pending'];
-
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg p-4 border border-black/10 flex flex-wrap items-center justify-between gap-4">
@@ -422,6 +438,17 @@ export default function UsersPage() {
         </div>
 
         <div className="flex items-center gap-3">
+          {selectedIds.size > 0 ? (
+            <button
+              type="button"
+              onClick={() => openDeleteModal(Array.from(selectedIds))}
+              disabled={deleting}
+              className="bg-[#8B1E2D] text-white hover:bg-[#721826] px-6 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-60"
+            >
+              <Trash2 size={18} aria-hidden="true" />
+              {deleting ? "Deleting..." : `Delete Selected (${selectedIds.size})`}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={openCreateModal}
@@ -475,6 +502,17 @@ export default function UsersPage() {
         <table className="w-full text-sm">
           <thead className="bg-white">
             <tr className="text-xs font-extrabold text-slate-700 border-b border-black/20">
+              <th className="px-4 py-4 text-left w-12">
+                <input
+                  ref={selectAllRef}
+                  type="checkbox"
+                  checked={allListedSelected}
+                  onChange={handleToggleSelectAll}
+                  disabled={loading || rows.length === 0 || deleting}
+                  className="h-4 w-4 rounded border-slate-300"
+                  aria-label="Select all listed trainees"
+                />
+              </th>
               <th className="px-6 py-4 text-left">NAME</th>
               <th className="px-4 py-4 text-left">STUDENT ID</th>
               <th className="px-4 py-4 text-left">EMAIL ADDRESS</th>
@@ -493,9 +531,21 @@ export default function UsersPage() {
                   ? "bg-[#EC5151] hover:bg-[#d94545]"
                   : "bg-emerald-600 hover:bg-emerald-700";
               const isToggling = statusActionId === row.id;
+              const isSelected = selectedIds.has(row.numericId);
+              const isDeletingRow = deleting && deleteTargetIds.includes(row.numericId);
 
               return (
                 <tr key={row.id} className="hover:bg-slate-50">
+                  <td className="px-4 py-4">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(event) => handleToggleSelectOne(row.numericId, event.target.checked)}
+                      disabled={deleting}
+                      className="h-4 w-4 rounded border-slate-300"
+                      aria-label={`Select trainee ${row.fullName}`}
+                    />
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="h-10 w-10 rounded-full bg-slate-200 border border-slate-300 grid place-items-center text-slate-600">
@@ -534,7 +584,8 @@ export default function UsersPage() {
                       <button
                         type="button"
                         onClick={() => openEditModal(row.raw)}
-                        className="bg-slate-500 hover:bg-slate-600 text-white px-5 py-1.5 rounded-md font-semibold flex items-center gap-2"
+                        className="bg-slate-500 hover:bg-slate-600 text-white px-5 py-1.5 rounded-md font-semibold flex items-center gap-2 disabled:opacity-60"
+                        disabled={deleting}
                       >
                         <Pencil size={16} aria-hidden="true" /> Edit
                       </button>
@@ -544,10 +595,19 @@ export default function UsersPage() {
                           void handleToggleStatus(row.raw);
                         }}
                         className={`${actionClass} text-white px-5 py-1.5 rounded-md font-semibold flex items-center gap-2 disabled:opacity-60`}
-                        disabled={isToggling}
+                        disabled={isToggling || deleting}
                       >
                         <Power size={16} aria-hidden="true" />
                         {isToggling ? "Saving..." : actionLabel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openDeleteModal([row.numericId])}
+                        className="bg-[#8B1E2D] hover:bg-[#721826] text-white px-5 py-1.5 rounded-md font-semibold flex items-center gap-2 disabled:opacity-60"
+                        disabled={deleting}
+                      >
+                        <Trash2 size={16} aria-hidden="true" />
+                        {isDeletingRow ? "Deleting..." : "Delete"}
                       </button>
                     </div>
                   </td>
@@ -557,7 +617,7 @@ export default function UsersPage() {
 
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-6 py-10 text-center text-slate-500">
+                <td colSpan={8} className="px-6 py-10 text-center text-slate-500">
                   No users found.
                 </td>
               </tr>
@@ -565,7 +625,7 @@ export default function UsersPage() {
 
             {loading && (
               <tr>
-                <td colSpan={7} className="px-6 py-10 text-center text-slate-500">
+                <td colSpan={8} className="px-6 py-10 text-center text-slate-500">
                   Loading trainees...
                 </td>
               </tr>
@@ -573,6 +633,46 @@ export default function UsersPage() {
           </tbody>
         </table>
       </div>
+
+      {deleteModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-lg bg-white border border-black/10 shadow-2xl overflow-hidden">
+            <div className="px-5 py-4 border-b border-black/10">
+              <h2 className="text-xl font-bold text-slate-800">Confirm Delete</h2>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-sm text-slate-700">
+                {deleteTargetIds.length === 1
+                  ? "Delete this trainee permanently?"
+                  : `Delete ${deleteTargetIds.length} selected trainees permanently?`}
+              </p>
+
+              {deleteError ? <p className="text-sm font-semibold text-red-600">{deleteError}</p> : null}
+
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeDeleteModal}
+                  className="px-5 py-2 rounded-md border border-slate-300 text-slate-700 font-semibold hover:bg-slate-100 disabled:opacity-60"
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void handleConfirmDelete();
+                  }}
+                  className="px-5 py-2 rounded-md bg-[#8B1E2D] text-white font-semibold hover:bg-[#721826] disabled:opacity-60"
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting..." : "Confirm Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <TraineeFormModal
         open={modalOpen}

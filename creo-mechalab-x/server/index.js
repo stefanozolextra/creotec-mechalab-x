@@ -1760,6 +1760,63 @@ app.patch("/api/admin/trainees/:id/status", async (req, res) => {
     }
 });
 
+app.delete("/api/admin/trainees/:id", async (req, res) => {
+    const traineeId = parsePositiveIntParam(req.params.id);
+    if (!traineeId) return res.status(400).json({ error: "Invalid trainee id" });
+
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        const traineeResult = await client.query(
+            `SELECT trainee_id
+             FROM trainees
+             WHERE trainee_id = $1
+             FOR UPDATE`,
+            [traineeId]
+        );
+        if (traineeResult.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ error: "Trainee not found" });
+        }
+
+        await client.query(
+            `DELETE FROM trainee_simulation_progress
+             WHERE trainee_id = $1`,
+            [traineeId]
+        );
+        await client.query(
+            `DELETE FROM accounts
+             WHERE trainee_id = $1`,
+            [traineeId]
+        );
+        const traineeDeleteResult = await client.query(
+            `DELETE FROM trainees
+             WHERE trainee_id = $1
+             RETURNING trainee_id`,
+            [traineeId]
+        );
+
+        if (traineeDeleteResult.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ error: "Trainee not found" });
+        }
+
+        await client.query("COMMIT");
+        return res.json({ ok: true, deleted_trainee_id: traineeId });
+    } catch (error) {
+        try {
+            await client.query("ROLLBACK");
+        } catch (rollbackError) {
+            console.error("Rollback failed:", rollbackError);
+        }
+        console.error("Admin delete trainee endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to delete trainee" });
+    } finally {
+        client.release();
+    }
+});
+
 app.post("/api/admin/trainees/:id/reset-pin", async (req, res) => {
     res.status(501).json({ error: "PIN reset is not enabled in this deployment." });
 });

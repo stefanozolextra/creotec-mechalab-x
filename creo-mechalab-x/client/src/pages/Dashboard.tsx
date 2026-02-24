@@ -464,7 +464,7 @@ const Dashboard = () => {
                                     <div>
                                         <h2 className="text-xl font-bold text-white">Trainee Profile</h2>
                                         <p className="text-sm text-cyan-500 font-mono">
-                                            ID: {trainee?.trainee_code ?? `Trainee-${traineeId}`}
+                                            ID: {trainee?.trainee_code ?? (trainee?.trainee_id ? `Trainee-${trainee.trainee_id}` : '—')}
                                         </p>
                                     </div>
                                 </div>
