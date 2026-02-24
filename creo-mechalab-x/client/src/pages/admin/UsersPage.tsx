@@ -1,5 +1,6 @@
 import { Search, Plus, Upload, Pencil, Power, Download, Layers, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { deleteAdminTrainee, listAdminTrainees, setAdminTraineeStatus } from "../../api/adminTrainees";
 import { getAdminBatches } from "../../api/adminImport";
 import { API_BASE_URL, ApiError } from "../../api/http";
@@ -43,6 +44,7 @@ const toErrorMessage = (error: unknown): string => {
 const ENABLE_CSV_IMPORT = String(import.meta.env.VITE_ENABLE_CSV_IMPORT ?? "false").toLowerCase() === "true";
 
 export default function UsersPage() {
+  const { search: locationSearch } = useLocation();
   const [items, setItems] = useState<AdminTraineeItem[]>([]);
   const [batches, setBatches] = useState<BatchFilter[]>([]);
   const [search, setSearch] = useState("");
@@ -77,6 +79,12 @@ export default function UsersPage() {
     }, 300);
     return () => window.clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(locationSearch);
+    const batchFromQuery = (params.get("batch") ?? "").trim();
+    setSelectedBatch((previous) => (previous === batchFromQuery ? previous : batchFromQuery));
+  }, [locationSearch]);
 
   useEffect(() => {
     let active = true;

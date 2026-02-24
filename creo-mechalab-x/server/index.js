@@ -821,9 +821,13 @@ app.get("/api/admin/auth-check", (req, res) => {
 app.get("/api/admin/batches", async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT batch_id, batch_code
-             FROM batches
-             ORDER BY batch_code`
+            `SELECT b.batch_id,
+                    b.batch_code,
+                    COUNT(t.trainee_id)::INT AS trainee_count
+             FROM batches b
+             LEFT JOIN trainees t ON t.batch_id = b.batch_id
+             GROUP BY b.batch_id, b.batch_code
+             ORDER BY b.batch_code DESC`
         );
         res.json({ items: result.rows });
     } catch (e) {

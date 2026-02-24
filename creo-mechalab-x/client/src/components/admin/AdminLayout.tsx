@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Folder, Home, LogOut as LogOutIcon, Moon, PieChart, Sun, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Folder, Home, Layers, LogOut as LogOutIcon, Moon, PieChart, Sun, Users } from "lucide-react";
 import { useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { clearAuthRole } from "../../utils/auth";
@@ -6,6 +6,7 @@ import { clearAuthRole } from "../../utils/auth";
 const navItems = [
   { to: "/admin/dashboard", label: "Dashboard", icon: Home },
   { to: "/admin/users", label: "Trainees", icon: Users },
+  { to: "/admin/cohorts", label: "Cohorts", icon: Layers },
   { to: "/admin/lessons", label: "Lessons", icon: Folder },
   { to: "/admin/activity-logs", label: "Activity Logs", icon: PieChart },
 ];
