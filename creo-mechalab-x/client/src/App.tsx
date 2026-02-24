@@ -87,7 +87,7 @@ const AnimatedRoutes = () => {
         <Route
           path="/dashboard"
           element={
-            <RequireAuth role="student">
+            <RequireAuth role="trainee">
               <Dashboard />
             </RequireAuth>
           }
@@ -95,7 +95,7 @@ const AnimatedRoutes = () => {
         <Route
           path="/module/:id"
           element={
-            <RequireAuth role="student">
+            <RequireAuth role="trainee">
               <ModuleView />
             </RequireAuth>
           }
@@ -103,7 +103,7 @@ const AnimatedRoutes = () => {
         <Route
           path="/simulation/:id"
           element={
-            <RequireAuth role="student">
+            <RequireAuth role="trainee">
               <SimulationView />
             </RequireAuth>
           }

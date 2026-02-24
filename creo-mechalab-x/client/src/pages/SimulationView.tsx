@@ -7,7 +7,7 @@ import { Stage, Layer, Rect, Text, Group } from 'react-konva';
 import { useState, useEffect, useRef } from 'react';
 import PageTransition from '../components/PageTransition';
 import PortraitGuard from '../components/PortraitGuard';
-import { completeSimulation, getDefaultTraineeId, getTraineeDashboard } from '../api/trainees';
+import { completeSimulation, getTraineeDashboard } from '../api/trainees';
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
     if (error instanceof Error && error.message) return error.message;
@@ -37,7 +37,6 @@ const SimulationView = () => {
     const navigate = useNavigate();
     const { id } = useParams();
 
-    const traineeId = getDefaultTraineeId();
     const simulationId = Number(id);
     const hasValidSimulationId = Number.isInteger(simulationId) && simulationId > 0;
 
@@ -95,7 +94,7 @@ const SimulationView = () => {
 
         const loadCompletionState = async () => {
             try {
-                const dashboard = await getTraineeDashboard(traineeId, { signal: controller.signal });
+                const dashboard = await getTraineeDashboard({ signal: controller.signal });
                 if (!isMountedRef.current || controller.signal.aborted) return;
 
                 const progressRow = dashboard.simulationProgress.find(
@@ -119,7 +118,7 @@ const SimulationView = () => {
         return () => {
             controller.abort();
         };
-    }, [hasValidSimulationId, simulationId, traineeId]);
+    }, [hasValidSimulationId, simulationId]);
 
     const handleComplete = async () => {
         if (!hasValidSimulationId) {
@@ -136,7 +135,7 @@ const SimulationView = () => {
         setIsCompleting(true);
 
         try {
-            await completeSimulation(traineeId, simulationId, undefined, { signal: controller.signal });
+            await completeSimulation(simulationId, undefined, { signal: controller.signal });
             if (!isMountedRef.current || controller.signal.aborted) return;
             setIsAlreadyCompleted(true);
             navigate('/dashboard', { replace: true });

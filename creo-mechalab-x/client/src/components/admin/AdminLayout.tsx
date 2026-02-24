@@ -1,3 +1,8 @@
+import { Activity, BookOpen, LayoutDashboard, LogOut, UserRound } from 'lucide-react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { clearAuthSession } from '../../utils/auth';
+
+type TitleMap = Record<string, string>;
 /* SECTION: IMPORTS */
 import { Home, Users, Folder, PieChart, ChevronLeft, ChevronRight, Sun, Moon, LogOut } from 'lucide-react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
@@ -14,6 +19,25 @@ const navItems = [
 const AdminLayout = () => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
+  const headerTitle = getHeaderTitle(pathname);
+
+  const handleLogout = () => {
+    clearAuthSession();
+    navigate('/login', { replace: true });
+  };
+
+  return (
+    <div className="h-screen bg-[#E6E6E6] flex overflow-hidden">
+      <aside className="w-[220px] bg-[#2E415F] flex flex-col">
+        <div className="h-[74px] bg-white border-r border-black/10 px-5 flex items-center gap-3">
+          <div className="h-11 w-11 rounded-full border-2 border-[#2E415F] grid place-items-center text-[#2E415F] font-bold text-xs">
+            CP
+          </div>
+          <div className="leading-tight">
+            <p className="font-bold text-[#2E415F] text-xl">CREOTEC</p>
+            <p className="text-[#2E415F] text-lg">Philippines Inc.</p>
+          </div>
+        </div>
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isDark, setIsDark] = useState(true);
 
@@ -34,6 +58,9 @@ const AdminLayout = () => {
         >
           {/* THE BUTTON FIX: Positioned specifically to stay visible during the slide */}
           <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full flex items-center gap-3 text-white hover:text-slate-200 font-medium"
             onClick={() => setIsCollapsed(!isCollapsed)}
             className="absolute -right-3.5 top-10 w-7 h-7 bg-[#0B1B3D] dark:bg-slate-300 dark:text-[#0B1B3D] text-white rounded-full shadow-md flex items-center justify-center hover:scale-110 transition-transform z-50"
           >
