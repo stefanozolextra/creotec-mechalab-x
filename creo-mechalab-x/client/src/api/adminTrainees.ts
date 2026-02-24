@@ -73,3 +73,11 @@ export const setAdminTraineeStatus = async (
     body: { status },
   });
 };
+
+export const deleteAdminTrainee = async (
+  id: number
+): Promise<{ ok: boolean; deleted_trainee_id: number }> => {
+  return requestJson<{ ok: boolean; deleted_trainee_id: number }>(`/api/admin/trainees/${id}`, {
+    method: "DELETE",
+  });
+};
