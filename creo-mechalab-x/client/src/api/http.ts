@@ -52,8 +52,9 @@ const buildUrl = (path: string): string => {
 export const requestJson = async <T>(path: string, options: ApiRequestOptions = {}): Promise<T> => {
     const { body, headers: incomingHeaders, ...rest } = options;
     const headers = new Headers(incomingHeaders);
+    const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
 
-    if (body !== undefined && !headers.has("Content-Type")) {
+    if (body !== undefined && !isFormData && !headers.has("Content-Type")) {
         headers.set("Content-Type", "application/json");
     }
 
@@ -67,7 +68,7 @@ export const requestJson = async <T>(path: string, options: ApiRequestOptions = 
         response = await fetch(buildUrl(path), {
             ...rest,
             headers,
-            body: body === undefined ? undefined : JSON.stringify(body),
+            body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
         });
     } catch (error) {
         const message = error instanceof Error ? error.message : "Network request failed.";

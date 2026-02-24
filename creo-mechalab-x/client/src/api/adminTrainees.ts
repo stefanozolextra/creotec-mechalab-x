@@ -15,7 +15,14 @@ export type AdminTraineePayload = {
   last_name: string;
   email: string;
   contact_number?: string;
-  batch_code: string;
+  batch_code?: string;
+  batch_id?: number;
+};
+
+export type AdminCreateTraineeResponse = {
+  item: AdminTraineeItem;
+  generated_password?: string;
+  password_delivery?: "manual";
 };
 
 const buildListQuery = (params: AdminTraineesListParams): string => {
@@ -40,8 +47,8 @@ export const listAdminTrainees = async (
 
 export const createAdminTrainee = async (
   payload: AdminTraineePayload
-): Promise<{ item: AdminTraineeItem }> => {
-  return requestJson<{ item: AdminTraineeItem }>("/api/admin/trainees", {
+): Promise<AdminCreateTraineeResponse> => {
+  return requestJson<AdminCreateTraineeResponse>("/api/admin/trainees", {
     method: "POST",
     body: payload,
   });
@@ -66,4 +73,3 @@ export const setAdminTraineeStatus = async (
     body: { status },
   });
 };
-
