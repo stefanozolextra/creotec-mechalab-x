@@ -294,6 +294,95 @@ export default function UsersPage() {
     }
   };
 
+  // Derived state for pending trainees only
+  const pendingTrainees = useMemo(() => mockUsers.filter(u => u.status === 'Pending'), []);
+
+  const handleSelectRow = (id: string) => {
+    setSelectedRows(prev =>
+      prev.includes(id) ? prev.filter(rowId => rowId !== id) : [...prev, id]
+    );
+  };
+
+  // --- ADD MODAL HANDLERS ---
+  const handleOpenAddModal = () => {
+    setIsAddModalOpen(true);
+    setTimeout(() => setIsModalVisible(true), 10);
+  };
+
+  const handleCloseAddModal = () => {
+    setIsModalVisible(false);
+    setTimeout(() => {
+      setIsAddModalOpen(false);
+      setTraineesToAdd([{ name: '', email: '' }]);
+    }, 300);
+  };
+
+  const handleCountChange = (newCount: number) => {
+    const count = Math.max(1, Math.min(50, newCount));
+    const updated = [...traineesToAdd];
+    if (count > updated.length) {
+      while (updated.length < count) updated.push({ name: '', email: '' });
+    } else {
+      updated.length = count;
+    }
+    setTraineesToAdd(updated);
+  };
+
+  const handleTraineeAddChange = (index: number, field: 'name' | 'email', value: string) => {
+    const updated = [...traineesToAdd];
+    updated[index][field] = value;
+    setTraineesToAdd(updated);
+  };
+
+  // --- EDIT MODAL HANDLERS ---
+  const handleOpenEditModal = () => {
+    const selectedData = mockUsers
+      .filter(u => selectedRows.includes(u.id))
+      .map(u => ({ id: u.id, name: u.name, email: u.email }));
+
+    setTraineesToEdit(selectedData);
+    setIsEditModalOpen(true);
+    setTimeout(() => setIsEditModalVisible(true), 10);
+  };
+
+  const handleCloseEditModal = () => {
+    setIsEditModalVisible(false);
+    setTimeout(() => {
+      setIsEditModalOpen(false);
+      setTraineesToEdit([]);
+    }, 300);
+  };
+
+  const handleTraineeEditChange = (id: string, field: 'name' | 'email', value: string) => {
+    setTraineesToEdit(prev =>
+      prev.map(t => t.id === id ? { ...t, [field]: value } : t)
+    );
+  };
+
+  // --- EMAIL MODAL HANDLERS (NEW) ---
+  const handleOpenEmailModal = () => {
+    // Pre-select everyone who is pending to save the admin time
+    setSelectedPending(pendingTrainees.map(t => t.id));
+    setIsEmailModalOpen(true);
+    setTimeout(() => setIsEmailModalVisible(true), 10);
+  };
+
+  const handleCloseEmailModal = () => {
+    setIsEmailModalVisible(false);
+    setTimeout(() => {
+      setIsEmailModalOpen(false);
+      setSelectedPending([]);
+    }, 300);
+  };
+
+  const handleTogglePendingTrainee = (id: string) => {
+    setSelectedPending(prev =>
+      prev.includes(id) ? prev.filter(rowId => rowId !== id) : [...prev, id]
+    );
+  };
+
+  const statusOptions: ('All' | UserStatus)[] = ['All', 'Active', 'Inactive', 'Done', 'Pending'];
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg p-4 border border-black/10 flex flex-wrap items-center justify-between gap-4">

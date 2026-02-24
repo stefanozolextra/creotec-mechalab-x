@@ -86,7 +86,7 @@ const Login = () => {
                             <Settings aria-hidden="true" className="text-yellow-400 w-10 h-10" />
                         </div>
                         <h1 className="text-2xl font-bold text-slate-800">CREO MechaLabX</h1>
-                        <p className="text-slate-500">Mechatronics NC II Trainer</p>
+                        <p className="text-slate-500">TESDA NC II Trainer</p>
                     </div>
 
                     <form onSubmit={handleLogin} className="space-y-6" aria-busy={loading}>
