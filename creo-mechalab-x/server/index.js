@@ -865,7 +865,9 @@ app.get("/api/admin/dashboard", async (req, res) => {
                WHERE ($1::TEXT IS NULL OR b.batch_code = $1)
              ),
              scoped_module_rows AS (
-               SELECT v.module_status
+               SELECT
+                 COALESCE(v.required_sims, 0)::INT AS required_sims,
+                 COALESCE(v.completed_required_sims, 0)::INT AS completed_required_sims
                FROM v_trainee_module_status v
                JOIN scoped_trainees st ON st.trainee_id = v.trainee_id
              ),
@@ -874,7 +876,15 @@ app.get("/api/admin/dashboard", async (req, res) => {
                  COALESCE((SELECT COUNT(*)::INT FROM scoped_trainees), 0)::INT AS total_trainees,
                  COALESCE((SELECT COUNT(*)::INT FROM modules), 0)::INT AS total_modules,
                  COALESCE(
-                   (SELECT COUNT(*) FILTER (WHERE module_status = 'COMPLETED')::INT FROM scoped_module_rows),
+                   (
+                     SELECT COUNT(*) FILTER (
+                       -- Completion rule: a module row is complete when all required sims are complete.
+                       -- This matches the v_trainee_module_status view semantics and stays resilient
+                       -- even if module_status label strings change in the future.
+                       WHERE completed_required_sims >= required_sims
+                     )::INT
+                     FROM scoped_module_rows
+                   ),
                    0
                  )::INT AS completed_module_rows,
                  COALESCE((SELECT COUNT(*)::INT FROM scoped_module_rows), 0)::INT AS total_module_rows
@@ -905,7 +915,10 @@ app.get("/api/admin/dashboard", async (req, res) => {
                SELECT
                  v.module_id,
                  COUNT(*)::INT AS total_trainees,
-                 COUNT(*) FILTER (WHERE v.module_status = 'COMPLETED')::INT AS completed_trainees
+                 COUNT(*) FILTER (
+                   -- Completion rule mirrors summary above: required sims fully completed.
+                   WHERE COALESCE(v.completed_required_sims, 0) >= COALESCE(v.required_sims, 0)
+                 )::INT AS completed_trainees
                FROM v_trainee_module_status v
                JOIN scoped_trainees st ON st.trainee_id = v.trainee_id
                GROUP BY v.module_id

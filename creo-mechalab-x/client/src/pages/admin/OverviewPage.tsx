@@ -1,11 +1,15 @@
 import { Plus } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { listAdminBatches } from "../../api/adminBatches";
 import { getAdminDashboard } from "../../api/adminDashboard";
 import { ApiError } from "../../api/http";
+import type { AdminBatchItem } from "../../types/adminBatch";
 import type { AdminDashboardFeedItem, AdminDashboardResponse } from "../../types/adminDashboard";
 
 const barColors = ["#93C5FD", "#5EEAD4", "#0B1B3D", "#60A5FA", "#C084FC", "#4ADE80"];
+const SELECTED_BATCH_STORAGE_KEY = "mechalabx.selectedBatchCode";
+const DASHBOARD_SCOPE_ALL_KEY = "__ALL__";
 
 const feedIconsByType: Record<string, string> = {
   batch_export: "📤",
@@ -33,6 +37,27 @@ const emptyDashboard: AdminDashboardResponse = {
   },
   notifications: [],
   activities: [],
+};
+
+const readStoredBatchCode = (): string => {
+  try {
+    const value = window.localStorage.getItem(SELECTED_BATCH_STORAGE_KEY);
+    return value ? value.trim() : "";
+  } catch {
+    return "";
+  }
+};
+
+const writeStoredBatchCode = (batchCode: string): void => {
+  try {
+    if (!batchCode) {
+      window.localStorage.removeItem(SELECTED_BATCH_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(SELECTED_BATCH_STORAGE_KEY, batchCode);
+  } catch {
+    // no-op
+  }
 };
 
 const toErrorMessage = (error: unknown): string => {
@@ -63,37 +88,97 @@ export default function OverviewPage() {
   const [dashboard, setDashboard] = useState<AdminDashboardResponse>(emptyDashboard);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [batchOptions, setBatchOptions] = useState<AdminBatchItem[]>([]);
+  const [selectedBatchCode, setSelectedBatchCode] = useState<string>(() => readStoredBatchCode());
+  const isMountedRef = useRef(false);
+  const hasLoadedBatchesRef = useRef(false);
+  const lastDashboardRequestKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
-    let active = true;
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    writeStoredBatchCode(selectedBatchCode);
+  }, [selectedBatchCode]);
+
+  useEffect(() => {
+    if (hasLoadedBatchesRef.current) return;
+    hasLoadedBatchesRef.current = true;
+
+    const loadBatches = async () => {
+      try {
+        const response = await listAdminBatches();
+        if (!isMountedRef.current) return;
+        setBatchOptions(response.items);
+        setSelectedBatchCode((currentValue) => {
+          if (!currentValue) return "";
+          const exists = response.items.some((item) => item.batch_code === currentValue);
+          return exists ? currentValue : "";
+        });
+      } catch {
+        if (!isMountedRef.current) return;
+        setBatchOptions([]);
+      }
+    };
+
+    void loadBatches();
+  }, []);
+
+  useEffect(() => {
+    const requestKey = selectedBatchCode || DASHBOARD_SCOPE_ALL_KEY;
+    if (lastDashboardRequestKeyRef.current === requestKey) return;
+    lastDashboardRequestKeyRef.current = requestKey;
 
     const load = async () => {
       setLoading(true);
       setError(null);
 
       try {
-        const response = await getAdminDashboard();
-        if (!active) return;
+        const response = await getAdminDashboard(selectedBatchCode || undefined);
+        if (!isMountedRef.current) return;
+        if (lastDashboardRequestKeyRef.current !== requestKey) return;
         setDashboard(response);
       } catch (loadError) {
-        if (!active) return;
+        if (!isMountedRef.current) return;
+        if (lastDashboardRequestKeyRef.current !== requestKey) return;
         setDashboard(emptyDashboard);
         setError(toErrorMessage(loadError));
       } finally {
-        if (active) setLoading(false);
+        if (!isMountedRef.current) return;
+        if (lastDashboardRequestKeyRef.current !== requestKey) return;
+        setLoading(false);
       }
     };
 
     void load();
-
-    return () => {
-      active = false;
-    };
-  }, []);
+  }, [selectedBatchCode]);
 
   return (
     <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-6 min-h-0 lg:overflow-hidden">
       <div className="col-span-1 lg:col-span-8 flex flex-col gap-6 h-full min-h-0">
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl px-4 py-3 shadow-sm transition-colors flex items-center gap-3">
+          <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="dashboard-batch">
+            Batch Scope
+          </label>
+          <select
+            id="dashboard-batch"
+            value={selectedBatchCode}
+            onChange={(event) => setSelectedBatchCode(event.target.value)}
+            className="h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-sm font-semibold text-slate-700 dark:text-slate-200 px-3 outline-none focus:ring-2 focus:ring-blue-400/50"
+          >
+            <option value="">All batches</option>
+            {batchOptions.map((batch) => (
+              <option key={batch.batch_id} value={batch.batch_code}>
+                {batch.batch_code}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-2xl px-6 py-4 text-sm font-semibold text-red-700 shadow-sm shrink-0">
             {error}
@@ -161,23 +246,28 @@ export default function OverviewPage() {
             <div className="relative flex items-end justify-around pt-4 pb-2 border-b border-slate-100 dark:border-slate-800">
               {dashboard.chart.points.length === 0 && !loading ? (
                 <div className="absolute inset-0 grid place-items-center text-sm font-semibold text-slate-400 dark:text-slate-500">
-                  No module data available.
+                  No modules available yet.
                 </div>
               ) : (
                 dashboard.chart.points.map((item, idx) => {
-                  const barHeight = Math.max(0, Math.min(100, item.completion_percent));
+                  const completionPercent = Math.max(0, Math.min(100, item.completion_percent));
+                  const visualHeight = Math.max(4, completionPercent);
                   const isDarkBar = idx === 2;
                   return (
                     <div key={item.module_id || idx} className="h-full flex flex-col justify-end w-8 sm:w-12 relative group">
                       <div
                         className={`w-full rounded-t-xl transition-all duration-500 hover:brightness-110 ${isDarkBar ? "bg-[#0B1B3D] dark:bg-slate-300" : ""}`}
                         style={{
-                          height: `${barHeight}%`,
+                          height: `${visualHeight}%`,
                           backgroundColor: isDarkBar ? undefined : barColors[idx % barColors.length],
                         }}
                       />
-                      <div className="opacity-0 group-hover:opacity-100 absolute -top-10 left-1/2 -translate-x-1/2 bg-[#0B1B3D] dark:bg-slate-700 text-white text-xs py-1 px-2 rounded font-bold transition-opacity pointer-events-none whitespace-nowrap">
-                        {barHeight}% ({item.completed_trainees}/{item.total_trainees})
+                      <div className="opacity-0 group-hover:opacity-100 absolute -top-16 left-1/2 -translate-x-1/2 bg-[#0B1B3D] dark:bg-slate-700 text-white text-[11px] py-1.5 px-2 rounded font-bold transition-opacity pointer-events-none whitespace-nowrap text-center leading-tight">
+                        <div>{item.module_title || item.module_code}</div>
+                        <div>{completionPercent}% complete</div>
+                        <div>
+                          {item.completed_trainees}/{item.total_trainees} trainees
+                        </div>
                       </div>
                     </div>
                   );
@@ -185,6 +275,12 @@ export default function OverviewPage() {
               )}
             </div>
           </div>
+
+          {!loading && dashboard.chart.points.length > 0 && dashboard.summary.total_trainees === 0 && (
+            <p className="ml-[56px] mt-3 text-xs font-semibold text-slate-400 dark:text-slate-500">
+              No trainees in this scope yet. Modules are shown at 0%.
+            </p>
+          )}
 
           <div className="ml-[56px] mt-4 flex justify-around text-slate-400 dark:text-slate-500 text-xs font-bold shrink-0">
             {dashboard.chart.points.map((item, idx) => (
