@@ -113,6 +113,12 @@ Common optional values used by the API:
 - `RETURN_GENERATED_PASSWORD` (`true` only for non-production password reveal)
 - `ADMIN_EMAILS` (comma-separated allowlist for bootstrap admin behavior)
 - `NODE_ENV`
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USER`
+- `SMTP_PASS`
+- `SMTP_SECURE` (`true`/`false`)
+- `SMTP_FROM`
 
 ### `client/.env`
 
@@ -161,11 +167,27 @@ Common optional values used by the API:
 ### Server
 - `npm start` – run API server
 - `npm run sanity:db` – run DB sanity checks script
+- `node server/scripts/smtp-verify.js` – verify SMTP credentials/config
+- `ADMIN_TOKEN=... bash scripts/seed_25_trainees.sh` – seed 25 mock trainees via admin API
+
+## Phase 4 credentials + SMTP
+
+- Configure SMTP with provider credentials and app-specific passwords. Do not use personal mailbox passwords.
+- `POST /api/admin/trainees` returns `email_sent` (`true` if sent) and `password_delivery` (`email`, `manual`, or `failed`).
+- `POST /api/admin/trainees/:id/resend-credentials` enforces cooldown (5 minutes per trainee account).
+- When cooldown is active, resend returns `429` with `retry_after_seconds`.
+
+Production safety checklist:
+- Set `NODE_ENV=production`.
+- Set `RETURN_GENERATED_PASSWORD=false`.
+- Never commit `.env` files.
 
 ## API snapshot
 
 - `GET /api/health`
 - `POST /api/auth/login`
+- `GET /api/modules` (authenticated users: admin or trainee)
+- `GET /api/trainees` (admin only)
 - `GET /api/me/dashboard`
 - `GET /api/me/module-status`
 - `POST /api/me/simulations/:simulationId/complete`
@@ -179,3 +201,33 @@ Common optional values used by the API:
 - `GET /api/admin/trainees/export-csv`
 - `POST /api/admin/system/reset`
 
+## Endpoint auth checks
+
+Set tokens first:
+
+```bash
+API_BASE_URL=http://localhost:4000
+ADMIN_TOKEN="<admin_jwt>"
+TRAINEE_TOKEN="<trainee_jwt>"
+```
+
+Without token (should fail: `401`):
+
+```bash
+curl -i "$API_BASE_URL/api/modules"
+curl -i "$API_BASE_URL/api/trainees"
+```
+
+Admin token (should work for both: `200`):
+
+```bash
+curl -i -H "Authorization: Bearer $ADMIN_TOKEN" "$API_BASE_URL/api/modules"
+curl -i -H "Authorization: Bearer $ADMIN_TOKEN" "$API_BASE_URL/api/trainees"
+```
+
+Trainee token (modules works, trainees denied: `200` then `403`):
+
+```bash
+curl -i -H "Authorization: Bearer $TRAINEE_TOKEN" "$API_BASE_URL/api/modules"
+curl -i -H "Authorization: Bearer $TRAINEE_TOKEN" "$API_BASE_URL/api/trainees"
+```

@@ -27,6 +27,7 @@ const SHOULD_RETURN_GENERATED_PASSWORD =
     process.env.RETURN_GENERATED_PASSWORD?.trim().toLowerCase() === "true" && process.env.NODE_ENV !== "production";
 const BATCH_CODE_REGEX = /^\d{4}-(CTT|IMM)\d{2}$/;
 const RESEND_CREDENTIALS_COOLDOWN_MS = 5 * 60 * 1000;
+let hasLoggedMissingSmtpConfig = false;
 
 function normalizeEmail(value) {
     return String(value || "")
@@ -43,6 +44,15 @@ const ADMIN_EMAILS = new Set(
 
 function isBootstrapAdminEmail(email) {
     return ADMIN_EMAILS.has(normalizeEmail(email));
+}
+
+function logAdminCreateCredentialEmailFailure(errorMessage) {
+    if (errorMessage === "SMTP is not configured.") {
+        if (hasLoggedMissingSmtpConfig) return;
+        hasLoggedMissingSmtpConfig = true;
+    }
+
+    console.error("Admin create trainee credential email failed:", errorMessage);
 }
 
 function roleFromAccountRow(account) {
@@ -1625,7 +1635,7 @@ app.post("/api/admin/trainees", async (req, res) => {
         } catch (mailError) {
             const mailErrorMessage =
                 mailError instanceof Error && mailError.message ? mailError.message : "Failed to send credentials email.";
-            console.error("Admin create trainee credential email failed:", mailErrorMessage);
+            logAdminCreateCredentialEmailFailure(mailErrorMessage);
         }
 
         if (emailSent) {
@@ -2001,7 +2011,7 @@ app.post("/api/admin/trainees/:id/reset-pin", async (req, res) => {
 });
 
 // Modules + resources + simulations
-app.get("/api/modules", async (req, res) => {
+app.get("/api/modules", requireAuth, async (req, res) => {
     try {
         const modules = await pool.query("SELECT * FROM modules ORDER BY order_no;");
         const resources = await pool.query("SELECT * FROM module_resources ORDER BY module_id, order_no;");
@@ -2038,7 +2048,7 @@ app.get("/api/me/module-status", requireAuth, async (req, res) => {
     }
 });
 
-app.get("/api/trainees", async (req, res) => {
+app.get("/api/trainees", requireAuth, requireAdmin, async (req, res) => {
     try {
         const result = await pool.query(`
       SELECT
