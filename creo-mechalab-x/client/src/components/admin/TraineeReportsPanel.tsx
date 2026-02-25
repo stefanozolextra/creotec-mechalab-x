@@ -31,6 +31,15 @@ const toDisplayName = (item: AdminTraineeItem): string => {
   return `${item.first_name}${middle} ${item.last_name}`.replace(/\s+/g, " ").trim();
 };
 
+const toInitials = (name: string): string => {
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+};
+
 const toErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error && error.message) return error.message;
@@ -120,11 +129,13 @@ export default function TraineeReportsPanel() {
   const rows = useMemo(() => {
     return items.map((item) => {
       const displayStatus: PillStatus = item.progress.percent === 100 ? "Passed" : item.status === "active" ? "Active" : "Inactive";
+      const fullName = toDisplayName(item);
       return {
         id: String(item.trainee_id),
         raw: item,
         displayStatus,
-        fullName: toDisplayName(item),
+        fullName,
+        initials: toInitials(fullName),
       };
     });
   }, [items]);
@@ -326,7 +337,6 @@ export default function TraineeReportsPanel() {
             <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 transition-colors duration-500 after:content-[''] after:absolute after:bottom-0 after:left-4 after:right-4 after:border-b-2 after:border-slate-100 dark:after:border-slate-700/50">
               <tr className="text-[12px] uppercase font-extrabold text-[#0B1B3D] dark:text-slate-200 tracking-wider transition-colors duration-500">
                 <th className="px-8 py-6 text-left">Name</th>
-                <th className="px-6 py-6 text-left">Trainee Code</th>
                 <th className="px-6 py-6 text-left">Email Address</th>
                 <th className="px-6 py-6 text-left">Batch</th>
                 <th className="px-6 py-6 text-left">Progress</th>
@@ -339,8 +349,17 @@ export default function TraineeReportsPanel() {
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors duration-500">
               {rows.map((row) => (
                 <tr key={row.id} className="group hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors duration-300">
-                  <td className="px-8 py-5 font-bold text-[#0B1B3D] dark:text-slate-200 transition-colors duration-500">{row.fullName}</td>
-                  <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-medium transition-colors duration-500">{row.raw.trainee_code}</td>
+                  <td className="px-8 py-4">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold transition-colors duration-500">
+                        {row.initials}
+                      </div>
+                      <div className="leading-tight">
+                        <div className="font-extrabold text-[#0B1B3D] dark:text-slate-200 transition-colors">{row.fullName}</div>
+                        <div className="text-xs text-slate-400 font-medium mt-0.5">{row.raw.trainee_code}</div>
+                      </div>
+                    </div>
+                  </td>
                   <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-medium transition-colors duration-500">{row.raw.email}</td>
                   <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold transition-colors duration-500">{row.raw.batch.batch_code}</td>
                   <td className="px-6 py-5">
@@ -378,7 +397,7 @@ export default function TraineeReportsPanel() {
 
               {!loading && rows.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-8 py-20 text-center text-slate-500 dark:text-slate-400 transition-colors duration-500">
+                  <td colSpan={7} className="px-8 py-20 text-center text-slate-500 dark:text-slate-400 transition-colors duration-500">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <SearchX size={40} className="text-slate-300 dark:text-slate-600" />
                       <p className="font-semibold text-lg text-[#0B1B3D] dark:text-slate-200">No report rows found.</p>
@@ -390,7 +409,7 @@ export default function TraineeReportsPanel() {
 
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-8 py-20 text-center">
+                  <td colSpan={7} className="px-8 py-20 text-center">
                     <div className="flex justify-center items-center gap-2">
                       <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
                       <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
