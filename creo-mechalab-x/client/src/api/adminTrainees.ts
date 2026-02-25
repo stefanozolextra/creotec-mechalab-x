@@ -21,8 +21,15 @@ export type AdminTraineePayload = {
 
 export type AdminCreateTraineeResponse = {
   item: AdminTraineeItem;
+  email_sent: boolean;
   generated_password?: string;
-  password_delivery?: "manual";
+  password_delivery: "email" | "failed" | "manual";
+};
+
+export type AdminResendCredentialsResponse = {
+  email_sent: boolean;
+  retry_after_seconds?: number;
+  error?: string;
 };
 
 const buildListQuery = (params: AdminTraineesListParams): string => {
@@ -79,5 +86,13 @@ export const deleteAdminTrainee = async (
 ): Promise<{ ok: boolean; deleted_trainee_id: number }> => {
   return requestJson<{ ok: boolean; deleted_trainee_id: number }>(`/api/admin/trainees/${id}`, {
     method: "DELETE",
+  });
+};
+
+export const resendAdminTraineeCredentials = async (
+  id: string
+): Promise<AdminResendCredentialsResponse> => {
+  return requestJson<AdminResendCredentialsResponse>(`/api/admin/trainees/${id}/resend-credentials`, {
+    method: "POST",
   });
 };

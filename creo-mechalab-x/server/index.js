@@ -7,6 +7,7 @@ const multer = require("multer");
 const { parse } = require("csv-parse/sync");
 const pool = require("./db");
 const { generateStrongPassword } = require("./utils/passwords");
+const { sendTraineeCredentialsEmail } = require("./utils/mailer");
 
 const app = express();
 app.use(cors());
@@ -25,6 +26,7 @@ const DEFAULT_TRAINEE_PASSWORD = process.env.DEFAULT_TRAINEE_PASSWORD?.trim() ||
 const SHOULD_RETURN_GENERATED_PASSWORD =
     process.env.RETURN_GENERATED_PASSWORD?.trim().toLowerCase() === "true" && process.env.NODE_ENV !== "production";
 const BATCH_CODE_REGEX = /^\d{4}-(CTT|IMM)\d{2}$/;
+const RESEND_CREDENTIALS_COOLDOWN_MS = 5 * 60 * 1000;
 
 function normalizeEmail(value) {
     return String(value || "")
@@ -206,6 +208,14 @@ function sanitizeOptionalString(value) {
     if (typeof value !== "string") return null;
     const trimmed = value.trim();
     return trimmed.length > 0 ? trimmed : null;
+}
+
+function buildTraineeFullName(value) {
+    const firstName = sanitizeOptionalString(value?.first_name) || "";
+    const middleName = sanitizeOptionalString(value?.middle_name) || "";
+    const lastName = sanitizeOptionalString(value?.last_name) || "";
+
+    return [firstName, middleName, lastName].filter(Boolean).join(" ").trim() || "Trainee";
 }
 
 function validateEmailFormat(value) {
@@ -1601,17 +1611,53 @@ app.post("/api/admin/trainees", async (req, res) => {
         }
 
         await client.query("COMMIT");
-        return res.status(201).json({
+
+        let emailSent = false;
+        try {
+            await sendTraineeCredentialsEmail({
+                to: payload.email,
+                traineeName: buildTraineeFullName(payload),
+                loginEmail: payload.email,
+                password: generatedPassword,
+                batchCode: batch.batch_code,
+            });
+            emailSent = true;
+        } catch (mailError) {
+            const mailErrorMessage =
+                mailError instanceof Error && mailError.message ? mailError.message : "Failed to send credentials email.";
+            console.error("Admin create trainee credential email failed:", mailErrorMessage);
+        }
+
+        if (emailSent) {
+            try {
+                await pool.query(
+                    `UPDATE accounts
+                     SET initial_password_sent_at = NOW()
+                     WHERE trainee_id = $1
+                       AND role = 'trainee'
+                       AND is_system_protected = FALSE`,
+                    [traineeId]
+                );
+            } catch (timestampError) {
+                const timestampErrorMessage =
+                    timestampError instanceof Error && timestampError.message
+                        ? timestampError.message
+                        : "Failed to update initial_password_sent_at.";
+                console.error("Admin create trainee timestamp update failed:", timestampErrorMessage);
+            }
+        }
+
+        const response = {
             item,
-            ...(SHOULD_RETURN_GENERATED_PASSWORD
-                ? {
-                      generated_password: generatedPassword,
-                      password_delivery: "manual",
-                  }
-                : {
-                      password_delivery: "manual",
-                  }),
-        });
+            email_sent: emailSent,
+            password_delivery: emailSent ? "email" : SHOULD_RETURN_GENERATED_PASSWORD ? "manual" : "failed",
+        };
+
+        if (!emailSent && SHOULD_RETURN_GENERATED_PASSWORD) {
+            response.generated_password = generatedPassword;
+        }
+
+        return res.status(201).json(response);
     } catch (e) {
         try {
             await client.query("ROLLBACK");
@@ -1841,6 +1887,110 @@ app.delete("/api/admin/trainees/:id", async (req, res) => {
         }
         console.error("Admin delete trainee endpoint failed:", error);
         return res.status(500).json({ error: "Failed to delete trainee" });
+    } finally {
+        client.release();
+    }
+});
+
+app.post("/api/admin/trainees/:id/resend-credentials", async (req, res) => {
+    const traineeId = parsePositiveIntParam(req.params.id);
+    if (!traineeId) {
+        return res.status(400).json({ email_sent: false, error: "Invalid trainee id" });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+
+        const accountResult = await client.query(
+            `SELECT
+               a.account_id,
+               a.login_email,
+               a.role,
+               a.is_system_protected,
+               a.initial_password_sent_at,
+               t.first_name,
+               t.middle_name,
+               t.last_name,
+               b.batch_code
+             FROM accounts a
+             JOIN trainees t ON t.trainee_id = a.trainee_id
+             JOIN batches b ON b.batch_id = t.batch_id
+             WHERE a.trainee_id = $1
+             FOR UPDATE`,
+            [traineeId]
+        );
+
+        if (accountResult.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ email_sent: false, error: "Trainee account not found" });
+        }
+
+        const account = accountResult.rows[0];
+        if (account.role !== "trainee" || account.is_system_protected === true) {
+            await client.query("ROLLBACK");
+            return res
+                .status(403)
+                .json({ email_sent: false, error: "Credentials can only be resent for trainee accounts" });
+        }
+
+        const lastSentAtMs = account.initial_password_sent_at ? new Date(account.initial_password_sent_at).getTime() : null;
+        if (lastSentAtMs && Number.isFinite(lastSentAtMs)) {
+            const elapsedMs = Date.now() - lastSentAtMs;
+            if (elapsedMs < RESEND_CREDENTIALS_COOLDOWN_MS) {
+                const retryAfterSeconds = Math.max(1, Math.ceil((RESEND_CREDENTIALS_COOLDOWN_MS - elapsedMs) / 1000));
+                await client.query("ROLLBACK");
+                return res.status(429).json({
+                    email_sent: false,
+                    error: "Credentials were sent recently. Please retry later.",
+                    retry_after_seconds: retryAfterSeconds,
+                });
+            }
+        }
+
+        const generatedPassword = generateStrongPassword();
+        const passwordHash = await bcrypt.hash(generatedPassword, 10);
+
+        await client.query(
+            `UPDATE accounts
+             SET password_hash = $2
+             WHERE account_id = $1`,
+            [account.account_id, passwordHash]
+        );
+
+        try {
+            await sendTraineeCredentialsEmail({
+                to: account.login_email,
+                traineeName: buildTraineeFullName(account),
+                loginEmail: account.login_email,
+                password: generatedPassword,
+                batchCode: account.batch_code,
+            });
+        } catch (mailError) {
+            await client.query("ROLLBACK");
+            const mailErrorMessage =
+                mailError instanceof Error && mailError.message ? mailError.message : "Failed to send credentials email.";
+            console.error("Admin resend credentials email failed:", mailErrorMessage);
+            return res.status(502).json({ email_sent: false, error: "Failed to send credentials email." });
+        }
+
+        await client.query(
+            `UPDATE accounts
+             SET initial_password_sent_at = NOW()
+             WHERE account_id = $1`,
+            [account.account_id]
+        );
+
+        await client.query("COMMIT");
+        return res.json({ email_sent: true });
+    } catch (error) {
+        try {
+            await client.query("ROLLBACK");
+        } catch (rollbackError) {
+            console.error("Rollback failed:", rollbackError);
+        }
+        console.error("Admin resend credentials endpoint failed:", error);
+        return res.status(500).json({ email_sent: false, error: "Internal server error" });
     } finally {
         client.release();
     }

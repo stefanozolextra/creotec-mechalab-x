@@ -1,7 +1,12 @@
 import { Search, Plus, Upload, Pencil, Power, Download, Layers, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { deleteAdminTrainee, listAdminTrainees, setAdminTraineeStatus } from "../../api/adminTrainees";
+import {
+  deleteAdminTrainee,
+  listAdminTrainees,
+  resendAdminTraineeCredentials,
+  setAdminTraineeStatus,
+} from "../../api/adminTrainees";
 import { getAdminBatches } from "../../api/adminImport";
 import { API_BASE_URL, ApiError } from "../../api/http";
 import CreateBatchModal from "../../components/admin/CreateBatchModal";
@@ -43,6 +48,16 @@ const toErrorMessage = (error: unknown): string => {
   return "Failed to load trainee list.";
 };
 
+const toRetryAfterSeconds = (error: unknown): number | null => {
+  if (!(error instanceof ApiError) || error.status !== 429) return null;
+  if (typeof error.data !== "object" || error.data === null) return null;
+  if (!("retry_after_seconds" in error.data)) return null;
+
+  const retryAfterSeconds = Number((error.data as { retry_after_seconds?: unknown }).retry_after_seconds);
+  if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds <= 0) return null;
+  return Math.ceil(retryAfterSeconds);
+};
+
 const ENABLE_CSV_IMPORT = String(import.meta.env.VITE_ENABLE_CSV_IMPORT ?? "false").toLowerCase() === "true";
 
 export default function UsersPage() {
@@ -57,6 +72,7 @@ export default function UsersPage() {
   const [activeView, setActiveView] = useState<ActiveView>("trainees");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deliveryNotice, setDeliveryNotice] = useState<{ type: "success" | "warning"; message: string } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
@@ -69,6 +85,7 @@ export default function UsersPage() {
     password: string;
   } | null>(null);
   const [statusActionId, setStatusActionId] = useState<string | null>(null);
+  const [resendActionId, setResendActionId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -238,6 +255,24 @@ export default function UsersPage() {
     setSelectedItem(null);
     setRefreshKey((prev) => prev + 1);
 
+    if (result.mode === "create") {
+      if (result.email_sent && result.password_delivery === "email") {
+        setDeliveryNotice({ type: "success", message: `Email sent to ${result.item.email}.` });
+      } else if (result.generated_password && result.password_delivery === "manual") {
+        setDeliveryNotice({
+          type: "warning",
+          message: `Email failed for ${result.item.email}. Manual (dev) password fallback is available.`,
+        });
+      } else if (result.email_sent === false || result.password_delivery === "failed") {
+        setDeliveryNotice({
+          type: "warning",
+          message: `Email failed for ${result.item.email}. Trainee was created successfully.`,
+        });
+      } else {
+        setDeliveryNotice(null);
+      }
+    }
+
     if (result.mode === "create" && result.generated_password) {
       setGeneratedPasswordState({
         email: result.item.email,
@@ -248,6 +283,33 @@ export default function UsersPage() {
 
   const closeGeneratedPasswordModal = () => {
     setGeneratedPasswordState(null);
+  };
+
+  const handleResendCredentials = async (item: AdminTraineeItem) => {
+    const traineeId = String(item.trainee_id);
+    if (resendActionId || deleting) return;
+
+    setResendActionId(traineeId);
+    setError(null);
+    setDeliveryNotice(null);
+
+    try {
+      const result = await resendAdminTraineeCredentials(traineeId);
+      if (result.email_sent) {
+        setDeliveryNotice({ type: "success", message: `Credentials resent to ${item.email}.` });
+      } else {
+        setDeliveryNotice({ type: "warning", message: `Failed to resend credentials for ${item.email}.` });
+      }
+    } catch (resendError) {
+      const retryAfterSeconds = toRetryAfterSeconds(resendError);
+      if (retryAfterSeconds !== null) {
+        setError(`Credentials were sent recently. Retry in ${retryAfterSeconds} seconds.`);
+      } else {
+        setError(toErrorMessage(resendError));
+      }
+    } finally {
+      setResendActionId(null);
+    }
   };
 
   const handleBatchCreated = async (batch: BatchFilter) => {
@@ -568,6 +630,18 @@ export default function UsersPage() {
         </div>
       ) : null}
 
+      {deliveryNotice ? (
+        <div
+          className={`rounded-lg px-4 py-3 text-sm font-semibold ${
+            deliveryNotice.type === "success"
+              ? "bg-emerald-50 border border-emerald-200 text-emerald-700"
+              : "bg-amber-50 border border-amber-200 text-amber-700"
+          }`}
+        >
+          {deliveryNotice.message}
+        </div>
+      ) : null}
+
       <div className="bg-white rounded-lg border border-black/10 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-white">
@@ -601,6 +675,7 @@ export default function UsersPage() {
                   ? "bg-[#EC5151] hover:bg-[#d94545]"
                   : "bg-emerald-600 hover:bg-emerald-700";
               const isToggling = statusActionId === row.id;
+              const isResending = resendActionId === row.id;
               const isSelected = selectedIds.has(row.numericId);
               const isDeletingRow = deleting && deleteTargetIds.includes(row.numericId);
 
@@ -669,6 +744,16 @@ export default function UsersPage() {
                       >
                         <Power size={16} aria-hidden="true" />
                         {isToggling ? "Saving..." : actionLabel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleResendCredentials(row.raw);
+                        }}
+                        className="bg-[#2E415F] hover:bg-[#243247] text-white px-5 py-1.5 rounded-md font-semibold disabled:opacity-60"
+                        disabled={isResending || deleting}
+                      >
+                        {isResending ? "Sending..." : "Resend Credentials"}
                       </button>
                       <button
                         type="button"

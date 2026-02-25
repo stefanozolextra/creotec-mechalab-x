@@ -19,8 +19,9 @@ type FormState = {
 export type TraineeFormSaveResult = {
   mode: FormMode;
   item: AdminTraineeItem;
+  email_sent?: boolean;
   generated_password?: string;
-  password_delivery?: "manual";
+  password_delivery?: "email" | "failed" | "manual";
 };
 
 type TraineeFormModalProps = {
@@ -140,6 +141,7 @@ export default function TraineeFormModal({
         onSaved({
           mode: "create",
           item: result.item,
+          email_sent: result.email_sent,
           generated_password: result.generated_password,
           password_delivery: result.password_delivery,
         });
