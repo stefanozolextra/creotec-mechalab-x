@@ -1530,6 +1530,31 @@ app.get("/api/admin/trainees", async (req, res) => {
     }
 });
 
+app.get("/api/admin/trainees/:id/module-status", async (req, res) => {
+    const traineeId = parsePositiveIntParam(req.params.id);
+    if (!traineeId) return res.status(400).json({ error: "Invalid trainee id" });
+
+    try {
+        const traineeResult = await pool.query(
+            `SELECT 1
+             FROM trainees
+             WHERE trainee_id = $1
+             LIMIT 1`,
+            [traineeId]
+        );
+
+        if (traineeResult.rowCount === 0) {
+            return res.status(404).json({ error: "Trainee not found" });
+        }
+
+        const rows = await getModuleStatusRowsForTrainee(traineeId);
+        return res.json(rows);
+    } catch (error) {
+        console.error("Admin trainee module status endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 app.post("/api/admin/trainees", async (req, res) => {
     const parsedPayload = parseAdminTraineePayload(req.body);
     if (parsedPayload.error) return res.status(400).json({ error: parsedPayload.error });

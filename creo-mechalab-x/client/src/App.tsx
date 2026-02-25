@@ -17,6 +17,7 @@ import AdminLayout from './components/admin/AdminLayout';
 import OverviewPage from './pages/admin/OverviewPage';
 import UsersPage from './pages/admin/UsersPage';
 import CohortsPage from './pages/admin/CohortsPage';
+import ReportsPage from './pages/admin/ReportsPage';
 import LessonsPage from './pages/admin/LessonsPage';
 import ActivityLogsPage from './pages/admin/ActivityLogsPage';
 
@@ -125,6 +126,7 @@ const AnimatedRoutes = () => {
           <Route path="dashboard" element={<OverviewPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="cohorts" element={<CohortsPage />} />
+          <Route path="reports" element={<ReportsPage />} />
           <Route path="lessons" element={<LessonsPage />} />
           <Route path="activity-logs" element={<ActivityLogsPage />} />
 
