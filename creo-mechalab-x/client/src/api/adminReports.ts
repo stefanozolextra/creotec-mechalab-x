@@ -1,5 +1,5 @@
 import { listAdminTrainees, type AdminTraineesListParams } from "./adminTrainees";
-import { requestJson } from "./http";
+import { requestBlob, requestJson } from "./http";
 import type { AdminTraineesListResponse } from "../types/adminTrainee";
 
 type NumericLike = string | number;
@@ -23,4 +23,10 @@ export const getAdminTraineeModuleStatus = async (
   id: number
 ): Promise<AdminTraineeModuleStatusItem[]> => {
   return requestJson<AdminTraineeModuleStatusItem[]>(`/api/admin/trainees/${id}/module-status`);
+};
+
+export const exportModuleStatusCsv = async (batchCode: string): Promise<Blob> => {
+  const normalizedBatchCode = batchCode.trim().toUpperCase();
+  const query = new URLSearchParams({ batch_code: normalizedBatchCode });
+  return requestBlob(`/api/admin/reports/module-status.csv?${query.toString()}`);
 };

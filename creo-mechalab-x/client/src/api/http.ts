@@ -84,3 +84,38 @@ export const requestJson = async <T>(path: string, options: ApiRequestOptions = 
 
     return data as T;
 };
+
+export const requestBlob = async (path: string, options: ApiRequestOptions = {}): Promise<Blob> => {
+    const { body, headers: incomingHeaders, ...rest } = options;
+    const headers = new Headers(incomingHeaders);
+    const isFormData = typeof FormData !== "undefined" && body instanceof FormData;
+
+    if (body !== undefined && !isFormData && !headers.has("Content-Type")) {
+        headers.set("Content-Type", "application/json");
+    }
+
+    const authToken = getAuthToken();
+    if (authToken && !headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${authToken}`);
+    }
+
+    let response: Response;
+    try {
+        response = await fetch(buildUrl(path), {
+            ...rest,
+            headers,
+            body: body === undefined ? undefined : isFormData ? body : JSON.stringify(body),
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : "Network request failed.";
+        throw new ApiError(message, 0);
+    }
+
+    if (!response.ok) {
+        const data = await parseResponseBody(response);
+        const fallback = `Request failed with status ${response.status}`;
+        throw new ApiError(getErrorMessage(fallback, data), response.status, data);
+    }
+
+    return response.blob();
+};

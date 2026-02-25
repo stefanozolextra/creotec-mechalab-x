@@ -1,6 +1,11 @@
 import { Download, Search } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { getAdminTraineeModuleStatus, listAdminTraineesReport, type AdminTraineeModuleStatusItem } from "../../api/adminReports";
+import {
+  exportModuleStatusCsv,
+  getAdminTraineeModuleStatus,
+  listAdminTraineesReport,
+  type AdminTraineeModuleStatusItem,
+} from "../../api/adminReports";
 import { API_BASE_URL, ApiError } from "../../api/http";
 import type { AdminTraineeItem, BatchFilter } from "../../types/adminTrainee";
 import { getAuthToken } from "../../utils/auth";
@@ -45,6 +50,15 @@ const formatModuleStatus = (status: ModuleStatus): string => {
   return "Completed";
 };
 
+const formatModuleExportFileName = (batchCode: string, value = new Date()): string => {
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  const hours = String(value.getHours()).padStart(2, "0");
+  const minutes = String(value.getMinutes()).padStart(2, "0");
+  return `module-status_${batchCode}_${year}${month}${day}-${hours}${minutes}.csv`;
+};
+
 export default function TraineeReportsPanel() {
   const [items, setItems] = useState<AdminTraineeItem[]>([]);
   const [batches, setBatches] = useState<BatchFilter[]>([]);
@@ -55,6 +69,7 @@ export default function TraineeReportsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportingModuleReport, setExportingModuleReport] = useState(false);
   const [detailsModalOpen, setDetailsModalOpen] = useState(false);
   const [detailsTrainee, setDetailsTrainee] = useState<AdminTraineeItem | null>(null);
   const [detailsRows, setDetailsRows] = useState<AdminTraineeModuleStatusItem[]>([]);
@@ -216,6 +231,33 @@ export default function TraineeReportsPanel() {
     }
   };
 
+  const handleExportModuleReportCsv = async () => {
+    if (exportingModuleReport) return;
+    if (!selectedBatch) {
+      setError("Select a batch first to export module report.");
+      return;
+    }
+
+    setExportingModuleReport(true);
+    setError(null);
+
+    try {
+      const blob = await exportModuleStatusCsv(selectedBatch);
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = formatModuleExportFileName(selectedBatch);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (exportError) {
+      setError(toErrorMessage(exportError, "Failed to export module report."));
+    } finally {
+      setExportingModuleReport(false);
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-lg p-4 border border-black/10 flex flex-wrap items-center justify-between gap-4">
@@ -254,16 +296,28 @@ export default function TraineeReportsPanel() {
           </select>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            void handleExportCsv();
-          }}
-          disabled={exporting}
-          className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-6 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-60"
-        >
-          <Download size={18} aria-hidden="true" /> {exporting ? "Exporting..." : "Export CSV"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              void handleExportModuleReportCsv();
+            }}
+            disabled={!selectedBatch || exportingModuleReport}
+            className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-6 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-60"
+          >
+            <Download size={18} aria-hidden="true" /> {exportingModuleReport ? "Exporting..." : "Export Module Report"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              void handleExportCsv();
+            }}
+            disabled={exporting}
+            className="bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 px-6 py-2 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-60"
+          >
+            <Download size={18} aria-hidden="true" /> {exporting ? "Exporting..." : "Export CSV"}
+          </button>
+        </div>
       </div>
 
       {error ? (

@@ -655,6 +655,15 @@ function formatTimestampForFileName(value = new Date()) {
     return `${year}${month}${day}_${hours}${minutes}${seconds}`;
 }
 
+function formatTimestampForMinuteFileName(value = new Date()) {
+    const year = value.getFullYear();
+    const month = String(value.getMonth() + 1).padStart(2, "0");
+    const day = String(value.getDate()).padStart(2, "0");
+    const hours = String(value.getHours()).padStart(2, "0");
+    const minutes = String(value.getMinutes()).padStart(2, "0");
+    return `${year}${month}${day}-${hours}${minutes}`;
+}
+
 function toSafeFileToken(value) {
     return String(value || "")
         .trim()
@@ -977,6 +986,78 @@ app.get("/api/admin/trainees/export-csv", async (req, res) => {
     } catch (e) {
         console.error("Admin trainees export endpoint failed:", e);
         res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+app.get("/api/admin/reports/module-status.csv", async (req, res) => {
+    const rawBatchCode = Array.isArray(req.query.batch_code) ? req.query.batch_code[0] : req.query.batch_code;
+    const batchCode = typeof rawBatchCode === "string" ? rawBatchCode.trim().toUpperCase() : "";
+    if (!batchCode) {
+        return res.status(400).json({ error: "batch_code is required" });
+    }
+    if (!validateBatchCodeFormat(batchCode)) {
+        return res.status(400).json({ error: "batch_code must match YYYY-CTT## or YYYY-IMM##" });
+    }
+
+    try {
+        const result = await pool.query(
+            `SELECT
+               b.batch_code,
+               t.trainee_code,
+               t.first_name,
+               t.middle_name,
+               t.last_name,
+               module_status.module_code,
+               module_status.module_title,
+               module_status.module_status,
+               module_status.required_sims,
+               module_status.completed_required_sims
+             FROM trainees t
+             JOIN batches b ON b.batch_id = t.batch_id
+             JOIN v_trainee_module_status module_status ON module_status.trainee_id = t.trainee_id
+             LEFT JOIN modules m ON m.module_id = module_status.module_id
+             WHERE b.batch_code = $1
+             ORDER BY t.trainee_code ASC, COALESCE(m.order_no, 2147483647) ASC, module_status.module_code ASC`,
+            [batchCode]
+        );
+
+        const lines = [
+            buildCsvRow([
+                "batch_code",
+                "trainee_code",
+                "trainee_name",
+                "module_code",
+                "module_title",
+                "module_status",
+                "required_sims",
+                "completed_required_sims",
+            ]),
+        ];
+
+        for (const row of result.rows) {
+            lines.push(
+                buildCsvRow([
+                    row.batch_code,
+                    row.trainee_code,
+                    buildTraineeFullName(row),
+                    row.module_code,
+                    row.module_title,
+                    row.module_status,
+                    row.required_sims,
+                    row.completed_required_sims,
+                ])
+            );
+        }
+
+        const csvContent = `${lines.join("\n")}\n`;
+        const fileName = `module-status_${toSafeFileToken(batchCode) || "batch"}_${formatTimestampForMinuteFileName()}.csv`;
+
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+        return res.status(200).send(csvContent);
+    } catch (error) {
+        console.error("Admin module status export endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
     }
 });
 
