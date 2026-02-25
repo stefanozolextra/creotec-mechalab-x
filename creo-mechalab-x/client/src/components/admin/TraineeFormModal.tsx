@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { X } from "lucide-react";
+import { X, UserPlus, Pencil, Loader2 } from "lucide-react";
 import { createAdminTrainee, updateAdminTrainee } from "../../api/adminTrainees";
 import { ApiError } from "../../api/http";
 import type { AdminTraineeItem, BatchFilter } from "../../types/adminTrainee";
@@ -72,20 +72,42 @@ export default function TraineeFormModal({
   onClose,
   onSaved,
 }: TraineeFormModalProps) {
+  // --- Data & Form States ---
   const [form, setForm] = useState<FormState>(() => buildInitialFormState(mode, initial, batches));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const title = useMemo(() => (mode === "create" ? "Add Trainee" : "Edit Trainee"), [mode]);
+  // --- Animation States ---
+  const [shouldRender, setShouldRender] = useState(false);
+  const [isVisible, setIsVisible] = useState(false);
 
+  const title = useMemo(() => (mode === "create" ? "Add Trainee" : "Edit Trainee"), [mode]);
+  const isEditing = mode === "edit";
+
+  // Handles Mount/Unmount Animation & Resetting values cleanly
   useEffect(() => {
-    if (!open) return;
-    setForm(buildInitialFormState(mode, initial, batches));
-    setSaving(false);
-    setError(null);
+    let showTimer: number;
+    let unmountTimer: number;
+
+    if (open) {
+      setShouldRender(true);
+      showTimer = window.setTimeout(() => setIsVisible(true), 10);
+
+      setForm(buildInitialFormState(mode, initial, batches));
+      setSaving(false);
+      setError(null);
+    } else {
+      setIsVisible(false);
+      unmountTimer = window.setTimeout(() => setShouldRender(false), 300);
+    }
+
+    return () => {
+      window.clearTimeout(showTimer);
+      window.clearTimeout(unmountTimer);
+    };
   }, [open, mode, initial, batches]);
 
-  if (!open) return null;
+  if (!shouldRender) return null;
 
   const onChange = (field: keyof FormState, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -133,121 +155,154 @@ export default function TraineeFormModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-      <div className="w-full max-w-2xl rounded-lg bg-white border border-black/10 shadow-2xl overflow-hidden">
-        <div className="px-5 py-4 border-b border-black/10 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-slate-800">{title}</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="p-2 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100"
-            aria-label="Close"
-          >
-            <X size={20} aria-hidden="true" />
-          </button>
-        </div>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {/* Animated Backdrop */}
+      <div
+        className={`absolute inset-0 bg-[#0B1B3D]/40 dark:bg-[#0F172A]/80 backdrop-blur-sm transition-opacity duration-300 ease-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}
+        onClick={!saving ? onClose : undefined}
+      />
 
-        <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <label className="space-y-1">
-              <span className="text-sm font-semibold text-slate-700">First Name *</span>
-              <input
-                type="text"
-                value={form.first_name}
-                onChange={(event) => onChange("first_name", event.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-slate-300 outline-none focus:ring-2 focus:ring-slate-300"
-                disabled={saving}
-                required
-              />
-            </label>
+      {/* Animated Modal Container */}
+      <div className={`relative w-full max-w-2xl rounded-3xl bg-white dark:bg-[#1E293B] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden transform transition-all duration-300 ease-out ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
 
-            <label className="space-y-1">
-              <span className="text-sm font-semibold text-slate-700">Middle Name</span>
-              <input
-                type="text"
-                value={form.middle_name}
-                onChange={(event) => onChange("middle_name", event.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-slate-300 outline-none focus:ring-2 focus:ring-slate-300"
-                disabled={saving}
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-sm font-semibold text-slate-700">Last Name *</span>
-              <input
-                type="text"
-                value={form.last_name}
-                onChange={(event) => onChange("last_name", event.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-slate-300 outline-none focus:ring-2 focus:ring-slate-300"
-                disabled={saving}
-                required
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-sm font-semibold text-slate-700">Email *</span>
-              <input
-                type="email"
-                value={form.email}
-                onChange={(event) => onChange("email", event.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-slate-300 outline-none focus:ring-2 focus:ring-slate-300"
-                disabled={saving}
-                required
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-sm font-semibold text-slate-700">Contact Number</span>
-              <input
-                type="text"
-                value={form.contact_number}
-                onChange={(event) => onChange("contact_number", event.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-slate-300 outline-none focus:ring-2 focus:ring-slate-300"
-                disabled={saving}
-              />
-            </label>
-
-            <label className="space-y-1">
-              <span className="text-sm font-semibold text-slate-700">Batch *</span>
-              <select
-                value={form.batch_code}
-                onChange={(event) => onChange("batch_code", event.target.value)}
-                className="w-full px-3 py-2 rounded-md border border-slate-300 outline-none focus:ring-2 focus:ring-slate-300"
-                disabled={saving}
-                required
-              >
-                <option value="" disabled>
-                  Select batch
-                </option>
-                {batches.map((batch) => (
-                  <option key={batch.batch_id} value={batch.batch_code}>
-                    {batch.batch_code}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
-
-          {error ? <p className="text-sm font-semibold text-red-600">{error}</p> : null}
-
-          <div className="pt-2 flex items-center justify-end gap-3">
+        {/* Header - Compact Height */}
+        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/20 shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-blue-50 dark:bg-[#3B82F6]/20 text-[#3B82F6] rounded-xl">
+                {isEditing ? <Pencil size={20} /> : <UserPlus size={20} />}
+              </div>
+              <div>
+                <h2 className="text-lg font-extrabold text-[#0B1B3D] dark:text-slate-100">{title}</h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  {isEditing ? "Update trainee details below." : "Register a new trainee manually."}
+                </p>
+              </div>
+            </div>
             <button
               type="button"
               onClick={onClose}
-              className="px-5 py-2 rounded-md border border-slate-300 text-slate-700 font-semibold hover:bg-slate-100 disabled:opacity-60"
+              className="text-slate-400 hover:text-[#0B1B3D] dark:hover:text-slate-200 transition-colors bg-white dark:bg-[#0F172A] p-1.5 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm disabled:opacity-50"
+              aria-label="Close"
+              disabled={saving}
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+          </div>
+        </div>
+
+        {/* Content & Form */}
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+
+          {/* Scrollable Form Body */}
+          <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+
+              <label className="space-y-1.5 block">
+                <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">First Name *</span>
+                <input
+                  type="text"
+                  value={form.first_name}
+                  onChange={(event) => onChange("first_name", event.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
+                  disabled={saving}
+                  required
+                />
+              </label>
+
+              <label className="space-y-1.5 block">
+                <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">Last Name *</span>
+                <input
+                  type="text"
+                  value={form.last_name}
+                  onChange={(event) => onChange("last_name", event.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
+                  disabled={saving}
+                  required
+                />
+              </label>
+
+              <label className="space-y-1.5 block">
+                <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">Middle Name</span>
+                <input
+                  type="text"
+                  value={form.middle_name}
+                  onChange={(event) => onChange("middle_name", event.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
+                  disabled={saving}
+                />
+              </label>
+
+              <label className="space-y-1.5 block">
+                <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">Contact Number</span>
+                <input
+                  type="text"
+                  value={form.contact_number}
+                  onChange={(event) => onChange("contact_number", event.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
+                  disabled={saving}
+                />
+              </label>
+
+              <label className="space-y-1.5 block md:col-span-2">
+                <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">Email Address *</span>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={(event) => onChange("email", event.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
+                  disabled={saving}
+                  required
+                />
+              </label>
+
+              <label className="space-y-1.5 block md:col-span-2">
+                <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">Batch Assignment *</span>
+                <select
+                  value={form.batch_code}
+                  onChange={(event) => onChange("batch_code", event.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
+                  disabled={saving}
+                  required
+                >
+                  <option value="" disabled>Select batch</option>
+                  {batches.map((batch) => (
+                    <option key={batch.batch_id} value={batch.batch_code}>
+                      {batch.batch_code}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {error ? (
+              <div className="mt-5 rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 text-xs font-semibold text-red-600 dark:text-red-400 animate-in slide-in-from-top-2">
+                {error}
+              </div>
+            ) : null}
+          </div>
+
+          {/* Footer Actions */}
+          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/20 shrink-0 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-full text-xs font-bold text-slate-500 hover:text-[#0B1B3D] dark:hover:text-slate-200 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 transition-colors duration-500 disabled:opacity-50"
               disabled={saving}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-5 py-2 rounded-md bg-[#2E415F] text-white font-semibold hover:bg-[#233449] disabled:opacity-60"
+              className="px-6 py-2.5 rounded-full text-xs font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-lg shadow-blue-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 flex items-center gap-2"
               disabled={saving}
             >
-              {saving ? "Saving..." : mode === "create" ? "Create Trainee" : "Save Changes"}
+              {saving ? <Loader2 size={14} className="animate-spin" /> : isEditing ? <Pencil size={14} /> : <UserPlus size={14} />}
+              {saving ? "Saving..." : isEditing ? "Save Changes" : "Create Trainee"}
             </button>
           </div>
         </form>
+
       </div>
     </div>
   );
