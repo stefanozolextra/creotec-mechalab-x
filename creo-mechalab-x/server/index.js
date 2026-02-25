@@ -852,10 +852,26 @@ app.get("/api/admin/batches", async (req, res) => {
         const result = await pool.query(
             `SELECT b.batch_id,
                     b.batch_code,
-                    COUNT(t.trainee_id)::INT AS trainee_count
+                    COUNT(t.trainee_id)::INT AS trainee_count,
+                    exports.last_export_at,
+                    resets.last_reset_at
              FROM batches b
              LEFT JOIN trainees t ON t.batch_id = b.batch_id
-             GROUP BY b.batch_id, b.batch_code
+             LEFT JOIN (
+               SELECT
+                 batch_code,
+                 MAX(exported_at) AS last_export_at
+               FROM batch_exports
+               GROUP BY batch_code
+             ) exports ON exports.batch_code = b.batch_code
+             LEFT JOIN (
+               SELECT
+                 batch_code,
+                 MAX(reset_at) AS last_reset_at
+               FROM system_resets
+               GROUP BY batch_code
+             ) resets ON resets.batch_code = b.batch_code
+             GROUP BY b.batch_id, b.batch_code, exports.last_export_at, resets.last_reset_at
              ORDER BY b.batch_code DESC`
         );
         res.json({ items: result.rows });

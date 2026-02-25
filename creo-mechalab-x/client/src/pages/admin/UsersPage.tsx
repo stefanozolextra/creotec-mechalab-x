@@ -59,6 +59,28 @@ const toRetryAfterSeconds = (error: unknown): number | null => {
 };
 
 const ENABLE_CSV_IMPORT = String(import.meta.env.VITE_ENABLE_CSV_IMPORT ?? "false").toLowerCase() === "true";
+const SELECTED_BATCH_STORAGE_KEY = "mechalabx.selectedBatchCode";
+
+const readStoredBatchCode = (): string => {
+  try {
+    const value = window.localStorage.getItem(SELECTED_BATCH_STORAGE_KEY);
+    return value ? value.trim() : "";
+  } catch {
+    return "";
+  }
+};
+
+const writeStoredBatchCode = (batchCode: string): void => {
+  try {
+    if (!batchCode) {
+      window.localStorage.removeItem(SELECTED_BATCH_STORAGE_KEY);
+      return;
+    }
+    window.localStorage.setItem(SELECTED_BATCH_STORAGE_KEY, batchCode);
+  } catch {
+    // no-op
+  }
+};
 
 export default function UsersPage() {
   const { search: locationSearch } = useLocation();
@@ -107,8 +129,33 @@ export default function UsersPage() {
     const viewFromQuery = (params.get("view") ?? "").trim().toLowerCase();
     const nextView: ActiveView = viewFromQuery === "reports" ? "reports" : "trainees";
     setActiveView((previous) => (previous === nextView ? previous : nextView));
+    if (!batchFromQuery) return;
     setSelectedBatch((previous) => (previous === batchFromQuery ? previous : batchFromQuery));
   }, [locationSearch]);
+
+  useEffect(() => {
+    if (batches.length === 0) return;
+
+    if (selectedBatch) {
+      const exists = batches.some((batch) => batch.batch_code === selectedBatch);
+      if (!exists) {
+        setSelectedBatch("");
+      }
+      return;
+    }
+
+    const storedBatchCode = readStoredBatchCode();
+    if (!storedBatchCode) return;
+
+    const exists = batches.some((batch) => batch.batch_code === storedBatchCode);
+    if (exists) {
+      setSelectedBatch(storedBatchCode);
+    }
+  }, [batches, selectedBatch]);
+
+  useEffect(() => {
+    writeStoredBatchCode(selectedBatch);
+  }, [selectedBatch]);
 
   useEffect(() => {
     let active = true;
@@ -329,7 +376,7 @@ export default function UsersPage() {
     }
   };
 
-  const handleResetCompleted = async () => {
+  const handleResetCompleted = async (_batchCode: string) => {
     setRefreshKey((prev) => prev + 1);
     try {
       await refreshBatchFilters();

@@ -27,8 +27,10 @@ type FinalizeBatchWizardModalProps = {
   open: boolean;
   batches: BatchFilter[];
   initialBatchCode?: string;
+  lockedBatchCode?: string;
+  onBusyChange?: (isBusy: boolean) => void;
   onClose: () => void;
-  onResetCompleted: () => void;
+  onResetCompleted: (batchCode: string) => void;
 };
 
 const toErrorMessage = (error: unknown): string => {
@@ -53,6 +55,8 @@ export default function FinalizeBatchWizardModal({
   open,
   batches,
   initialBatchCode = "",
+  lockedBatchCode,
+  onBusyChange,
   onClose,
   onResetCompleted,
 }: FinalizeBatchWizardModalProps) {
@@ -69,8 +73,9 @@ export default function FinalizeBatchWizardModal({
   const [shouldRender, setShouldRender] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
 
-  const expectedConfirmText = useMemo(() => `RESET ${batchCode}`, [batchCode]);
-  const canReset = Boolean(exportedAt) && confirmText === expectedConfirmText && !resetting;
+  const effectiveBatchCode = useMemo(() => lockedBatchCode || batchCode, [lockedBatchCode, batchCode]);
+  const expectedConfirmText = useMemo(() => `RESET ${effectiveBatchCode}`, [effectiveBatchCode]);
+  const canReset = Boolean(effectiveBatchCode) && Boolean(exportedAt) && confirmText === expectedConfirmText && !exporting && !resetting;
 
   // Handles Mount/Unmount Animation & Resetting values when opened
   useEffect(() => {
@@ -81,7 +86,7 @@ export default function FinalizeBatchWizardModal({
       setShouldRender(true);
       showTimer = window.setTimeout(() => setIsVisible(true), 10);
 
-      const fallbackBatch = initialBatchCode || batches[0]?.batch_code || "";
+      const fallbackBatch = lockedBatchCode || initialBatchCode || batches[0]?.batch_code || "";
       setBatchCode(fallbackBatch);
       setConfirmText("");
       setExportedAt(null);
@@ -98,11 +103,20 @@ export default function FinalizeBatchWizardModal({
       window.clearTimeout(showTimer);
       window.clearTimeout(unmountTimer);
     };
-  }, [open, initialBatchCode, batches]);
+  }, [open, initialBatchCode, batches, lockedBatchCode]);
+
+  useEffect(() => {
+    if (!onBusyChange) return;
+    onBusyChange(open && (exporting || resetting));
+    return () => {
+      onBusyChange(false);
+    };
+  }, [open, exporting, resetting, onBusyChange]);
 
   if (!shouldRender) return null;
 
   const handleBatchCodeChange = (value: string) => {
+    if (lockedBatchCode) return;
     setBatchCode(value);
     setConfirmText("");
     setExportedAt(null);
@@ -112,7 +126,7 @@ export default function FinalizeBatchWizardModal({
 
   const handleExport = async () => {
     if (exporting || resetting) return;
-    if (!batchCode) {
+    if (!effectiveBatchCode) {
       setError("Batch code is required.");
       return;
     }
@@ -127,7 +141,7 @@ export default function FinalizeBatchWizardModal({
     setError(null);
 
     try {
-      const query = new URLSearchParams({ batch_code: batchCode }).toString();
+      const query = new URLSearchParams({ batch_code: effectiveBatchCode }).toString();
       const response = await fetch(`${API_BASE_URL}/api/admin/trainees/export-csv?${query}`, {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -146,7 +160,7 @@ export default function FinalizeBatchWizardModal({
       }
 
       const blob = await response.blob();
-      const fallbackName = `trainees-${batchCode}.csv`;
+      const fallbackName = `trainees-${effectiveBatchCode}.csv`;
       const fileName = parseFilenameFromHeader(response.headers.get("content-disposition"), fallbackName);
       const objectUrl = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -167,7 +181,7 @@ export default function FinalizeBatchWizardModal({
 
   const handleReset = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canReset || !batchCode) return;
+    if (!canReset || !effectiveBatchCode) return;
 
     setResetting(true);
     setError(null);
@@ -176,7 +190,7 @@ export default function FinalizeBatchWizardModal({
       const resetResult = await requestJson<ResetResponse>("/api/admin/system/reset", {
         method: "POST",
         body: {
-          batch_code: batchCode,
+          batch_code: effectiveBatchCode,
           confirm_text: confirmText,
           wipe_batch_record: true,
           force: false,
@@ -184,7 +198,7 @@ export default function FinalizeBatchWizardModal({
       });
 
       setResult(resetResult);
-      onResetCompleted();
+      onResetCompleted(resetResult.batch_code || effectiveBatchCode);
     } catch (resetError) {
       setError(toErrorMessage(resetError));
     } finally {
@@ -251,7 +265,7 @@ export default function FinalizeBatchWizardModal({
                 value={batchCode}
                 onChange={(event) => handleBatchCodeChange(event.target.value)}
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
-                disabled={exporting || resetting || Boolean(result)}
+                disabled={exporting || resetting || Boolean(result) || Boolean(lockedBatchCode)}
                 required
               >
                 <option value="" disabled>Select batch</option>
@@ -259,13 +273,16 @@ export default function FinalizeBatchWizardModal({
                   <option key={batch.batch_id} value={batch.batch_code}>{batch.batch_code}</option>
                 ))}
               </select>
+              {lockedBatchCode ? (
+                <p className="text-xs text-slate-500 font-medium mt-1.5">Batch is locked to the selected cohort row.</p>
+              ) : null}
             </label>
 
             <div className="flex items-center gap-3">
               <button
                 type="button"
                 onClick={() => { void handleExport(); }}
-                disabled={!batchCode || exporting || resetting || Boolean(result)}
+                disabled={!effectiveBatchCode || exporting || resetting || Boolean(result)}
                 className="px-5 py-2.5 rounded-full text-xs font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-lg shadow-blue-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 inline-flex items-center gap-2"
               >
                 {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} aria-hidden="true" />}

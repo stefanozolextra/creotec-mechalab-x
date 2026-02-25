@@ -5,6 +5,8 @@ type RawAdminBatchItem = {
   batch_id: number | string;
   batch_code: string;
   trainee_count: number | string;
+  last_export_at?: string | null;
+  last_reset_at?: string | null;
 };
 
 type RawAdminBatchesResponse = {
@@ -27,6 +29,8 @@ export const listAdminBatches = async (): Promise<AdminBatchesResponse> => {
       batch_id: toNumber(item.batch_id),
       batch_code: item.batch_code,
       trainee_count: toNumber(item.trainee_count),
+      last_export_at: typeof item.last_export_at === "string" ? item.last_export_at : null,
+      last_reset_at: typeof item.last_reset_at === "string" ? item.last_reset_at : null,
     })),
   };
 };
