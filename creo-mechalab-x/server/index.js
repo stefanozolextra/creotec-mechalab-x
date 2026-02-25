@@ -847,6 +847,189 @@ app.get("/api/admin/auth-check", (req, res) => {
     });
 });
 
+app.get("/api/admin/dashboard", async (req, res) => {
+    const rawBatchCode = Array.isArray(req.query.batch_code) ? req.query.batch_code[0] : req.query.batch_code;
+    const batchCode = typeof rawBatchCode === "string" ? rawBatchCode.trim().toUpperCase() : "";
+    if (batchCode && !validateBatchCodeFormat(batchCode)) {
+        return res.status(400).json({ error: "batch_code must match YYYY-CTT## or YYYY-IMM##" });
+    }
+
+    const scopedBatchCode = batchCode || null;
+
+    try {
+        const summaryResult = await pool.query(
+            `WITH scoped_trainees AS (
+               SELECT t.trainee_id
+               FROM trainees t
+               JOIN batches b ON b.batch_id = t.batch_id
+               WHERE ($1::TEXT IS NULL OR b.batch_code = $1)
+             ),
+             scoped_module_rows AS (
+               SELECT v.module_status
+               FROM v_trainee_module_status v
+               JOIN scoped_trainees st ON st.trainee_id = v.trainee_id
+             ),
+             summary_stats AS (
+               SELECT
+                 COALESCE((SELECT COUNT(*)::INT FROM scoped_trainees), 0)::INT AS total_trainees,
+                 COALESCE((SELECT COUNT(*)::INT FROM modules), 0)::INT AS total_modules,
+                 COALESCE(
+                   (SELECT COUNT(*) FILTER (WHERE module_status = 'COMPLETED')::INT FROM scoped_module_rows),
+                   0
+                 )::INT AS completed_module_rows,
+                 COALESCE((SELECT COUNT(*)::INT FROM scoped_module_rows), 0)::INT AS total_module_rows
+             )
+             SELECT
+               summary_stats.total_trainees,
+               summary_stats.total_modules,
+               summary_stats.completed_module_rows,
+               summary_stats.total_module_rows,
+               CASE
+                 WHEN summary_stats.total_module_rows = 0 THEN 0
+                 ELSE ROUND(
+                   (100.0 * summary_stats.completed_module_rows::NUMERIC) / summary_stats.total_module_rows::NUMERIC
+                 )::INT
+               END AS progress_percent
+             FROM summary_stats`,
+            [scopedBatchCode]
+        );
+
+        const chartResult = await pool.query(
+            `WITH scoped_trainees AS (
+               SELECT t.trainee_id
+               FROM trainees t
+               JOIN batches b ON b.batch_id = t.batch_id
+               WHERE ($1::TEXT IS NULL OR b.batch_code = $1)
+             ),
+             module_completion AS (
+               SELECT
+                 v.module_id,
+                 COUNT(*)::INT AS total_trainees,
+                 COUNT(*) FILTER (WHERE v.module_status = 'COMPLETED')::INT AS completed_trainees
+               FROM v_trainee_module_status v
+               JOIN scoped_trainees st ON st.trainee_id = v.trainee_id
+               GROUP BY v.module_id
+             )
+             SELECT
+               m.module_id::INT AS module_id,
+               m.module_code,
+               m.title AS module_title,
+               COALESCE(mc.completed_trainees, 0)::INT AS completed_trainees,
+               COALESCE(mc.total_trainees, 0)::INT AS total_trainees,
+               CASE
+                 WHEN COALESCE(mc.total_trainees, 0) = 0 THEN 0
+                 ELSE ROUND((100.0 * mc.completed_trainees::NUMERIC) / mc.total_trainees::NUMERIC)::INT
+               END AS completion_percent
+             FROM modules m
+             LEFT JOIN module_completion mc ON mc.module_id = m.module_id
+             ORDER BY COALESCE(m.order_no, 2147483647), m.module_id`,
+            [scopedBatchCode]
+        );
+
+        const eventsResult = await pool.query(
+            `SELECT type, occurred_at, batch_code, actor, message
+             FROM (
+               SELECT
+                 'batch_export'::TEXT AS type,
+                 be.exported_at AS occurred_at,
+                 be.batch_code,
+                 a.login_email AS actor,
+                 CONCAT(
+                   'Exported ',
+                   be.rows_exported,
+                   ' trainee record',
+                   CASE WHEN be.rows_exported = 1 THEN '' ELSE 's' END,
+                   ' (',
+                   be.file_name,
+                   ').'
+                 ) AS message
+               FROM batch_exports be
+               LEFT JOIN accounts a ON a.account_id = be.exported_by_account_id
+               WHERE ($1::TEXT IS NULL OR be.batch_code = $1)
+
+               UNION ALL
+
+               SELECT
+                 'system_reset'::TEXT AS type,
+                 sr.reset_at AS occurred_at,
+                 sr.batch_code,
+                 a.login_email AS actor,
+                 CONCAT(
+                   'System reset removed ',
+                   sr.deleted_trainees,
+                   ' trainee',
+                   CASE WHEN sr.deleted_trainees = 1 THEN '' ELSE 's' END,
+                   ', ',
+                   sr.deleted_trainee_accounts,
+                   ' account',
+                   CASE WHEN sr.deleted_trainee_accounts = 1 THEN '' ELSE 's' END,
+                   ', and ',
+                   sr.deleted_progress_rows,
+                   ' progress row',
+                   CASE WHEN sr.deleted_progress_rows = 1 THEN '' ELSE 's' END,
+                   CASE WHEN sr.forced THEN ' (forced).' ELSE '.' END
+                 ) AS message
+               FROM system_resets sr
+               LEFT JOIN accounts a ON a.account_id = sr.reset_by_account_id
+               WHERE ($1::TEXT IS NULL OR sr.batch_code = $1)
+             ) events
+             ORDER BY occurred_at DESC
+             LIMIT 8`,
+            [scopedBatchCode]
+        );
+
+        const summaryRow = summaryResult.rows[0] || {};
+        const completedModuleRows = Number(summaryRow.completed_module_rows) || 0;
+        const totalModuleRows = Number(summaryRow.total_module_rows) || 0;
+        const progressPercent = Number(summaryRow.progress_percent) || 0;
+
+        const points = chartResult.rows.map((row) => {
+            const completedTrainees = Number(row.completed_trainees) || 0;
+            const totalTrainees = Number(row.total_trainees) || 0;
+            const completionPercent =
+                totalTrainees === 0 ? 0 : Number.isFinite(Number(row.completion_percent)) ? Number(row.completion_percent) : 0;
+
+            return {
+                module_id: Number(row.module_id) || 0,
+                module_code: row.module_code || "",
+                module_title: row.module_title || "",
+                completed_trainees: completedTrainees,
+                total_trainees: totalTrainees,
+                completion_percent: completionPercent,
+            };
+        });
+
+        const events = eventsResult.rows.map((row) => ({
+            type: row.type || "event",
+            occurred_at: row.occurred_at ? new Date(row.occurred_at).toISOString() : new Date().toISOString(),
+            batch_code: row.batch_code || null,
+            actor: row.actor || null,
+            message: row.message || "",
+        }));
+
+        return res.json({
+            generated_at: new Date().toISOString(),
+            scope: { batch_code: scopedBatchCode },
+            summary: {
+                total_trainees: Number(summaryRow.total_trainees) || 0,
+                total_modules: Number(summaryRow.total_modules) || 0,
+                progress_percent: progressPercent,
+                completed_module_rows: completedModuleRows,
+                total_module_rows: totalModuleRows,
+            },
+            chart: {
+                kind: "module_completion_percent",
+                points,
+            },
+            notifications: events,
+            activities: events,
+        });
+    } catch (error) {
+        console.error("Admin dashboard endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 app.get("/api/admin/batches", async (req, res) => {
     try {
         const result = await pool.query(
