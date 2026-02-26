@@ -1,5 +1,5 @@
 import { Plus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAdminActivityLogs } from "../../api/adminActivityLogs";
 import { listAdminBatches } from "../../api/adminBatches";
@@ -68,6 +68,15 @@ const toErrorMessage = (error: unknown): string => {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error && error.message) return error.message;
   return "Failed to load dashboard.";
+};
+
+type ModuleInsightItem = {
+  module_id: number;
+  module_code: string;
+  module_title: string;
+  completion_percent: number;
+  completed_trainees: number;
+  total_trainees: number;
 };
 
 export default function OverviewPage() {
@@ -166,6 +175,26 @@ export default function OverviewPage() {
     void load();
   }, [selectedBatchCode]);
 
+  const moduleInsights = useMemo((): { top: ModuleInsightItem[]; bottom: ModuleInsightItem[] } => {
+    const normalized = (dashboard.chart.points ?? []).map((point) => ({
+      module_id: point.module_id,
+      module_code: point.module_code || "",
+      module_title: point.module_title || "",
+      completion_percent: Math.max(0, Math.min(100, Number(point.completion_percent) || 0)),
+      completed_trainees: Number(point.completed_trainees) || 0,
+      total_trainees: Number(point.total_trainees) || 0,
+    }));
+
+    const top = [...normalized]
+      .sort((a, b) => b.completion_percent - a.completion_percent || a.module_id - b.module_id)
+      .slice(0, 3);
+    const bottom = [...normalized]
+      .sort((a, b) => a.completion_percent - b.completion_percent || a.module_id - b.module_id)
+      .slice(0, 3);
+
+    return { top, bottom };
+  }, [dashboard.chart.points]);
+
   return (
     <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-6 min-h-0 lg:overflow-hidden">
       <div className="col-span-1 lg:col-span-8 flex flex-col gap-6 h-full min-h-0">
@@ -209,6 +238,12 @@ export default function OverviewPage() {
               <div className="text-5xl font-extrabold text-[#0B1B3D] dark:text-slate-100 transition-colors tracking-tighter">
                 {dashboard.summary.total_trainees}
               </div>
+              <button
+                onClick={() => navigate("/admin/users")}
+                className="mt-3 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 rounded-sm cursor-pointer"
+              >
+                View trainees
+              </button>
             </div>
 
             <button
@@ -227,6 +262,12 @@ export default function OverviewPage() {
             <div className="text-5xl font-extrabold text-[#0B1B3D] dark:text-slate-100 transition-colors tracking-tighter">
               {dashboard.summary.progress_percent}%
             </div>
+            <button
+              onClick={() => navigate("/admin/reports")}
+              className="mt-3 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 rounded-sm cursor-pointer"
+            >
+              View reports
+            </button>
           </div>
 
           <div className="bg-white dark:bg-[#1E293B] rounded-3xl p-6 shadow-sm transition-colors">
@@ -236,6 +277,12 @@ export default function OverviewPage() {
             <div className="text-5xl font-extrabold text-[#0B1B3D] dark:text-slate-100 transition-colors tracking-tighter">
               {String(dashboard.summary.total_modules).padStart(2, "0")}
             </div>
+            <button
+              onClick={() => navigate("/admin/lessons")}
+              className="mt-3 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 rounded-sm cursor-pointer"
+            >
+              View modules
+            </button>
           </div>
         </div>
 
@@ -297,6 +344,58 @@ export default function OverviewPage() {
                 {item.module_code || `M${idx + 1}`}
               </div>
             ))}
+          </div>
+
+          <div className="ml-[56px] mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
+            {dashboard.chart.points.length === 0 ? (
+              <div className="text-sm font-semibold text-slate-400 dark:text-slate-500">No modules available.</div>
+            ) : (
+              <>
+                <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-800/20">
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#0B1B3D] dark:text-slate-200 mb-3">
+                    Top Modules
+                  </h4>
+                  <div className="space-y-2">
+                    {moduleInsights.top.map((item) => (
+                      <div key={`top-${item.module_id}`} className="flex items-start justify-between gap-3 text-xs">
+                        <div className="min-w-0">
+                          <p className="font-bold text-[#0B1B3D] dark:text-slate-200 truncate">{item.module_code || "N/A"}</p>
+                          <p className="text-slate-500 dark:text-slate-400 truncate">{item.module_title || "Untitled module"}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-extrabold text-[#0B1B3D] dark:text-slate-200">{item.completion_percent}%</p>
+                          <p className="text-slate-400 dark:text-slate-500">
+                            {item.completed_trainees}/{item.total_trainees}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-800/20">
+                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#0B1B3D] dark:text-slate-200 mb-3">
+                    Bottom Modules
+                  </h4>
+                  <div className="space-y-2">
+                    {moduleInsights.bottom.map((item) => (
+                      <div key={`bottom-${item.module_id}`} className="flex items-start justify-between gap-3 text-xs">
+                        <div className="min-w-0">
+                          <p className="font-bold text-[#0B1B3D] dark:text-slate-200 truncate">{item.module_code || "N/A"}</p>
+                          <p className="text-slate-500 dark:text-slate-400 truncate">{item.module_title || "Untitled module"}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-extrabold text-[#0B1B3D] dark:text-slate-200">{item.completion_percent}%</p>
+                          <p className="text-slate-400 dark:text-slate-500">
+                            {item.completed_trainees}/{item.total_trainees}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </div>

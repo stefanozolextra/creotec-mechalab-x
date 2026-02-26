@@ -2721,5 +2721,5 @@ app.post("/api/me/simulations/:simulationId/complete", requireAuth, async (req, 
     }
 });
 
-const PORT = process.env.PORT || 4000;
+const PORT = Number(process.env.PORT || 4000);
 app.listen(PORT, () => console.log(`✅ API running on http://localhost:${PORT}`));
