@@ -4,8 +4,9 @@ import { useNavigate } from "react-router-dom";
 import { listAdminBatches } from "../../api/adminBatches";
 import { getAdminDashboard } from "../../api/adminDashboard";
 import { ApiError } from "../../api/http";
+import { formatAdminFeedTime, toAdminFeedText } from "../../utils/adminFeed";
 import type { AdminBatchItem } from "../../types/adminBatch";
-import type { AdminDashboardFeedItem, AdminDashboardResponse } from "../../types/adminDashboard";
+import type { AdminDashboardResponse } from "../../types/adminDashboard";
 
 const barColors = ["#93C5FD", "#5EEAD4", "#0B1B3D", "#60A5FA", "#C084FC", "#4ADE80"];
 const SELECTED_BATCH_STORAGE_KEY = "mechalabx.selectedBatchCode";
@@ -64,23 +65,6 @@ const toErrorMessage = (error: unknown): string => {
   if (error instanceof ApiError) return error.message;
   if (error instanceof Error && error.message) return error.message;
   return "Failed to load dashboard.";
-};
-
-const formatFeedTime = (value: string): string => {
-  const asDate = new Date(value);
-  if (Number.isNaN(asDate.getTime())) return "Unknown time";
-  return asDate.toLocaleString([], {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
-
-const toFeedText = (item: AdminDashboardFeedItem): string => {
-  const batchLabel = item.batch_code ? `[${item.batch_code}] ` : "";
-  return `${batchLabel}${item.message}`;
 };
 
 export default function OverviewPage() {
@@ -310,10 +294,10 @@ export default function OverviewPage() {
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-[#0B1B3D] dark:text-slate-200 leading-tight transition-colors">
-                      {toFeedText(note)}
+                      {toAdminFeedText(note)}
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 transition-colors">
-                      {formatFeedTime(note.occurred_at)}
+                      {formatAdminFeedTime(note.occurred_at)}
                       {note.actor ? ` • ${note.actor}` : ""}
                     </p>
                   </div>
@@ -342,10 +326,10 @@ export default function OverviewPage() {
                   />
                   <div>
                     <p className="text-sm font-semibold text-[#0B1B3D] dark:text-slate-200 leading-tight transition-colors">
-                      {toFeedText(act)}
+                      {toAdminFeedText(act)}
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 transition-colors">
-                      {formatFeedTime(act.occurred_at)}
+                      {formatAdminFeedTime(act.occurred_at)}
                       {act.actor ? ` • ${act.actor}` : ""}
                     </p>
                   </div>

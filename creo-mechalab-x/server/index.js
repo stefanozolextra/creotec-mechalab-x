@@ -1043,6 +1043,145 @@ app.get("/api/admin/dashboard", async (req, res) => {
     }
 });
 
+/*
+curl -H "Authorization: Bearer <ADMIN_JWT>" "http://localhost:4000/api/admin/activity-logs"
+curl -H "Authorization: Bearer <ADMIN_JWT>" "http://localhost:4000/api/admin/activity-logs?batch_code=2026-CTT03"
+curl -H "Authorization: Bearer <ADMIN_JWT>" "http://localhost:4000/api/admin/activity-logs?before=2026-02-26T00:00:00.000Z"
+curl -H "Authorization: Bearer <ADMIN_JWT>" "http://localhost:4000/api/admin/activity-logs?batch_code=BAD-CODE" # 400 {"error":"Invalid batch_code format"}
+*/
+app.get("/api/admin/activity-logs", async (req, res) => {
+    const rawBatchCode = Array.isArray(req.query.batch_code) ? req.query.batch_code[0] : req.query.batch_code;
+    const batchCode = typeof rawBatchCode === "string" ? rawBatchCode.trim().toUpperCase() : "";
+    if (batchCode && !validateBatchCodeFormat(batchCode)) {
+        return res.status(400).json({ error: "Invalid batch_code format" });
+    }
+    const scopedBatchCode = batchCode || null;
+
+    const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+    let limit = 50;
+    if (rawLimit !== undefined) {
+        const parsed = Number(rawLimit);
+        if (Number.isFinite(parsed)) {
+            limit = Math.trunc(parsed);
+        }
+    }
+    limit = Math.max(1, Math.min(limit, 200));
+
+    const rawBefore = Array.isArray(req.query.before) ? req.query.before[0] : req.query.before;
+    let beforeCursor = null;
+    if (typeof rawBefore === "string" && rawBefore.trim()) {
+        const parsed = new Date(rawBefore);
+        if (Number.isNaN(parsed.getTime())) {
+            return res.status(400).json({ error: "Invalid before cursor" });
+        }
+        beforeCursor = parsed.toISOString();
+    }
+
+    try {
+        const result = await pool.query(
+            `SELECT type, occurred_at, batch_code, actor, message, meta
+             FROM (
+               -- Mapping from audit schema:
+               -- batch_exports.exported_at and system_resets.reset_at -> occurred_at,
+               -- exported_by_account_id/reset_by_account_id -> actor via accounts.login_email,
+               -- batch_code is already stored directly in both audit tables.
+               SELECT
+                 'batch_export'::TEXT AS type,
+                 be.exported_at AS occurred_at,
+                 COALESCE(b.batch_code, be.batch_code) AS batch_code,
+                 actor.login_email AS actor,
+                 CONCAT(
+                   'Exported ',
+                   be.rows_exported,
+                   ' trainee record',
+                   CASE WHEN be.rows_exported = 1 THEN '' ELSE 's' END,
+                   ' (',
+                   be.file_name,
+                   ').'
+                 ) AS message,
+                 jsonb_build_object(
+                   'rows_exported', be.rows_exported,
+                   'file_name', be.file_name
+                 ) AS meta
+               FROM batch_exports be
+               LEFT JOIN accounts actor ON actor.account_id = be.exported_by_account_id
+               LEFT JOIN batches b ON b.batch_code = be.batch_code
+
+               UNION ALL
+
+               SELECT
+                 'system_reset'::TEXT AS type,
+                 sr.reset_at AS occurred_at,
+                 COALESCE(b.batch_code, sr.batch_code) AS batch_code,
+                 actor.login_email AS actor,
+                 CONCAT(
+                   'System reset removed ',
+                   sr.deleted_trainees,
+                   ' trainee',
+                   CASE WHEN sr.deleted_trainees = 1 THEN '' ELSE 's' END,
+                   ', ',
+                   sr.deleted_trainee_accounts,
+                   ' account',
+                   CASE WHEN sr.deleted_trainee_accounts = 1 THEN '' ELSE 's' END,
+                   ', ',
+                   sr.deleted_progress_rows,
+                   ' progress row',
+                   CASE WHEN sr.deleted_progress_rows = 1 THEN '' ELSE 's' END,
+                   ', and ',
+                   sr.deleted_batches,
+                   ' batch',
+                   CASE WHEN sr.deleted_batches = 1 THEN '' ELSE 'es' END,
+                   CASE WHEN sr.forced THEN ' (forced).' ELSE '.' END
+                 ) AS message,
+                 jsonb_build_object(
+                   'deleted_progress_rows', sr.deleted_progress_rows,
+                   'deleted_trainee_accounts', sr.deleted_trainee_accounts,
+                   'deleted_trainees', sr.deleted_trainees,
+                   'deleted_batches', sr.deleted_batches,
+                   'forced', sr.forced
+                 ) AS meta
+               FROM system_resets sr
+               LEFT JOIN accounts actor ON actor.account_id = sr.reset_by_account_id
+               LEFT JOIN batches b ON b.batch_code = sr.batch_code
+             ) events
+             WHERE ($1::TEXT IS NULL OR events.batch_code = $1)
+               AND ($2::TIMESTAMPTZ IS NULL OR events.occurred_at < $2)
+             ORDER BY events.occurred_at DESC
+             LIMIT $3`,
+            [scopedBatchCode, beforeCursor, limit]
+        );
+
+        const items = result.rows.map((row) => {
+            const occurredAt = row.occurred_at ? new Date(row.occurred_at).toISOString() : new Date().toISOString();
+            const normalizedType = row.type === "system_reset" ? "system_reset" : row.type === "trainee_created" ? "trainee_created" : "batch_export";
+            const meta = row.meta && typeof row.meta === "object" ? row.meta : undefined;
+            return {
+                type: normalizedType,
+                occurred_at: occurredAt,
+                batch_code: row.batch_code || null,
+                actor: row.actor || null,
+                message: row.message || "",
+                ...(meta ? { meta } : {}),
+            };
+        });
+
+        return res.json({
+            generated_at: new Date().toISOString(),
+            scope: {
+                batch_code: scopedBatchCode,
+            },
+            paging: {
+                limit,
+                next_before: items.length < limit ? null : items[items.length - 1].occurred_at,
+            },
+            items,
+        });
+    } catch (error) {
+        console.error("Admin activity logs endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 app.get("/api/admin/batches", async (req, res) => {
     try {
         const result = await pool.query(
