@@ -45,13 +45,20 @@ const toNumber = (value: NumericLike | undefined): number => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-export const getAdminDashboard = async (batchCode?: string): Promise<AdminDashboardResponse> => {
+type GetAdminDashboardOptions = {
+  signal?: AbortSignal;
+};
+
+export const getAdminDashboard = async (
+  batchCode?: string,
+  options: GetAdminDashboardOptions = {},
+): Promise<AdminDashboardResponse> => {
   const normalizedBatchCode = typeof batchCode === "string" ? batchCode.trim().toUpperCase() : "";
   const query = normalizedBatchCode
     ? `?${new URLSearchParams({ batch_code: normalizedBatchCode }).toString()}`
     : "";
 
-  const response = await requestJson<RawAdminDashboardResponse>(`/api/admin/dashboard${query}`);
+  const response = await requestJson<RawAdminDashboardResponse>(`/api/admin/dashboard${query}`, { signal: options.signal });
   const points = (response.chart?.points ?? []).map((point) => ({
     module_id: toNumber(point.module_id),
     module_code: point.module_code ?? "",

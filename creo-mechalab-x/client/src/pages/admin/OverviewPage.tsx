@@ -1,16 +1,19 @@
 import { Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { getAdminActivityLogs } from "../../api/adminActivityLogs";
 import { listAdminBatches } from "../../api/adminBatches";
 import { getAdminDashboard } from "../../api/adminDashboard";
 import { ApiError } from "../../api/http";
 import { formatAdminFeedTime, toAdminFeedText } from "../../utils/adminFeed";
+import type { AdminActivityLogItem } from "../../types/adminActivityLogs";
 import type { AdminBatchItem } from "../../types/adminBatch";
 import type { AdminDashboardResponse } from "../../types/adminDashboard";
 
 const barColors = ["#93C5FD", "#5EEAD4", "#0B1B3D", "#60A5FA", "#C084FC", "#4ADE80"];
 const SELECTED_BATCH_STORAGE_KEY = "mechalabx.selectedBatchCode";
 const DASHBOARD_SCOPE_ALL_KEY = "__ALL__";
+const DASHBOARD_FEED_LIMIT = 8;
 
 const feedIconsByType: Record<string, string> = {
   batch_export: "📤",
@@ -70,18 +73,22 @@ const toErrorMessage = (error: unknown): string => {
 export default function OverviewPage() {
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<AdminDashboardResponse>(emptyDashboard);
+  const [feedItems, setFeedItems] = useState<AdminActivityLogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [feedError, setFeedError] = useState<string | null>(null);
   const [batchOptions, setBatchOptions] = useState<AdminBatchItem[]>([]);
   const [selectedBatchCode, setSelectedBatchCode] = useState<string>(() => readStoredBatchCode());
   const isMountedRef = useRef(false);
   const hasLoadedBatchesRef = useRef(false);
   const lastDashboardRequestKeyRef = useRef<string | null>(null);
+  const dashboardLoadControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      dashboardLoadControllerRef.current?.abort();
     };
   }, []);
 
@@ -117,25 +124,43 @@ export default function OverviewPage() {
     if (lastDashboardRequestKeyRef.current === requestKey) return;
     lastDashboardRequestKeyRef.current = requestKey;
 
+    dashboardLoadControllerRef.current?.abort();
+    const controller = new AbortController();
+    dashboardLoadControllerRef.current = controller;
+
     const load = async () => {
       setLoading(true);
       setError(null);
+      setFeedError(null);
 
-      try {
-        const response = await getAdminDashboard(selectedBatchCode || undefined);
-        if (!isMountedRef.current) return;
-        if (lastDashboardRequestKeyRef.current !== requestKey) return;
-        setDashboard(response);
-      } catch (loadError) {
-        if (!isMountedRef.current) return;
-        if (lastDashboardRequestKeyRef.current !== requestKey) return;
+      const [dashboardResult, activityLogsResult] = await Promise.allSettled([
+        getAdminDashboard(selectedBatchCode || undefined, { signal: controller.signal }),
+        getAdminActivityLogs({
+          batchCode: selectedBatchCode || undefined,
+          limit: DASHBOARD_FEED_LIMIT,
+          signal: controller.signal,
+        }),
+      ]);
+
+      if (!isMountedRef.current) return;
+      if (controller.signal.aborted) return;
+      if (lastDashboardRequestKeyRef.current !== requestKey) return;
+
+      if (dashboardResult.status === "fulfilled") {
+        setDashboard(dashboardResult.value);
+      } else {
         setDashboard(emptyDashboard);
-        setError(toErrorMessage(loadError));
-      } finally {
-        if (!isMountedRef.current) return;
-        if (lastDashboardRequestKeyRef.current !== requestKey) return;
-        setLoading(false);
+        setError(toErrorMessage(dashboardResult.reason));
       }
+
+      if (activityLogsResult.status === "fulfilled") {
+        setFeedItems(activityLogsResult.value.items.slice(0, DASHBOARD_FEED_LIMIT));
+      } else {
+        setFeedItems([]);
+        setFeedError(toErrorMessage(activityLogsResult.reason));
+      }
+
+      setLoading(false);
     };
 
     void load();
@@ -282,12 +307,17 @@ export default function OverviewPage() {
             Notifications
           </h3>
           <div className="flex-1 overflow-y-auto space-y-5 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full">
-            {dashboard.notifications.length === 0 ? (
+            {feedError && !loading && (
+              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                Activity feed unavailable.
+              </p>
+            )}
+            {feedItems.length === 0 ? (
               <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">
-                {loading ? "Loading notifications..." : "No recent notifications."}
+                {loading ? "Loading notifications..." : feedError ? "Feed unavailable." : "No recent notifications."}
               </p>
             ) : (
-              dashboard.notifications.map((note, i) => (
+              feedItems.map((note, i) => (
                 <div key={`${note.type}-${note.occurred_at}-${i}`} className="flex gap-4 items-start">
                   <div className="text-lg bg-slate-50 dark:bg-slate-800 p-2 rounded-full border border-slate-100 dark:border-slate-700 shrink-0 transition-colors">
                     {feedIconsByType[note.type] || "🔔"}
@@ -312,12 +342,17 @@ export default function OverviewPage() {
             Activities
           </h3>
           <div className="flex-1 overflow-y-auto space-y-5 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full">
-            {dashboard.activities.length === 0 ? (
+            {feedError && !loading && (
+              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
+                Activity feed unavailable.
+              </p>
+            )}
+            {feedItems.length === 0 ? (
               <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">
-                {loading ? "Loading activities..." : "No recent activities."}
+                {loading ? "Loading activities..." : feedError ? "Feed unavailable." : "No recent activities."}
               </p>
             ) : (
-              dashboard.activities.map((act, i) => (
+              feedItems.map((act, i) => (
                 <div key={`${act.type}-${act.occurred_at}-${i}`} className="flex gap-4 items-start">
                   <div
                     className={`w-8 h-8 rounded-full shadow-inner border border-white dark:border-[#1E293B] shrink-0 ${
