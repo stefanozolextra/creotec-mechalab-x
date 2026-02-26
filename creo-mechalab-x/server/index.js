@@ -29,6 +29,91 @@ const BATCH_CODE_REGEX = /^\d{4}-(CTT|IMM)\d{2}$/;
 const RESEND_CREDENTIALS_COOLDOWN_MS = 5 * 60 * 1000;
 let hasLoggedMissingSmtpConfig = false;
 
+function parsePositiveIntEnv(name, fallback) {
+    const raw = process.env[name];
+    if (raw == null || String(raw).trim() === "") return fallback;
+    const parsed = Number(raw);
+    if (!Number.isInteger(parsed) || parsed < 1) return fallback;
+    return parsed;
+}
+
+const DASHBOARD_CACHE_TTL_MS = parsePositiveIntEnv("DASHBOARD_CACHE_TTL_MS", 10_000);
+const ACTIVITYLOGS_CACHE_TTL_MS = parsePositiveIntEnv("ACTIVITYLOGS_CACHE_TTL_MS", 10_000);
+const MAX_CACHE_ENTRIES = parsePositiveIntEnv("MAX_CACHE_ENTRIES", 100);
+
+const adminDashboardCache = new Map();
+const adminActivityLogsCache = new Map();
+const adminDashboardInflight = new Map();
+const adminActivityLogsInflight = new Map();
+
+function cacheGet(map, key) {
+    const entry = map.get(key);
+    if (!entry) return null;
+    if (entry.expiresAt <= Date.now()) {
+        map.delete(key);
+        return null;
+    }
+    return entry.value;
+}
+
+function cachePrune(map, maxEntries) {
+    const now = Date.now();
+    for (const [key, entry] of map.entries()) {
+        if (!entry || entry.expiresAt <= now) {
+            map.delete(key);
+        }
+    }
+
+    while (map.size > maxEntries) {
+        const oldestKey = map.keys().next().value;
+        if (oldestKey === undefined) break;
+        map.delete(oldestKey);
+    }
+}
+
+function cacheSet(map, key, value, ttlMs) {
+    const safeTtl = Number.isFinite(Number(ttlMs)) && Number(ttlMs) > 0 ? Number(ttlMs) : 1;
+    const expiresAt = Date.now() + safeTtl;
+    if (map.has(key)) {
+        map.delete(key);
+    }
+    map.set(key, { expiresAt, value });
+    cachePrune(map, MAX_CACHE_ENTRIES);
+}
+
+function setCacheHeaders(res, status, key) {
+    res.setHeader("X-Cache", status);
+    if (process.env.NODE_ENV !== "production") {
+        res.setHeader("X-Cache-Key", key);
+    }
+}
+
+function getOrCreateInflight(inflightMap, key, createPromise) {
+    const existing = inflightMap.get(key);
+    if (existing) return existing;
+
+    let promise;
+    promise = (async () => {
+        try {
+            return await createPromise();
+        } finally {
+            if (inflightMap.get(key) === promise) {
+                inflightMap.delete(key);
+            }
+        }
+    })();
+
+    inflightMap.set(key, promise);
+    return promise;
+}
+
+function invalidateAdminCaches() {
+    adminDashboardCache.clear();
+    adminActivityLogsCache.clear();
+    adminDashboardInflight.clear();
+    adminActivityLogsInflight.clear();
+}
+
 function normalizeEmail(value) {
     return String(value || "")
         .trim()
@@ -879,6 +964,7 @@ async function completeSimulationForTrainee(traineeId, simulationId, bestScore) 
            last_accessed_at = NOW()`,
         [traineeId, simulationId, bestScore]
     );
+    invalidateAdminCaches();
 
     return { ok: true };
 }
@@ -968,6 +1054,12 @@ app.get("/api/admin/auth-check", (req, res) => {
     });
 });
 
+/*
+Cache verification:
+curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/dashboard" # first call X-Cache: MISS
+curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/dashboard" # repeated call X-Cache: HIT
+After export/reset mutation, call dashboard again and X-Cache should be MISS.
+*/
 app.get("/api/admin/dashboard", async (req, res) => {
     const rawBatchCode = Array.isArray(req.query.batch_code) ? req.query.batch_code[0] : req.query.batch_code;
     const batchCode = typeof rawBatchCode === "string" ? rawBatchCode.trim().toUpperCase() : "";
@@ -976,138 +1068,153 @@ app.get("/api/admin/dashboard", async (req, res) => {
     }
 
     const scopedBatchCode = batchCode || null;
+    const cacheKey = `admin_dashboard|batch:${scopedBatchCode || "ALL"}`;
+    const cachedPayload = cacheGet(adminDashboardCache, cacheKey);
+    if (cachedPayload) {
+        setCacheHeaders(res, "HIT", cacheKey);
+        return res.json(cachedPayload);
+    }
+
+    setCacheHeaders(res, "MISS", cacheKey);
 
     try {
-        const summaryResult = await pool.query(
-            `WITH scoped_trainees AS (
-               SELECT t.trainee_id
-               FROM trainees t
-               JOIN batches b ON b.batch_id = t.batch_id
-               WHERE ($1::TEXT IS NULL OR b.batch_code = $1)
-             ),
-             scoped_module_rows AS (
-               SELECT
-                 COALESCE(v.required_sims, 0)::INT AS required_sims,
-                 COALESCE(v.completed_required_sims, 0)::INT AS completed_required_sims
-               FROM v_trainee_module_status v
-               JOIN scoped_trainees st ON st.trainee_id = v.trainee_id
-             ),
-             summary_stats AS (
-               SELECT
-                 COALESCE((SELECT COUNT(*)::INT FROM scoped_trainees), 0)::INT AS total_trainees,
-                 COALESCE((SELECT COUNT(*)::INT FROM modules), 0)::INT AS total_modules,
-                 COALESCE(
-                   (
-                     SELECT COUNT(*) FILTER (
-                       -- Completion rule: a module row is complete when all required sims are complete.
-                       -- This matches the v_trainee_module_status view semantics and stays resilient
-                       -- even if module_status label strings change in the future.
-                       WHERE completed_required_sims >= required_sims
+        const payload = await getOrCreateInflight(adminDashboardInflight, cacheKey, async () => {
+            const summaryResult = await pool.query(
+                `WITH scoped_trainees AS (
+                   SELECT t.trainee_id
+                   FROM trainees t
+                   JOIN batches b ON b.batch_id = t.batch_id
+                   WHERE ($1::TEXT IS NULL OR b.batch_code = $1)
+                 ),
+                 scoped_module_rows AS (
+                   SELECT
+                     COALESCE(v.required_sims, 0)::INT AS required_sims,
+                     COALESCE(v.completed_required_sims, 0)::INT AS completed_required_sims
+                   FROM v_trainee_module_status v
+                   JOIN scoped_trainees st ON st.trainee_id = v.trainee_id
+                 ),
+                 summary_stats AS (
+                   SELECT
+                     COALESCE((SELECT COUNT(*)::INT FROM scoped_trainees), 0)::INT AS total_trainees,
+                     COALESCE((SELECT COUNT(*)::INT FROM modules), 0)::INT AS total_modules,
+                     COALESCE(
+                       (
+                         SELECT COUNT(*) FILTER (
+                           -- Completion rule: a module row is complete when all required sims are complete.
+                           -- This matches the v_trainee_module_status view semantics and stays resilient
+                           -- even if module_status label strings change in the future.
+                           WHERE completed_required_sims >= required_sims
+                         )::INT
+                         FROM scoped_module_rows
+                       ),
+                       0
+                     )::INT AS completed_module_rows,
+                     COALESCE((SELECT COUNT(*)::INT FROM scoped_module_rows), 0)::INT AS total_module_rows
+                 )
+                 SELECT
+                   summary_stats.total_trainees,
+                   summary_stats.total_modules,
+                   summary_stats.completed_module_rows,
+                   summary_stats.total_module_rows,
+                   CASE
+                     WHEN summary_stats.total_module_rows = 0 THEN 0
+                     ELSE ROUND(
+                       (100.0 * summary_stats.completed_module_rows::NUMERIC) / summary_stats.total_module_rows::NUMERIC
                      )::INT
-                     FROM scoped_module_rows
-                   ),
-                   0
-                 )::INT AS completed_module_rows,
-                 COALESCE((SELECT COUNT(*)::INT FROM scoped_module_rows), 0)::INT AS total_module_rows
-             )
-             SELECT
-               summary_stats.total_trainees,
-               summary_stats.total_modules,
-               summary_stats.completed_module_rows,
-               summary_stats.total_module_rows,
-               CASE
-                 WHEN summary_stats.total_module_rows = 0 THEN 0
-                 ELSE ROUND(
-                   (100.0 * summary_stats.completed_module_rows::NUMERIC) / summary_stats.total_module_rows::NUMERIC
-                 )::INT
-               END AS progress_percent
-             FROM summary_stats`,
-            [scopedBatchCode]
-        );
+                   END AS progress_percent
+                 FROM summary_stats`,
+                [scopedBatchCode]
+            );
 
-        const chartResult = await pool.query(
-            `WITH scoped_trainees AS (
-               SELECT t.trainee_id
-               FROM trainees t
-               JOIN batches b ON b.batch_id = t.batch_id
-               WHERE ($1::TEXT IS NULL OR b.batch_code = $1)
-             ),
-             module_completion AS (
-               SELECT
-                 v.module_id,
-                 COUNT(*)::INT AS total_trainees,
-                 COUNT(*) FILTER (
-                   -- Completion rule mirrors summary above: required sims fully completed.
-                   WHERE COALESCE(v.completed_required_sims, 0) >= COALESCE(v.required_sims, 0)
-                 )::INT AS completed_trainees
-               FROM v_trainee_module_status v
-               JOIN scoped_trainees st ON st.trainee_id = v.trainee_id
-               GROUP BY v.module_id
-             )
-             SELECT
-               m.module_id::INT AS module_id,
-               m.module_code,
-               m.title AS module_title,
-               COALESCE(mc.completed_trainees, 0)::INT AS completed_trainees,
-               COALESCE(mc.total_trainees, 0)::INT AS total_trainees,
-               CASE
-                 WHEN COALESCE(mc.total_trainees, 0) = 0 THEN 0
-                 ELSE ROUND((100.0 * mc.completed_trainees::NUMERIC) / mc.total_trainees::NUMERIC)::INT
-               END AS completion_percent
-             FROM modules m
-             LEFT JOIN module_completion mc ON mc.module_id = m.module_id
-             ORDER BY COALESCE(m.order_no, 2147483647), m.module_id`,
-            [scopedBatchCode]
-        );
+            const chartResult = await pool.query(
+                `WITH scoped_trainees AS (
+                   SELECT t.trainee_id
+                   FROM trainees t
+                   JOIN batches b ON b.batch_id = t.batch_id
+                   WHERE ($1::TEXT IS NULL OR b.batch_code = $1)
+                 ),
+                 module_completion AS (
+                   SELECT
+                     v.module_id,
+                     COUNT(*)::INT AS total_trainees,
+                     COUNT(*) FILTER (
+                       -- Completion rule mirrors summary above: required sims fully completed.
+                       WHERE COALESCE(v.completed_required_sims, 0) >= COALESCE(v.required_sims, 0)
+                     )::INT AS completed_trainees
+                   FROM v_trainee_module_status v
+                   JOIN scoped_trainees st ON st.trainee_id = v.trainee_id
+                   GROUP BY v.module_id
+                 )
+                 SELECT
+                   m.module_id::INT AS module_id,
+                   m.module_code,
+                   m.title AS module_title,
+                   COALESCE(mc.completed_trainees, 0)::INT AS completed_trainees,
+                   COALESCE(mc.total_trainees, 0)::INT AS total_trainees,
+                   CASE
+                     WHEN COALESCE(mc.total_trainees, 0) = 0 THEN 0
+                     ELSE ROUND((100.0 * mc.completed_trainees::NUMERIC) / mc.total_trainees::NUMERIC)::INT
+                   END AS completion_percent
+                 FROM modules m
+                 LEFT JOIN module_completion mc ON mc.module_id = m.module_id
+                 ORDER BY COALESCE(m.order_no, 2147483647), m.module_id`,
+                [scopedBatchCode]
+            );
 
-        const activityFeed = await fetchAdminActivityLogs({ batchCode: scopedBatchCode, limit: 8 });
+            const activityFeed = await fetchAdminActivityLogs({ batchCode: scopedBatchCode, limit: 8 });
 
-        const summaryRow = summaryResult.rows[0] || {};
-        const completedModuleRows = Number(summaryRow.completed_module_rows) || 0;
-        const totalModuleRows = Number(summaryRow.total_module_rows) || 0;
-        const progressPercent = Number(summaryRow.progress_percent) || 0;
+            const summaryRow = summaryResult.rows[0] || {};
+            const completedModuleRows = Number(summaryRow.completed_module_rows) || 0;
+            const totalModuleRows = Number(summaryRow.total_module_rows) || 0;
+            const progressPercent = Number(summaryRow.progress_percent) || 0;
 
-        const points = chartResult.rows.map((row) => {
-            const completedTrainees = Number(row.completed_trainees) || 0;
-            const totalTrainees = Number(row.total_trainees) || 0;
-            const completionPercent =
-                totalTrainees === 0 ? 0 : Number.isFinite(Number(row.completion_percent)) ? Number(row.completion_percent) : 0;
+            const points = chartResult.rows.map((row) => {
+                const completedTrainees = Number(row.completed_trainees) || 0;
+                const totalTrainees = Number(row.total_trainees) || 0;
+                const completionPercent =
+                    totalTrainees === 0 ? 0 : Number.isFinite(Number(row.completion_percent)) ? Number(row.completion_percent) : 0;
 
-            return {
-                module_id: Number(row.module_id) || 0,
-                module_code: row.module_code || "",
-                module_title: row.module_title || "",
-                completed_trainees: completedTrainees,
-                total_trainees: totalTrainees,
-                completion_percent: completionPercent,
+                return {
+                    module_id: Number(row.module_id) || 0,
+                    module_code: row.module_code || "",
+                    module_title: row.module_title || "",
+                    completed_trainees: completedTrainees,
+                    total_trainees: totalTrainees,
+                    completion_percent: completionPercent,
+                };
+            });
+
+            const events = activityFeed.items.map((item) => ({
+                type: item.type || "event",
+                occurred_at: item.occurred_at,
+                batch_code: item.batch_code,
+                actor: item.actor,
+                message: item.message,
+            }));
+
+            const responseBody = {
+                generated_at: new Date().toISOString(),
+                scope: { batch_code: scopedBatchCode },
+                summary: {
+                    total_trainees: Number(summaryRow.total_trainees) || 0,
+                    total_modules: Number(summaryRow.total_modules) || 0,
+                    progress_percent: progressPercent,
+                    completed_module_rows: completedModuleRows,
+                    total_module_rows: totalModuleRows,
+                },
+                chart: {
+                    kind: "module_completion_percent",
+                    points,
+                },
+                notifications: events,
+                activities: events,
             };
+
+            cacheSet(adminDashboardCache, cacheKey, responseBody, DASHBOARD_CACHE_TTL_MS);
+            return responseBody;
         });
 
-        const events = activityFeed.items.map((item) => ({
-            type: item.type || "event",
-            occurred_at: item.occurred_at,
-            batch_code: item.batch_code,
-            actor: item.actor,
-            message: item.message,
-        }));
-
-        return res.json({
-            generated_at: new Date().toISOString(),
-            scope: { batch_code: scopedBatchCode },
-            summary: {
-                total_trainees: Number(summaryRow.total_trainees) || 0,
-                total_modules: Number(summaryRow.total_modules) || 0,
-                progress_percent: progressPercent,
-                completed_module_rows: completedModuleRows,
-                total_module_rows: totalModuleRows,
-            },
-            chart: {
-                kind: "module_completion_percent",
-                points,
-            },
-            notifications: events,
-            activities: events,
-        });
+        return res.json(payload);
     } catch (error) {
         console.error("Admin dashboard endpoint failed:", error);
         return res.status(500).json({ error: "Internal server error" });
@@ -1115,10 +1222,11 @@ app.get("/api/admin/dashboard", async (req, res) => {
 });
 
 /*
-curl -H "Authorization: Bearer <ADMIN_JWT>" "http://localhost:4000/api/admin/activity-logs"
-curl -H "Authorization: Bearer <ADMIN_JWT>" "http://localhost:4000/api/admin/activity-logs?batch_code=2026-CTT03"
-curl -H "Authorization: Bearer <ADMIN_JWT>" "http://localhost:4000/api/admin/activity-logs?before=2026-02-26T00:00:00.000Z"
-curl -H "Authorization: Bearer <ADMIN_JWT>" "http://localhost:4000/api/admin/activity-logs?batch_code=BAD-CODE" # 400 {"error":"Invalid batch_code format"}
+Cache verification:
+curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/activity-logs?limit=8" # MISS then HIT
+curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/activity-logs?limit=8" # repeated call should HIT
+curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/activity-logs?before=2026-02-26T00:00:00.000Z" # cursor page bypasses cache
+curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/activity-logs?batch_code=BAD-CODE" # 400 invalid format
 */
 app.get("/api/admin/activity-logs", async (req, res) => {
     const rawBatchCode = Array.isArray(req.query.batch_code) ? req.query.batch_code[0] : req.query.batch_code;
@@ -1130,11 +1238,50 @@ app.get("/api/admin/activity-logs", async (req, res) => {
 
     const rawBefore = Array.isArray(req.query.before) ? req.query.before[0] : req.query.before;
     const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+    const normalizedLimit = normalizeAdminActivityLogsLimit(rawLimit);
+    const hasBeforeCursor = typeof rawBefore === "string" && rawBefore.trim() !== "";
+    const cacheKey = `admin_activity_logs|batch:${scopedBatchCode || "ALL"}|limit:${normalizedLimit}`;
+
+    if (!hasBeforeCursor) {
+        const cachedPayload = cacheGet(adminActivityLogsCache, cacheKey);
+        if (cachedPayload) {
+            setCacheHeaders(res, "HIT", cacheKey);
+            return res.json(cachedPayload);
+        }
+    }
+
+    setCacheHeaders(res, "MISS", hasBeforeCursor ? `${cacheKey}|before_cursor` : cacheKey);
 
     try {
+        if (!hasBeforeCursor) {
+            const payload = await getOrCreateInflight(adminActivityLogsInflight, cacheKey, async () => {
+                const feed = await fetchAdminActivityLogs({
+                    batchCode: scopedBatchCode,
+                    limit: normalizedLimit,
+                });
+
+                const responseBody = {
+                    generated_at: new Date().toISOString(),
+                    scope: {
+                        batch_code: scopedBatchCode,
+                    },
+                    paging: {
+                        limit: feed.limit,
+                        next_before: feed.next_before,
+                    },
+                    items: feed.items,
+                };
+
+                cacheSet(adminActivityLogsCache, cacheKey, responseBody, ACTIVITYLOGS_CACHE_TTL_MS);
+                return responseBody;
+            });
+
+            return res.json(payload);
+        }
+
         const feed = await fetchAdminActivityLogs({
             batchCode: scopedBatchCode,
-            limit: rawLimit,
+            limit: normalizedLimit,
             before: rawBefore,
         });
 
@@ -1306,6 +1453,7 @@ app.get("/api/admin/trainees/export-csv", async (req, res) => {
              VALUES ($1, $2, $3, $4)`,
             [req.auth.account_id, exportBatchCode, result.rows.length, exportFileName]
         );
+        invalidateAdminCaches();
 
         res.setHeader("Content-Type", "text/csv; charset=utf-8");
         res.setHeader("Content-Disposition", `attachment; filename=\"trainees-${filenameSuffix}.csv\"`);
@@ -1547,6 +1695,7 @@ app.post("/api/admin/system/reset", async (req, res) => {
         const resetAt = resetAuditResult.rows[0]?.reset_at ?? new Date();
 
         await client.query("COMMIT");
+        invalidateAdminCaches();
         return res.json({
             ok: true,
             batch_code: batch.batch_code,
@@ -1763,6 +1912,7 @@ app.post("/api/admin/trainees/import-csv", (req, res) => {
             }
 
             await client.query("COMMIT");
+            invalidateAdminCaches();
             res.json({
                 batch: {
                     batch_id: String(batch.batch_id),
@@ -1827,6 +1977,7 @@ app.delete("/api/admin/batches/:batchId/trainees", async (req, res) => {
         }
 
         await client.query("COMMIT");
+        invalidateAdminCaches();
         res.json({ ok: true, deleted_trainees: purgeResult.deleted });
     } catch (e) {
         try {
@@ -2029,6 +2180,7 @@ app.post("/api/admin/trainees", async (req, res) => {
         }
 
         await client.query("COMMIT");
+        invalidateAdminCaches();
 
         let emailSent = false;
         try {
@@ -2169,6 +2321,7 @@ app.put("/api/admin/trainees/:id", async (req, res) => {
         }
 
         await client.query("COMMIT");
+        invalidateAdminCaches();
         res.json({ item });
     } catch (e) {
         try {
@@ -2234,6 +2387,7 @@ app.patch("/api/admin/trainees/:id/status", async (req, res) => {
         }
 
         await client.query("COMMIT");
+        invalidateAdminCaches();
         res.json({ item });
     } catch (e) {
         try {
@@ -2296,6 +2450,7 @@ app.delete("/api/admin/trainees/:id", async (req, res) => {
         }
 
         await client.query("COMMIT");
+        invalidateAdminCaches();
         return res.json({ ok: true, deleted_trainee_id: traineeId });
     } catch (error) {
         try {
