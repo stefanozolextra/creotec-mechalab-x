@@ -496,7 +496,7 @@ export default function UsersPage() {
           <select
             value={selectedBatch}
             onChange={(event) => setSelectedBatch(event.target.value)}
-            className="py-2.5 px-4 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[160px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-500 shadow-sm cursor-pointer"
+            className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[140px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-500 shadow-sm cursor-pointer"
           >
             <option value="">All Batches</option>
             {batches.map((batch) => (
@@ -507,7 +507,7 @@ export default function UsersPage() {
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-            className="py-2.5 px-4 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[160px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-500 shadow-sm cursor-pointer"
+            className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[130px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-500 shadow-sm cursor-pointer"
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
@@ -532,24 +532,24 @@ export default function UsersPage() {
           ) : (
             <>
               <button onClick={openCreateBatchModal} className="bg-white dark:bg-[#1E293B] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800 px-4 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm">
-                <Layers size={16} aria-hidden="true" /> <span className="hidden 2xl:inline">Create Batch</span>
+                <Layers size={16} aria-hidden="true" /> <span className="hidden xl:inline">Create Batch</span>
               </button>
               <button onClick={openFinalizeModal} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm">
-                <RotateCcw size={16} aria-hidden="true" /> <span className="hidden 2xl:inline">Finalize Batch</span>
+                <RotateCcw size={16} aria-hidden="true" /> <span className="hidden xl:inline">Finalize Batch</span>
               </button>
               {ENABLE_CSV_IMPORT ? (
                 <button onClick={openImportModal} className="bg-white dark:bg-[#1E293B] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800 px-4 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm">
-                  <Upload size={16} aria-hidden="true" /> <span className="hidden 2xl:inline">Import CSV</span>
+                  <Upload size={16} aria-hidden="true" /> <span className="hidden xl:inline">Import CSV</span>
                 </button>
               ) : null}
               <button onClick={() => { void handleExportCsv(); }} disabled={exporting} className="bg-[#1E293B] dark:bg-slate-700 text-white px-4 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm disabled:opacity-50">
-                <Download size={16} aria-hidden="true" /> <span className="hidden 2xl:inline">{exporting ? "Exporting..." : "Export CSV"}</span>
+                <Download size={16} aria-hidden="true" /> <span className="hidden xl:inline">{exporting ? "..." : "Export"}</span>
               </button>
             </>
           )}
 
           <button onClick={openCreateModal} className="bg-[#3B82F6] text-white px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all hover:scale-105 shadow-sm">
-            <Plus size={16} aria-hidden="true" /> Add User
+            <Plus size={16} aria-hidden="true" /> <span className="hidden sm:inline">Add User</span>
           </button>
         </div>
       </div>
@@ -559,28 +559,28 @@ export default function UsersPage() {
         <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
           <table className="w-full text-sm whitespace-nowrap border-collapse">
             <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 transition-colors duration-500 after:content-[''] after:absolute after:bottom-0 after:left-4 after:right-4 after:border-b-2 after:border-slate-100 dark:after:border-slate-700/50">
-              <tr className="text-[12px] uppercase font-extrabold text-[#0B1B3D] dark:text-slate-200 tracking-wider transition-colors duration-500">
-                <th className="px-6 py-6 text-left w-12">
+              <tr className="text-[11px] uppercase font-extrabold text-[#0B1B3D] dark:text-slate-200 tracking-wider transition-colors duration-500">
+                <th className="px-4 py-5 text-left w-10">
                   {/* Custom Checkbox */}
                   <div
                     onClick={handleToggleSelectAll}
-                    className={`w-[20px] h-[20px] rounded-[6px] border-2 flex items-center justify-center cursor-pointer transition-all duration-300 ${allListedSelected
+                    className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center cursor-pointer transition-all duration-300 ${allListedSelected
+                      ? "bg-[#3B82F6] border-[#3B82F6]"
+                      : someListedSelected
                         ? "bg-[#3B82F6] border-[#3B82F6]"
-                        : someListedSelected
-                          ? "bg-[#3B82F6] border-[#3B82F6]"
-                          : "bg-white dark:bg-[#0F172A] border-slate-300 dark:border-slate-600 hover:border-[#3B82F6] dark:hover:border-[#3B82F6]"
+                        : "bg-white dark:bg-[#0F172A] border-slate-300 dark:border-slate-600 hover:border-[#3B82F6] dark:hover:border-[#3B82F6]"
                       } ${(loading || rows.length === 0 || deleting) ? "opacity-50 pointer-events-none" : ""}`}
                   >
-                    {allListedSelected && <Check size={14} className="text-white" strokeWidth={3.5} />}
-                    {!allListedSelected && someListedSelected && <Minus size={14} className="text-white" strokeWidth={3.5} />}
+                    {allListedSelected && <Check size={12} className="text-white" strokeWidth={3.5} />}
+                    {!allListedSelected && someListedSelected && <Minus size={12} className="text-white" strokeWidth={3.5} />}
                   </div>
                 </th>
-                <th className="px-2 py-6 text-left">Name</th>
-                <th className="px-6 py-6 text-left">Email Address</th>
-                <th className="px-6 py-6 text-left">Batch</th>
-                <th className="px-6 py-6 text-left">Progress</th>
-                <th className="px-6 py-6 text-center">Status</th>
-                <th className="px-6 py-6 text-center">Actions</th>
+                <th className="px-2 py-5 text-left">Name</th>
+                <th className="px-3 py-5 text-left">Email Address</th>
+                <th className="px-3 py-5 text-left">Batch</th>
+                <th className="px-3 py-5 text-left">Progress</th>
+                <th className="px-3 py-5 text-center">Status</th>
+                <th className="px-4 py-5 text-center">Actions</th>
               </tr>
             </thead>
 
@@ -596,83 +596,91 @@ export default function UsersPage() {
                     key={row.id}
                     onClick={() => handleToggleSelectOne(row.numericId, !isSelected)}
                     className={`group cursor-pointer select-none transition-all duration-300 border-y border-transparent ${isSelected ? 'bg-blue-50/80 dark:bg-[#3B82F6]/10 !border-blue-200 dark:!border-blue-900/50 relative z-10'
-                        : 'hover:bg-slate-50 dark:hover:bg-white/[0.02] hover:border-slate-200 dark:hover:border-slate-700/50'
+                      : 'hover:bg-slate-50 dark:hover:bg-white/[0.02] hover:border-slate-200 dark:hover:border-slate-700/50'
                       }`}
                   >
-                    <td className="px-6 py-4">
+                    <td className="px-4 py-4">
                       {/* Custom Row Checkbox */}
                       <div
                         onClick={(e) => { e.stopPropagation(); handleToggleSelectOne(row.numericId, !isSelected); }}
-                        className={`w-[20px] h-[20px] rounded-[6px] border-2 flex items-center justify-center cursor-pointer transition-all duration-300 ${isSelected
-                            ? "bg-[#3B82F6] border-[#3B82F6] shadow-sm"
-                            : "bg-white dark:bg-[#0F172A] border-slate-300 dark:border-slate-600 group-hover:border-[#3B82F6]/50"
+                        className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center cursor-pointer transition-all duration-300 ${isSelected
+                          ? "bg-[#3B82F6] border-[#3B82F6] shadow-sm"
+                          : "bg-white dark:bg-[#0F172A] border-slate-300 dark:border-slate-600 group-hover:border-[#3B82F6]/50"
                           } ${deleting ? "opacity-50 pointer-events-none" : ""}`}
                       >
-                        <Check size={14} className={`text-white transition-transform duration-300 ${isSelected ? "scale-100" : "scale-0"}`} strokeWidth={3.5} />
+                        <Check size={12} className={`text-white transition-transform duration-300 ${isSelected ? "scale-100" : "scale-0"}`} strokeWidth={3.5} />
                       </div>
                     </td>
                     <td className="px-2 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold transition-colors duration-500">
+                        <div className="h-9 w-9 rounded-full bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 text-xs font-bold transition-colors duration-500 shrink-0">
                           {row.initials}
                         </div>
                         <div className="leading-tight">
                           <div className="font-extrabold text-[#0B1B3D] dark:text-slate-200 transition-colors">{row.fullName}</div>
-                          <div className="text-xs text-slate-400 font-medium mt-0.5">{row.raw.trainee_code}</div>
+                          <div className="text-[10px] text-slate-400 font-medium mt-0.5">{row.raw.trainee_code}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-slate-500 dark:text-slate-400 font-medium transition-colors duration-500">{row.raw.email}</td>
-                    <td className="px-6 py-4 text-slate-500 dark:text-slate-400 font-bold transition-colors duration-500">{row.raw.batch.batch_code}</td>
-                    <td className="px-6 py-4">
-                      <div className="w-[160px] group-hover:scale-105 transition-transform duration-300">
-                        <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold mb-1.5 uppercase tracking-wider">
+                    <td className="px-3 py-4 text-slate-500 dark:text-slate-400 font-medium text-xs transition-colors duration-500">{row.raw.email}</td>
+                    <td className="px-3 py-4 text-slate-500 dark:text-slate-400 font-bold text-xs transition-colors duration-500">{row.raw.batch.batch_code}</td>
+                    <td className="px-3 py-4">
+                      <div className="w-[120px] 2xl:w-[160px] group-hover:scale-105 transition-transform duration-300">
+                        <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 font-bold mb-1.5 uppercase tracking-wider">
                           <span>{row.raw.progress.label}</span>
                           <span>{row.raw.progress.percent}%</span>
                         </div>
-                        <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden transition-colors duration-500">
+                        <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden transition-colors duration-500">
                           <div className="h-full bg-[#18B9C7] rounded-full transition-all duration-500" style={{ width: `${row.raw.progress.percent}%` }} />
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-center">
-                      <span className={`inline-flex items-center justify-center w-[90px] py-1.5 rounded-full text-[10px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)} transition-colors duration-500`}>
+                    <td className="px-3 py-4 text-center">
+                      <span className={`inline-flex items-center justify-center w-[80px] py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)} transition-colors duration-500`}>
                         {row.displayStatus}
                       </span>
                     </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-2">
+                    <td className="px-4 py-4">
+                      <div className="flex items-center justify-center gap-1.5">
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); openEditModal(row.raw); }}
                           disabled={deleting}
-                          className="bg-[#1E293B] dark:bg-slate-700 text-white px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50"
+                          className="group/btn bg-[#1E293B] dark:bg-slate-700 text-white p-1.5 xl:px-4 xl:py-1.5 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50 overflow-hidden"
+                          title="Edit Trainee"
                         >
-                          <Pencil size={14} aria-hidden="true" /> Edit
+                          <Pencil size={14} aria-hidden="true" className="shrink-0" />
+                          <span className="hidden xl:inline max-w-0 xl:max-w-[50px] opacity-0 xl:opacity-100 transition-all duration-300 whitespace-nowrap">Edit</span>
                         </button>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); void handleToggleStatus(row.raw); }}
                           disabled={isToggling || deleting}
-                          className={`${row.raw.status === "active" ? "bg-[#DC2626] hover:bg-[#B91C1C]" : "bg-[#22C55E] hover:bg-[#16A34A]"} text-white px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50`}
+                          className={`group/btn ${row.raw.status === "active" ? "bg-[#DC2626] hover:bg-[#B91C1C]" : "bg-[#22C55E] hover:bg-[#16A34A]"} text-white p-1.5 xl:px-4 xl:py-1.5 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50 overflow-hidden`}
+                          title={actionLabel}
                         >
-                          <Power size={14} aria-hidden="true" />
-                          {isToggling ? "Saving..." : actionLabel}
+                          <Power size={14} aria-hidden="true" className="shrink-0" />
+                          <span className="hidden xl:inline max-w-0 xl:max-w-[75px] opacity-0 xl:opacity-100 transition-all duration-300 whitespace-nowrap">
+                            {isToggling ? "..." : actionLabel}
+                          </span>
                         </button>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); void handleResendCredentials(row.raw); }}
                           disabled={isResending || deleting}
-                          className="bg-[#2E415F] dark:bg-slate-600 hover:bg-[#243247] dark:hover:bg-slate-500 text-white px-4 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50"
+                          className="group/btn bg-[#2E415F] dark:bg-slate-600 hover:bg-[#243247] dark:hover:bg-slate-500 text-white p-1.5 xl:px-4 xl:py-1.5 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50 overflow-hidden"
+                          title="Resend Credentials"
                         >
-                          <Mail size={14} />
-                          {isResending ? "Sending..." : "Resend"}
+                          <Mail size={14} className="shrink-0" />
+                          <span className="hidden xl:inline max-w-0 xl:max-w-[60px] opacity-0 xl:opacity-100 transition-all duration-300 whitespace-nowrap">
+                            {isResending ? "..." : "Resend"}
+                          </span>
                         </button>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); openDeleteModal([row.numericId]); }}
                           disabled={deleting}
-                          className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-1.5 transition-colors disabled:opacity-50"
+                          className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-1.5 transition-colors disabled:opacity-50 shrink-0"
                           title="Delete"
                         >
                           <Trash2 size={16} aria-hidden="true" />
