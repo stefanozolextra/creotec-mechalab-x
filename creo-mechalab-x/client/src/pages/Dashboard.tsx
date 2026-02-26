@@ -19,7 +19,8 @@ import {
     Crosshair
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import PageTransition from '../components/PageTransition';
+// 1. REPLACED PageTransition with our new CyberTransition
+import CyberTransition from '../components/CyberTransition';
 import { clearAuthRole } from '../utils/auth';
 import { getTraineeDashboard } from '../api/trainees';
 import type {
@@ -266,7 +267,8 @@ const Dashboard = () => {
     };
 
     return (
-        <PageTransition>
+        // 2. Wrapped everything in CyberTransition!
+        <CyberTransition>
             <div className="min-h-screen w-full overflow-x-hidden bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white pb-8 relative transition-colors duration-300 z-0">
 
                 {/* GAME HUD GRID BACKGROUND */}
@@ -331,7 +333,7 @@ const Dashboard = () => {
 
                 <main className="max-w-7xl mx-auto p-3 sm:p-6 flex flex-col md:grid md:grid-cols-12 gap-4 sm:gap-6 lg:gap-8 mt-2 sm:mt-4">
 
-                    {/* MODULES TIMELINE LIST - Spans 7 cols on tablet, 8 on desktop */}
+                    {/* MODULES TIMELINE LIST */}
                     <div className="md:col-span-7 xl:col-span-8 relative">
 
                         <div className="flex items-center justify-between mb-4 sm:mb-6 border-b border-slate-300 dark:border-slate-800 pb-2">
@@ -447,7 +449,7 @@ const Dashboard = () => {
                                                 </div>
                                             </div>
 
-                                            {/* Mobile Accordion - Hidden at 'md' breakpoint and above */}
+                                            {/* Mobile Accordion */}
                                             {isSelected && (
                                                 <div className="px-3 pb-3 md:hidden animate-in fade-in slide-in-from-top-2 duration-300">
                                                     <div className="border-t border-dashed border-slate-300 dark:border-slate-700 pt-3 mt-1">
@@ -483,7 +485,7 @@ const Dashboard = () => {
                         </div>
                     </div>
 
-                    {/* SIDE PANEL DETAILS (Hidden on mobile, Visible on tablets/desktop) */}
+                    {/* SIDE PANEL DETAILS (Hidden on mobile) */}
                     <div className="hidden md:block md:col-span-5 xl:col-span-4">
                         <div className="sticky top-24 z-10">
 
@@ -635,7 +637,7 @@ const Dashboard = () => {
                     100% { top: 100%; opacity: 0; }
                 }
             `}} />
-        </PageTransition>
+        </CyberTransition>
     );
 };
 

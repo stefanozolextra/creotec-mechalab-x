@@ -1,10 +1,12 @@
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, Loader2, Play, RotateCcw, Zap, Moon, Sun } from 'lucide-react';
+// Added AlertTriangle to the imports
+import { ArrowLeft, CheckCircle2, Loader2, Play, RotateCcw, Zap, Moon, Sun, AlertTriangle } from 'lucide-react';
 import { Stage, Layer, Rect, Text, Group } from 'react-konva';
 import { useState, useEffect, useRef } from 'react';
-import PageTransition from '../components/PageTransition';
+import CyberTransition from '../components/CyberTransition';
 import PortraitGuard from '../components/PortraitGuard';
 import { completeSimulation, getTraineeDashboard } from '../api/trainees';
+import type { RectConfig } from 'konva/lib/shapes/Rect'; // Imported type for strict typescript
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
     if (error instanceof Error && error.message) return error.message;
@@ -124,8 +126,10 @@ const SimulationView = () => {
                 setCompletionLookupError(getErrorMessage(error, 'Unable to verify completion status.'));
                 setIsAlreadyCompleted(false);
             } finally {
-                if (!isMountedRef.current || controller.signal.aborted) return;
-                setIsCheckingCompletion(false);
+                // Fixed: Removed unsafe `return` statement from finally block
+                if (isMountedRef.current && !controller.signal.aborted) {
+                    setIsCheckingCompletion(false);
+                }
             }
         };
 
@@ -160,19 +164,21 @@ const SimulationView = () => {
             if (!isMountedRef.current) return;
             setCompleteError(getErrorMessage(error, 'Failed to complete this simulation.'));
         } finally {
-            if (!isMountedRef.current || controller.signal.aborted) return;
-            setIsCompleting(false);
+            // Fixed: Removed unsafe `return` statement from finally block
+            if (isMountedRef.current && !controller.signal.aborted) {
+                setIsCompleting(false);
+            }
         }
     };
 
     // Konva styling based on theme
     const strokeColor = isDarkMode ? '#334155' : '#cbd5e1';
     const componentFill = isDarkMode ? '#1e293b' : '#ffffff';
-    const textColor = isDarkMode ? '#ffffff' : '#0f172a';
+    const textColor = isDarkMode ? '#ffffff' : '#0f172a'; // Now actually used!
     const subTextColor = isDarkMode ? '#94a3b8' : '#64748b';
 
     return (
-        <PageTransition>
+        <CyberTransition>
             <PortraitGuard>
                 <div className="h-screen flex flex-col bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 select-none overflow-hidden transition-colors duration-300 relative z-0">
 
@@ -340,7 +346,8 @@ const SimulationView = () => {
                                             shadowOffsetY={4}
                                         />
                                         <Rect width={80} height={20} fill="#334155" cornerRadius={[4, 4, 0, 0]} />
-                                        <Text text="PB 1" x={24} y={5} fill="white" fontSize={10} fontFamily="monospace" fontStyle="bold" />
+                                        {/* Fixed: Applied textColor here! */}
+                                        <Text text="PB 1" x={24} y={5} fill={textColor} fontSize={10} fontFamily="monospace" fontStyle="bold" />
 
                                         {/* The Button Graphic */}
                                         <Rect
@@ -365,12 +372,17 @@ const SimulationView = () => {
                     </main>
                 </div>
             </PortraitGuard>
-        </PageTransition>
+        </CyberTransition>
     );
 };
 
+// Fixed: Added strict Type interface for Circle to eliminate the "any" warning
+interface CircleProps extends Omit<RectConfig, 'cornerRadius'> {
+    radius: number;
+}
+
 // Helper component for drawing terminal circles
-const Circle = (props: any) => {
+const Circle = (props: CircleProps) => {
     return <Rect {...props} cornerRadius={props.radius} width={props.radius * 2} height={props.radius * 2} offsetX={props.radius} offsetY={props.radius} />
 }
 
