@@ -36,6 +36,8 @@ export default function ActivityLogsPage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retrySeq, setRetrySeq] = useState(0);
+  const [lastErrorAction, setLastErrorAction] = useState<'initial' | 'load_more' | null>(null);
   const isMountedRef = useRef(false);
   const hasLoadedBatchesRef = useRef(false);
   const loadMoreCursorRef = useRef<string | null>(null);
@@ -79,6 +81,7 @@ export default function ActivityLogsPage() {
 
     setLoading(true);
     setError(null);
+    setLastErrorAction(null);
 
     const loadInitialPage = async () => {
       try {
@@ -90,11 +93,13 @@ export default function ActivityLogsPage() {
         if (!isMountedRef.current || controller.signal.aborted) return;
         setRows(response.items);
         setNextBefore(response.paging.next_before);
+        setLastErrorAction(null);
       } catch (loadError) {
         if (!isMountedRef.current || controller.signal.aborted) return;
         setRows([]);
         setNextBefore(null);
         setError(toErrorMessage(loadError));
+        setLastErrorAction('initial');
       } finally {
         if (!isMountedRef.current || controller.signal.aborted) return;
         setLoading(false);
@@ -106,7 +111,7 @@ export default function ActivityLogsPage() {
     return () => {
       controller.abort();
     };
-  }, [appliedBatchCode]);
+  }, [appliedBatchCode, retrySeq]);
 
   const handleApply = () => {
     setAppliedBatchCode(batchFilter.trim().toUpperCase());
@@ -125,6 +130,7 @@ export default function ActivityLogsPage() {
     loadMoreCursorRef.current = cursor;
     setLoadingMore(true);
     setError(null);
+    setLastErrorAction(null);
 
     const controller = new AbortController();
     loadMoreRequestControllerRef.current?.abort();
@@ -150,14 +156,24 @@ export default function ActivityLogsPage() {
         return additions.length === 0 ? currentRows : [...currentRows, ...additions];
       });
       setNextBefore(response.paging.next_before);
+      setLastErrorAction(null);
     } catch (loadError) {
       if (!isMountedRef.current || controller.signal.aborted) return;
       loadMoreCursorRef.current = null;
       setError(toErrorMessage(loadError));
+      setLastErrorAction('load_more');
     } finally {
       if (!isMountedRef.current || controller.signal.aborted) return;
       setLoadingMore(false);
     }
+  };
+
+  const handleRetry = () => {
+    if (lastErrorAction === 'load_more' && rows.length > 0 && nextBefore && !loading && !loadingMore) {
+      void handleLoadMore();
+      return;
+    }
+    setRetrySeq((current) => current + 1);
   };
 
   const showEmpty = !loading && !error && rows.length === 0;
@@ -205,8 +221,15 @@ export default function ActivityLogsPage() {
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-2xl px-6 py-4 text-sm font-semibold text-red-700 shadow-sm shrink-0">
-          {error}
+        <div className="bg-red-50 border border-red-200 rounded-2xl px-6 py-4 text-sm font-semibold text-red-700 shadow-sm shrink-0 flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button
+            onClick={handleRetry}
+            disabled={loading || loadingMore}
+            className="px-3 py-1 rounded-lg text-[11px] font-bold text-white bg-red-600 hover:bg-red-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+          >
+            Retry
+          </button>
         </div>
       )}
 

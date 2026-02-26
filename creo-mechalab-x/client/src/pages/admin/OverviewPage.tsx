@@ -13,7 +13,8 @@ import type { AdminDashboardResponse } from "../../types/adminDashboard";
 const barColors = ["#93C5FD", "#5EEAD4", "#0B1B3D", "#60A5FA", "#C084FC", "#4ADE80"];
 const SELECTED_BATCH_STORAGE_KEY = "mechalabx.selectedBatchCode";
 const DASHBOARD_SCOPE_ALL_KEY = "__ALL__";
-const DASHBOARD_FEED_LIMIT = 8;
+const DASHBOARD_FEED_DISPLAY_LIMIT = 8;
+const DASHBOARD_FEED_FETCH_LIMIT = 20;
 
 const feedIconsByType: Record<string, string> = {
   batch_export: "📤",
@@ -86,18 +87,23 @@ export default function OverviewPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [reloadSeq, setReloadSeq] = useState(0);
+  const [feedRetrying, setFeedRetrying] = useState(false);
   const [batchOptions, setBatchOptions] = useState<AdminBatchItem[]>([]);
   const [selectedBatchCode, setSelectedBatchCode] = useState<string>(() => readStoredBatchCode());
   const isMountedRef = useRef(false);
   const hasLoadedBatchesRef = useRef(false);
   const lastDashboardRequestKeyRef = useRef<string | null>(null);
   const dashboardLoadControllerRef = useRef<AbortController | null>(null);
+  const feedRetryControllerRef = useRef<AbortController | null>(null);
+  const feedRetryRequestKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
       dashboardLoadControllerRef.current?.abort();
+      feedRetryControllerRef.current?.abort();
     };
   }, []);
 
@@ -129,11 +135,12 @@ export default function OverviewPage() {
   }, []);
 
   useEffect(() => {
-    const requestKey = selectedBatchCode || DASHBOARD_SCOPE_ALL_KEY;
+    const requestKey = `${selectedBatchCode || DASHBOARD_SCOPE_ALL_KEY}|${reloadSeq}`;
     if (lastDashboardRequestKeyRef.current === requestKey) return;
     lastDashboardRequestKeyRef.current = requestKey;
 
     dashboardLoadControllerRef.current?.abort();
+    feedRetryControllerRef.current?.abort();
     const controller = new AbortController();
     dashboardLoadControllerRef.current = controller;
 
@@ -146,7 +153,7 @@ export default function OverviewPage() {
         getAdminDashboard(selectedBatchCode || undefined, { signal: controller.signal }),
         getAdminActivityLogs({
           batchCode: selectedBatchCode || undefined,
-          limit: DASHBOARD_FEED_LIMIT,
+          limit: DASHBOARD_FEED_FETCH_LIMIT,
           signal: controller.signal,
         }),
       ]);
@@ -163,7 +170,7 @@ export default function OverviewPage() {
       }
 
       if (activityLogsResult.status === "fulfilled") {
-        setFeedItems(activityLogsResult.value.items.slice(0, DASHBOARD_FEED_LIMIT));
+        setFeedItems(activityLogsResult.value.items);
       } else {
         setFeedItems([]);
         setFeedError(toErrorMessage(activityLogsResult.reason));
@@ -173,7 +180,57 @@ export default function OverviewPage() {
     };
 
     void load();
-  }, [selectedBatchCode]);
+  }, [selectedBatchCode, reloadSeq]);
+
+  const handleRetry = () => {
+    setReloadSeq((current) => current + 1);
+  };
+
+  const handleRetryFeed = async () => {
+    const requestKey = `${selectedBatchCode || DASHBOARD_SCOPE_ALL_KEY}|feed-retry|${Date.now()}`;
+    feedRetryRequestKeyRef.current = requestKey;
+
+    feedRetryControllerRef.current?.abort();
+    const controller = new AbortController();
+    feedRetryControllerRef.current = controller;
+
+    setFeedRetrying(true);
+    setFeedError(null);
+
+    try {
+      const response = await getAdminActivityLogs({
+        batchCode: selectedBatchCode || undefined,
+        limit: DASHBOARD_FEED_FETCH_LIMIT,
+        signal: controller.signal,
+      });
+      if (!isMountedRef.current || controller.signal.aborted) return;
+      if (feedRetryRequestKeyRef.current !== requestKey) return;
+      setFeedItems(response.items);
+    } catch (retryError) {
+      if (!isMountedRef.current || controller.signal.aborted) return;
+      if (feedRetryRequestKeyRef.current !== requestKey) return;
+      setFeedError(toErrorMessage(retryError));
+    } finally {
+      if (!isMountedRef.current || controller.signal.aborted) return;
+      if (feedRetryRequestKeyRef.current !== requestKey) return;
+      setFeedRetrying(false);
+    }
+  };
+
+  const feedPreviewItems = useMemo(
+    () => feedItems.slice(0, DASHBOARD_FEED_DISPLAY_LIMIT),
+    [feedItems],
+  );
+
+  const latestExportAt = useMemo(
+    () => feedItems.find((item) => item.type === "batch_export")?.occurred_at ?? null,
+    [feedItems],
+  );
+
+  const latestResetAt = useMemo(
+    () => feedItems.find((item) => item.type === "system_reset")?.occurred_at ?? null,
+    [feedItems],
+  );
 
   const moduleInsights = useMemo((): { top: ModuleInsightItem[]; bottom: ModuleInsightItem[] } => {
     const normalized = (dashboard.chart.points ?? []).map((point) => ({
@@ -195,33 +252,71 @@ export default function OverviewPage() {
     return { top, bottom };
   }, [dashboard.chart.points]);
 
+  const lastExportLabel = feedError
+    ? "Unavailable"
+    : latestExportAt
+      ? formatAdminFeedTime(latestExportAt)
+      : "None yet";
+  const lastResetLabel = feedError
+    ? "Unavailable"
+    : latestResetAt
+      ? formatAdminFeedTime(latestResetAt)
+      : "None yet";
+
+  const batchScopeControl = (
+    <div className="bg-white dark:bg-[#1E293B] rounded-2xl px-4 py-3 shadow-sm transition-colors flex items-center gap-3">
+      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="dashboard-batch">
+        Batch Scope
+      </label>
+      <select
+        id="dashboard-batch"
+        value={selectedBatchCode}
+        onChange={(event) => setSelectedBatchCode(event.target.value)}
+        className="h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-sm font-semibold text-slate-700 dark:text-slate-200 px-3 outline-none focus:ring-2 focus:ring-blue-400/50"
+      >
+        <option value="">All batches</option>
+        {batchOptions.map((batch) => (
+          <option key={batch.batch_id} value={batch.batch_code}>
+            {batch.batch_code}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
+  if (error && !loading) {
+    return (
+      <div className="flex-1 flex flex-col gap-6 min-h-0">
+        {batchScopeControl}
+        <div className="bg-white dark:bg-[#1E293B] rounded-3xl p-8 shadow-sm flex-1 grid place-items-center border border-slate-100 dark:border-slate-800/50">
+          <div className="text-center max-w-md">
+            <p className="text-base font-extrabold text-[#0B1B3D] dark:text-slate-100">Failed to load dashboard</p>
+            <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mt-2">{error}</p>
+            <button
+              onClick={handleRetry}
+              className="mt-5 px-5 py-2 rounded-xl text-sm font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-md shadow-blue-500/20 transition-all"
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-6 min-h-0 lg:overflow-hidden">
       <div className="col-span-1 lg:col-span-8 flex flex-col gap-6 h-full min-h-0">
-        <div className="bg-white dark:bg-[#1E293B] rounded-2xl px-4 py-3 shadow-sm transition-colors flex items-center gap-3">
-          <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="dashboard-batch">
-            Batch Scope
-          </label>
-          <select
-            id="dashboard-batch"
-            value={selectedBatchCode}
-            onChange={(event) => setSelectedBatchCode(event.target.value)}
-            className="h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-sm font-semibold text-slate-700 dark:text-slate-200 px-3 outline-none focus:ring-2 focus:ring-blue-400/50"
-          >
-            <option value="">All batches</option>
-            {batchOptions.map((batch) => (
-              <option key={batch.batch_id} value={batch.batch_code}>
-                {batch.batch_code}
-              </option>
-            ))}
-          </select>
-        </div>
+        {batchScopeControl}
 
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-2xl px-6 py-4 text-sm font-semibold text-red-700 shadow-sm shrink-0">
-            {error}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 shrink-0">
+          <div className="bg-white dark:bg-[#1E293B] rounded-xl px-4 py-2 border border-slate-100 dark:border-slate-800/50 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            Last export: <span className="text-[#0B1B3D] dark:text-slate-200 font-bold">{lastExportLabel}</span>
           </div>
-        )}
+          <div className="bg-white dark:bg-[#1E293B] rounded-xl px-4 py-2 border border-slate-100 dark:border-slate-800/50 text-xs font-semibold text-slate-500 dark:text-slate-400">
+            Last reset: <span className="text-[#0B1B3D] dark:text-slate-200 font-bold">{lastResetLabel}</span>
+          </div>
+        </div>
 
         {loading && (
           <div className="bg-blue-50 border border-blue-200 rounded-2xl px-6 py-4 text-sm font-semibold text-blue-700 shadow-sm shrink-0">
@@ -407,16 +502,23 @@ export default function OverviewPage() {
           </h3>
           <div className="flex-1 overflow-y-auto space-y-5 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full">
             {feedError && !loading && (
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-                Activity feed unavailable.
-              </p>
+              <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200/70 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/10 px-3 py-2">
+                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Activity feed unavailable.</p>
+                <button
+                  onClick={() => void handleRetryFeed()}
+                  disabled={feedRetrying}
+                  className="px-3 py-1 rounded-lg text-[11px] font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+                >
+                  {feedRetrying ? "Retrying..." : "Retry feed"}
+                </button>
+              </div>
             )}
-            {feedItems.length === 0 ? (
+            {feedPreviewItems.length === 0 ? (
               <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">
                 {loading ? "Loading notifications..." : feedError ? "Feed unavailable." : "No recent notifications."}
               </p>
             ) : (
-              feedItems.map((note, i) => (
+              feedPreviewItems.map((note, i) => (
                 <div key={`${note.type}-${note.occurred_at}-${i}`} className="flex gap-4 items-start">
                   <div className="text-lg bg-slate-50 dark:bg-slate-800 p-2 rounded-full border border-slate-100 dark:border-slate-700 shrink-0 transition-colors">
                     {feedIconsByType[note.type] || "🔔"}
@@ -446,12 +548,12 @@ export default function OverviewPage() {
                 Activity feed unavailable.
               </p>
             )}
-            {feedItems.length === 0 ? (
+            {feedPreviewItems.length === 0 ? (
               <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">
                 {loading ? "Loading activities..." : feedError ? "Feed unavailable." : "No recent activities."}
               </p>
             ) : (
-              feedItems.map((act, i) => (
+              feedPreviewItems.map((act, i) => (
                 <div key={`${act.type}-${act.occurred_at}-${i}`} className="flex gap-4 items-start">
                   <div
                     className={`w-8 h-8 rounded-full shadow-inner border border-white dark:border-[#1E293B] shrink-0 ${
