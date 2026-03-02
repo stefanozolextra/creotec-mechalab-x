@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Users, Activity, BookOpen, Bell, History, ArrowRight, AlertTriangle, Loader2, Filter } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getAdminActivityLogs } from "../../api/adminActivityLogs";
@@ -10,10 +10,10 @@ import type { AdminActivityLogItem } from "../../types/adminActivityLogs";
 import type { AdminBatchItem } from "../../types/adminBatch";
 import type { AdminDashboardResponse } from "../../types/adminDashboard";
 
-const barColors = ["#93C5FD", "#5EEAD4", "#0B1B3D", "#60A5FA", "#C084FC", "#4ADE80"];
+const barColors = ["#3B82F6", "#06B6D4", "#10B981", "#8B5CF6", "#F59E0B", "#EF4444"];
 const SELECTED_BATCH_STORAGE_KEY = "mechalabx.selectedBatchCode";
 const DASHBOARD_SCOPE_ALL_KEY = "__ALL__";
-const DASHBOARD_FEED_DISPLAY_LIMIT = 8;
+const DASHBOARD_FEED_DISPLAY_LIMIT = 10;
 const DASHBOARD_FEED_FETCH_LIMIT = 20;
 
 const feedIconsByType: Record<string, string> = {
@@ -71,15 +71,6 @@ const toErrorMessage = (error: unknown): string => {
   return "Failed to load dashboard.";
 };
 
-type ModuleInsightItem = {
-  module_id: number;
-  module_code: string;
-  module_title: string;
-  completion_percent: number;
-  completed_trainees: number;
-  total_trainees: number;
-};
-
 export default function OverviewPage() {
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<AdminDashboardResponse>(emptyDashboard);
@@ -90,7 +81,9 @@ export default function OverviewPage() {
   const [reloadSeq, setReloadSeq] = useState(0);
   const [feedRetrying, setFeedRetrying] = useState(false);
   const [batchOptions, setBatchOptions] = useState<AdminBatchItem[]>([]);
-  const [selectedBatchCode, setSelectedBatchCode] = useState<string>(() => readStoredBatchCode());
+
+  const [selectedBatch, setSelectedBatch] = useState<string>(() => readStoredBatchCode());
+
   const isMountedRef = useRef(false);
   const hasLoadedBatchesRef = useRef(false);
   const lastDashboardRequestKeyRef = useRef<string | null>(null);
@@ -108,8 +101,8 @@ export default function OverviewPage() {
   }, []);
 
   useEffect(() => {
-    writeStoredBatchCode(selectedBatchCode);
-  }, [selectedBatchCode]);
+    writeStoredBatchCode(selectedBatch);
+  }, [selectedBatch]);
 
   useEffect(() => {
     if (hasLoadedBatchesRef.current) return;
@@ -120,7 +113,7 @@ export default function OverviewPage() {
         const response = await listAdminBatches();
         if (!isMountedRef.current) return;
         setBatchOptions(response.items);
-        setSelectedBatchCode((currentValue) => {
+        setSelectedBatch((currentValue) => {
           if (!currentValue) return "";
           const exists = response.items.some((item) => item.batch_code === currentValue);
           return exists ? currentValue : "";
@@ -135,7 +128,7 @@ export default function OverviewPage() {
   }, []);
 
   useEffect(() => {
-    const requestKey = `${selectedBatchCode || DASHBOARD_SCOPE_ALL_KEY}|${reloadSeq}`;
+    const requestKey = `${selectedBatch || DASHBOARD_SCOPE_ALL_KEY}|${reloadSeq}`;
     if (lastDashboardRequestKeyRef.current === requestKey) return;
     lastDashboardRequestKeyRef.current = requestKey;
 
@@ -150,9 +143,9 @@ export default function OverviewPage() {
       setFeedError(null);
 
       const [dashboardResult, activityLogsResult] = await Promise.allSettled([
-        getAdminDashboard(selectedBatchCode || undefined, { signal: controller.signal }),
+        getAdminDashboard(selectedBatch || undefined, { signal: controller.signal }),
         getAdminActivityLogs({
-          batchCode: selectedBatchCode || undefined,
+          batchCode: selectedBatch || undefined,
           limit: DASHBOARD_FEED_FETCH_LIMIT,
           signal: controller.signal,
         }),
@@ -180,14 +173,14 @@ export default function OverviewPage() {
     };
 
     void load();
-  }, [selectedBatchCode, reloadSeq]);
+  }, [selectedBatch, reloadSeq]);
 
   const handleRetry = () => {
     setReloadSeq((current) => current + 1);
   };
 
   const handleRetryFeed = async () => {
-    const requestKey = `${selectedBatchCode || DASHBOARD_SCOPE_ALL_KEY}|feed-retry|${Date.now()}`;
+    const requestKey = `${selectedBatch || DASHBOARD_SCOPE_ALL_KEY}|feed-retry|${Date.now()}`;
     feedRetryRequestKeyRef.current = requestKey;
 
     feedRetryControllerRef.current?.abort();
@@ -199,7 +192,7 @@ export default function OverviewPage() {
 
     try {
       const response = await getAdminActivityLogs({
-        batchCode: selectedBatchCode || undefined,
+        batchCode: selectedBatch || undefined,
         limit: DASHBOARD_FEED_FETCH_LIMIT,
         signal: controller.signal,
       });
@@ -211,9 +204,9 @@ export default function OverviewPage() {
       if (feedRetryRequestKeyRef.current !== requestKey) return;
       setFeedError(toErrorMessage(retryError));
     } finally {
-      if (!isMountedRef.current || controller.signal.aborted) return;
-      if (feedRetryRequestKeyRef.current !== requestKey) return;
-      setFeedRetrying(false);
+      if (isMountedRef.current && !controller.signal.aborted && feedRetryRequestKeyRef.current === requestKey) {
+        setFeedRetrying(false);
+      }
     }
   };
 
@@ -222,81 +215,18 @@ export default function OverviewPage() {
     [feedItems],
   );
 
-  const latestExportAt = useMemo(
-    () => feedItems.find((item) => item.type === "batch_export")?.occurred_at ?? null,
-    [feedItems],
-  );
-
-  const latestResetAt = useMemo(
-    () => feedItems.find((item) => item.type === "system_reset")?.occurred_at ?? null,
-    [feedItems],
-  );
-
-  const moduleInsights = useMemo((): { top: ModuleInsightItem[]; bottom: ModuleInsightItem[] } => {
-    const normalized = (dashboard.chart.points ?? []).map((point) => ({
-      module_id: point.module_id,
-      module_code: point.module_code || "",
-      module_title: point.module_title || "",
-      completion_percent: Math.max(0, Math.min(100, Number(point.completion_percent) || 0)),
-      completed_trainees: Number(point.completed_trainees) || 0,
-      total_trainees: Number(point.total_trainees) || 0,
-    }));
-
-    const top = [...normalized]
-      .sort((a, b) => b.completion_percent - a.completion_percent || a.module_id - b.module_id)
-      .slice(0, 3);
-    const bottom = [...normalized]
-      .sort((a, b) => a.completion_percent - b.completion_percent || a.module_id - b.module_id)
-      .slice(0, 3);
-
-    return { top, bottom };
-  }, [dashboard.chart.points]);
-
-  const lastExportLabel = feedError
-    ? "Unavailable"
-    : latestExportAt
-      ? formatAdminFeedTime(latestExportAt)
-      : "None yet";
-  const lastResetLabel = feedError
-    ? "Unavailable"
-    : latestResetAt
-      ? formatAdminFeedTime(latestResetAt)
-      : "None yet";
-
-  const batchScopeControl = (
-    <div className="bg-white dark:bg-[#1E293B] rounded-2xl px-4 py-3 shadow-sm transition-colors flex items-center gap-3">
-      <label className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400" htmlFor="dashboard-batch">
-        Batch Scope
-      </label>
-      <select
-        id="dashboard-batch"
-        value={selectedBatchCode}
-        onChange={(event) => setSelectedBatchCode(event.target.value)}
-        className="h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-sm font-semibold text-slate-700 dark:text-slate-200 px-3 outline-none focus:ring-2 focus:ring-blue-400/50"
-      >
-        <option value="">All batches</option>
-        {batchOptions.map((batch) => (
-          <option key={batch.batch_id} value={batch.batch_code}>
-            {batch.batch_code}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-
   if (error && !loading) {
     return (
-      <div className="flex-1 flex flex-col gap-6 min-h-0">
-        {batchScopeControl}
-        <div className="bg-white dark:bg-[#1E293B] rounded-3xl p-8 shadow-sm flex-1 grid place-items-center border border-slate-100 dark:border-slate-800/50">
+      <div className="flex-1 flex flex-col gap-4 min-h-0 relative animate-in fade-in duration-500 -mt-2">
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-8 shadow-sm flex-1 grid place-items-center border border-red-100 dark:border-red-900/30">
           <div className="text-center max-w-md">
-            <p className="text-base font-extrabold text-[#0B1B3D] dark:text-slate-100">Failed to load dashboard</p>
-            <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mt-2">{error}</p>
-            <button
-              onClick={handleRetry}
-              className="mt-5 px-5 py-2 rounded-xl text-sm font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-md shadow-blue-500/20 transition-all"
-            >
-              Retry
+            <div className="mx-auto w-16 h-16 bg-red-50 dark:bg-red-500/10 rounded-full flex items-center justify-center mb-4">
+              <AlertTriangle className="text-red-500" size={32} />
+            </div>
+            <p className="text-lg font-black text-[#0B1B3D] dark:text-slate-100">Connection Failed</p>
+            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-2">{error}</p>
+            <button onClick={handleRetry} className="mt-6 px-6 py-2.5 rounded-xl text-sm font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-lg shadow-blue-500/20 transition-all hover:scale-105 active:scale-95">
+              Retry Connection
             </button>
           </div>
         </div>
@@ -305,231 +235,249 @@ export default function OverviewPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col lg:grid lg:grid-cols-12 gap-6 min-h-0 lg:overflow-hidden">
-      <div className="col-span-1 lg:col-span-8 flex flex-col gap-6 h-full min-h-0">
-        {batchScopeControl}
+    <div className="flex-1 flex flex-col xl:flex-row gap-4 min-h-0 relative animate-in fade-in slide-in-from-bottom-4 duration-500 -mt-2">
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 shrink-0">
-          <div className="bg-white dark:bg-[#1E293B] rounded-xl px-4 py-2 border border-slate-100 dark:border-slate-800/50 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            Last export: <span className="text-[#0B1B3D] dark:text-slate-200 font-bold">{lastExportLabel}</span>
+      {/* LEFT COLUMN: The Main Focus (Z-Pattern Body) */}
+      <div className="flex-1 flex flex-col gap-4 min-h-0">
+
+        {/* A. KPI Summary Cards ROW (3 Clickable Metrics + Static Filter) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+
+          {/* 1. Trainees Card (Clickable) */}
+          <div
+            onClick={() => navigate("/admin/users")}
+            role="button"
+            tabIndex={0}
+            className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col justify-between group cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-blue-500/30 dark:hover:border-blue-400/30 hover:-translate-y-1 relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
+            <div className="text-slate-500 dark:text-slate-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest flex items-center gap-2 relative z-10">
+              <Users size={14} className="text-blue-500" /> Trainees
+            </div>
+
+            <div className="mt-2 relative z-10 flex items-end justify-between">
+              <div className="text-3xl lg:text-4xl font-black text-[#0B1B3D] dark:text-slate-100 tracking-tighter drop-shadow-sm leading-none group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                {loading ? "--" : dashboard.summary.total_trainees}
+              </div>
+              <div className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 flex items-center gap-1 transition-colors pb-0.5">
+                Roster <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
           </div>
-          <div className="bg-white dark:bg-[#1E293B] rounded-xl px-4 py-2 border border-slate-100 dark:border-slate-800/50 text-xs font-semibold text-slate-500 dark:text-slate-400">
-            Last reset: <span className="text-[#0B1B3D] dark:text-slate-200 font-bold">{lastResetLabel}</span>
+
+          {/* 2. Progress Card (Clickable) */}
+          <div
+            onClick={() => navigate("/admin/reports")}
+            role="button"
+            tabIndex={0}
+            className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col justify-between group cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-emerald-500/30 dark:hover:border-emerald-400/30 hover:-translate-y-1 relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
+            <div className="text-slate-500 dark:text-slate-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest flex items-center gap-2 relative z-10">
+              <Activity size={14} className="text-emerald-500" /> Progress
+            </div>
+
+            <div className="mt-2 relative z-10 flex items-end justify-between">
+              <div className="text-3xl lg:text-4xl font-black text-[#0B1B3D] dark:text-slate-100 tracking-tighter flex items-baseline gap-1 leading-none group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                {loading ? "--" : dashboard.summary.progress_percent} <span className="text-lg text-slate-400 group-hover:text-emerald-500/70 transition-colors">%</span>
+              </div>
+              <div className="text-[10px] font-bold text-slate-400 group-hover:text-emerald-500 flex items-center gap-1 transition-colors pb-0.5">
+                Reports <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
           </div>
+
+          {/* 3. Modules Card (Clickable) */}
+          <div
+            onClick={() => navigate("/admin/lessons")}
+            role="button"
+            tabIndex={0}
+            className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col justify-between group cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-purple-500/30 dark:hover:border-purple-400/30 hover:-translate-y-1 relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-purple-500"
+          >
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+
+            <div className="text-slate-500 dark:text-slate-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest flex items-center gap-2 relative z-10">
+              <BookOpen size={14} className="text-purple-500" /> Modules
+            </div>
+
+            <div className="mt-2 relative z-10 flex items-end justify-between">
+              <div className="text-3xl lg:text-4xl font-black text-[#0B1B3D] dark:text-slate-100 tracking-tighter leading-none group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                {loading ? "--" : String(dashboard.summary.total_modules).padStart(2, "0")}
+              </div>
+              <div className="text-[10px] font-bold text-slate-400 group-hover:text-purple-500 flex items-center gap-1 transition-colors pb-0.5">
+                Curriculum <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Active View Filter (Static Form Control) */}
+          <div className="bg-slate-50 dark:bg-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-inner border border-slate-200 dark:border-slate-800/50 flex flex-col justify-center">
+            <div className="text-slate-500 dark:text-slate-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest flex items-center gap-2 mb-3">
+              <Filter size={14} className="text-slate-400" /> Active View
+            </div>
+            <select
+              value={selectedBatch}
+              onChange={(event) => setSelectedBatch(event.target.value)}
+              className="w-full h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-xs sm:text-sm font-bold text-[#0B1B3D] dark:text-slate-200 px-3 outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer shadow-sm transition-colors"
+            >
+              <option value="">All Cohorts</option>
+              {batchOptions.map((batch) => (
+                <option key={batch.batch_id} value={batch.batch_code}>{batch.batch_code}</option>
+              ))}
+            </select>
+          </div>
+
         </div>
 
-        {loading && (
-          <div className="bg-blue-50 border border-blue-200 rounded-2xl px-6 py-4 text-sm font-semibold text-blue-700 shadow-sm shrink-0">
-            Loading dashboard...
-          </div>
-        )}
+        {/* B. Milestone Tracker */}
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col flex-1 min-h-0 transition-colors">
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 shrink-0">
-          <div className="bg-white dark:bg-[#1E293B] rounded-3xl p-6 shadow-sm flex justify-between items-start transition-colors">
+          <div className="flex items-center justify-between mb-4 shrink-0">
             <div>
-              <div className="text-slate-500 dark:text-slate-400 font-semibold mb-2 text-sm transition-colors uppercase tracking-wider">
-                Trainees
-              </div>
-              <div className="text-5xl font-extrabold text-[#0B1B3D] dark:text-slate-100 transition-colors tracking-tighter">
-                {dashboard.summary.total_trainees}
-              </div>
-              <button
-                onClick={() => navigate("/admin/users")}
-                className="mt-3 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 rounded-sm cursor-pointer"
-              >
-                View trainees
-              </button>
+              <h2 className="text-lg font-black text-[#0B1B3D] dark:text-slate-100 tracking-tight flex items-center gap-2">
+                Milestone Tracker
+              </h2>
+              <p className="text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
+                Real-time trainee progression by module
+              </p>
             </div>
-
-            <button
-              onClick={() => navigate("/admin/users")}
-              className="bg-[#3B82F6] text-white p-3 rounded-2xl hover:scale-110 active:scale-95 shadow-lg shadow-blue-500/20 transition-all"
-              title="Add New Trainee"
-            >
-              <Plus size={24} />
-            </button>
+            {loading && <Loader2 className="animate-spin text-blue-500" size={20} />}
           </div>
 
-          <div className="bg-white dark:bg-[#1E293B] rounded-3xl p-6 shadow-sm transition-colors">
-            <div className="text-slate-500 dark:text-slate-400 font-semibold mb-2 text-sm transition-colors uppercase tracking-wider">
-              Progress
-            </div>
-            <div className="text-5xl font-extrabold text-[#0B1B3D] dark:text-slate-100 transition-colors tracking-tighter">
-              {dashboard.summary.progress_percent}%
-            </div>
-            <button
-              onClick={() => navigate("/admin/reports")}
-              className="mt-3 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 rounded-sm cursor-pointer"
-            >
-              View reports
-            </button>
-          </div>
+          {/* CSS-Perfect Chart Area */}
+          <div className="flex-1 flex min-h-0 relative mt-2 gap-3 sm:gap-4">
 
-          <div className="bg-white dark:bg-[#1E293B] rounded-3xl p-6 shadow-sm transition-colors">
-            <div className="text-slate-500 dark:text-slate-400 font-semibold mb-2 text-sm transition-colors uppercase tracking-wider">
-              Modules
-            </div>
-            <div className="text-5xl font-extrabold text-[#0B1B3D] dark:text-slate-100 transition-colors tracking-tighter">
-              {String(dashboard.summary.total_modules).padStart(2, "0")}
-            </div>
-            <button
-              onClick={() => navigate("/admin/lessons")}
-              className="mt-3 text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/60 rounded-sm cursor-pointer"
-            >
-              View modules
-            </button>
-          </div>
-        </div>
-
-        <div className="bg-white dark:bg-[#1E293B] rounded-3xl p-8 shadow-sm flex-1 flex flex-col min-h-0 transition-colors">
-          <h2 className="text-xl font-bold text-[#0B1B3D] dark:text-slate-100 mb-8 shrink-0 transition-colors">
-            Milestone Tracking
-          </h2>
-
-          <div className="flex-1 grid grid-cols-[40px_1fr] gap-4 min-h-0">
-            <div className="flex flex-col justify-between text-slate-400 dark:text-slate-500 text-xs font-bold py-2">
-              <span>100%</span>
-              <span>75%</span>
-              <span>50%</span>
-              <span>0%</span>
+            {/* Y-Axis Labels */}
+            <div className="flex flex-col justify-between text-slate-400 dark:text-slate-500 text-[9px] sm:text-[10px] font-bold pb-[24px] w-[30px] sm:w-[40px] shrink-0 text-right pr-2 border-r border-slate-100 dark:border-slate-800">
+              <span className="leading-none transform -translate-y-1/2">100%</span>
+              <span className="leading-none transform -translate-y-1/2">75%</span>
+              <span className="leading-none transform -translate-y-1/2">50%</span>
+              <span className="leading-none transform -translate-y-1/2">25%</span>
+              <span className="leading-none transform translate-y-[2px]">0%</span>
             </div>
 
-            <div className="relative flex items-end justify-around pt-4 pb-2 border-b border-slate-100 dark:border-slate-800">
-              {dashboard.chart.points.length === 0 && !loading ? (
-                <div className="absolute inset-0 grid place-items-center text-sm font-semibold text-slate-400 dark:text-slate-500">
-                  No modules available yet.
+            {/* Graph wrapper */}
+            <div className="flex-1 relative flex flex-col h-full">
+
+              {/* Graph area - Bottom border is exactly the 0% line */}
+              <div className="flex-1 relative border-b-2 border-slate-300 dark:border-slate-600 z-0">
+
+                {/* Horizontal Grid Lines */}
+                <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                  <div className="w-full border-t border-dashed border-slate-200 dark:border-slate-700/50"></div>
+                  <div className="w-full border-t border-dashed border-slate-200 dark:border-slate-700/50"></div>
+                  <div className="w-full border-t border-dashed border-slate-200 dark:border-slate-700/50"></div>
+                  <div className="w-full border-t border-dashed border-slate-200 dark:border-slate-700/50"></div>
+                  <div className="w-full h-[1px]"></div> {/* Spacer to maintain justify-between */}
                 </div>
-              ) : (
-                dashboard.chart.points.map((item, idx) => {
-                  const completionPercent = Math.max(0, Math.min(100, item.completion_percent));
-                  const visualHeight = Math.max(4, completionPercent);
-                  const isDarkBar = idx === 2;
-                  return (
-                    <div key={item.module_id || idx} className="h-full flex flex-col justify-end w-8 sm:w-12 relative group">
-                      <div
-                        className={`w-full rounded-t-xl transition-all duration-500 hover:brightness-110 ${isDarkBar ? "bg-[#0B1B3D] dark:bg-slate-300" : ""}`}
-                        style={{
-                          height: `${visualHeight}%`,
-                          backgroundColor: isDarkBar ? undefined : barColors[idx % barColors.length],
-                        }}
-                      />
-                      <div className="opacity-0 group-hover:opacity-100 absolute -top-16 left-1/2 -translate-x-1/2 bg-[#0B1B3D] dark:bg-slate-700 text-white text-[11px] py-1.5 px-2 rounded font-bold transition-opacity pointer-events-none whitespace-nowrap text-center leading-tight">
-                        <div>{item.module_title || item.module_code}</div>
-                        <div>{completionPercent}% complete</div>
-                        <div>
-                          {item.completed_trainees}/{item.total_trainees} trainees
-                        </div>
-                      </div>
+
+                {/* The Bars (inset-0 ensures they sit flush on the bottom border) */}
+                <div className="absolute inset-0 flex items-end justify-around z-10">
+                  {!loading && dashboard.chart.points.length === 0 ? (
+                    <div className="absolute inset-0 grid place-items-center text-sm font-semibold text-slate-400">
+                      No module data available yet.
                     </div>
-                  );
-                })
-              )}
+                  ) : (
+                    dashboard.chart.points.map((item, idx) => {
+                      const completionPercent = Math.max(0, Math.min(100, item.completion_percent));
+                      const visualHeight = Math.max(2, completionPercent); // Minimum height so 0% is visible
+
+                      return (
+                        <div key={item.module_id || idx} className="h-full flex flex-col justify-end w-8 sm:w-14 md:w-16 lg:w-20 relative group">
+
+                          <div
+                            className="w-full rounded-t-sm sm:rounded-t-md transition-all duration-700 ease-out shadow-sm relative overflow-hidden cursor-crosshair"
+                            style={{
+                              height: `${visualHeight}%`,
+                              backgroundColor: barColors[idx % barColors.length],
+                            }}
+                          >
+                            <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
+                          </div>
+
+                          {/* X-Axis Label pushed into the reserved space below */}
+                          <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] sm:text-[10px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                            {item.module_code || `M${idx + 1}`}
+                          </div>
+
+                          {/* Hover Tooltip */}
+                          <div className="opacity-0 group-hover:opacity-100 absolute -top-14 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] sm:text-[11px] py-1.5 px-3 rounded-lg font-bold transition-all duration-200 pointer-events-none whitespace-nowrap text-center leading-tight shadow-xl z-50 translate-y-2 group-hover:translate-y-0">
+                            <div className="text-cyan-400 mb-0.5">{item.module_code}</div>
+                            <div>{completionPercent}% Cleared</div>
+                            <div className="text-slate-400 font-medium mt-0.5">
+                              {item.completed_trainees} of {item.total_trainees} Trainees
+                            </div>
+                            <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45"></div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+
+              {/* 24px of empty space to hold the X-Axis labels without getting cut off */}
+              <div className="h-[24px] shrink-0 w-full"></div>
             </div>
+
           </div>
 
           {!loading && dashboard.chart.points.length > 0 && dashboard.summary.total_trainees === 0 && (
-            <p className="ml-[56px] mt-3 text-xs font-semibold text-slate-400 dark:text-slate-500">
-              No trainees in this scope yet. Modules are shown at 0%.
-            </p>
+            <div className="mt-4 text-center text-[10px] sm:text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-400 py-2 rounded-lg">
+              No trainees assigned. Modules reflect 0% completion.
+            </div>
           )}
-
-          <div className="ml-[56px] mt-4 flex justify-around text-slate-400 dark:text-slate-500 text-xs font-bold shrink-0">
-            {dashboard.chart.points.map((item, idx) => (
-              <div key={`${item.module_id}-${idx}`} className="text-center w-12 truncate" title={item.module_title || item.module_code}>
-                {item.module_code || `M${idx + 1}`}
-              </div>
-            ))}
-          </div>
-
-          <div className="ml-[56px] mt-4 grid grid-cols-1 md:grid-cols-2 gap-4 shrink-0">
-            {dashboard.chart.points.length === 0 ? (
-              <div className="text-sm font-semibold text-slate-400 dark:text-slate-500">No modules available.</div>
-            ) : (
-              <>
-                <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-800/20">
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#0B1B3D] dark:text-slate-200 mb-3">
-                    Top Modules
-                  </h4>
-                  <div className="space-y-2">
-                    {moduleInsights.top.map((item) => (
-                      <div key={`top-${item.module_id}`} className="flex items-start justify-between gap-3 text-xs">
-                        <div className="min-w-0">
-                          <p className="font-bold text-[#0B1B3D] dark:text-slate-200 truncate">{item.module_code || "N/A"}</p>
-                          <p className="text-slate-500 dark:text-slate-400 truncate">{item.module_title || "Untitled module"}</p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-extrabold text-[#0B1B3D] dark:text-slate-200">{item.completion_percent}%</p>
-                          <p className="text-slate-400 dark:text-slate-500">
-                            {item.completed_trainees}/{item.total_trainees}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-slate-100 dark:border-slate-800 p-4 bg-slate-50/50 dark:bg-slate-800/20">
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-[#0B1B3D] dark:text-slate-200 mb-3">
-                    Bottom Modules
-                  </h4>
-                  <div className="space-y-2">
-                    {moduleInsights.bottom.map((item) => (
-                      <div key={`bottom-${item.module_id}`} className="flex items-start justify-between gap-3 text-xs">
-                        <div className="min-w-0">
-                          <p className="font-bold text-[#0B1B3D] dark:text-slate-200 truncate">{item.module_code || "N/A"}</p>
-                          <p className="text-slate-500 dark:text-slate-400 truncate">{item.module_title || "Untitled module"}</p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-extrabold text-[#0B1B3D] dark:text-slate-200">{item.completion_percent}%</p>
-                          <p className="text-slate-400 dark:text-slate-500">
-                            {item.completed_trainees}/{item.total_trainees}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
         </div>
+
       </div>
 
-      <div className="col-span-1 lg:col-span-4 flex flex-col gap-6 h-full min-h-0">
-        <div className="bg-white dark:bg-[#1E293B] rounded-3xl p-6 shadow-sm flex-1 flex flex-col min-h-0 transition-colors">
-          <h3 className="text-[#0B1B3D] dark:text-slate-100 font-bold text-lg mb-4 shrink-0 transition-colors uppercase tracking-wider">
-            Notifications
-          </h3>
-          <div className="flex-1 overflow-y-auto space-y-5 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full">
+      {/* RIGHT COLUMN: Splitting into Notifications and System Log */}
+      <div className="w-full xl:w-[320px] shrink-0 flex flex-col gap-4 min-h-0">
+
+        {/* Notifications Panel */}
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex-1 flex flex-col min-h-0">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-800/50 shrink-0">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300">
+                <Bell size={16} />
+              </div>
+              <h3 className="text-[#0B1B3D] dark:text-slate-100 font-black text-sm tracking-tight">
+                Notifications
+              </h3>
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
             {feedError && !loading && (
-              <div className="flex items-center justify-between gap-2 rounded-xl border border-amber-200/70 dark:border-amber-500/30 bg-amber-50/70 dark:bg-amber-500/10 px-3 py-2">
-                <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Activity feed unavailable.</p>
-                <button
-                  onClick={() => void handleRetryFeed()}
-                  disabled={feedRetrying}
-                  className="px-3 py-1 rounded-lg text-[11px] font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
-                >
-                  {feedRetrying ? "Retrying..." : "Retry feed"}
+              <div className="flex flex-col gap-2 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3 text-center">
+                <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Feed offline.</p>
+                <button onClick={() => void handleRetryFeed()} disabled={feedRetrying} className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors mx-auto">
+                  {feedRetrying ? "Reconnecting..." : "Reconnect"}
                 </button>
               </div>
             )}
-            {feedPreviewItems.length === 0 ? (
-              <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">
-                {loading ? "Loading notifications..." : feedError ? "Feed unavailable." : "No recent notifications."}
-              </p>
+
+            {!feedError && feedPreviewItems.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 opacity-60">
+                <Bell size={24} className="mb-2" />
+                <p className="text-xs font-bold">
+                  {loading ? "Syncing..." : "All caught up."}
+                </p>
+              </div>
             ) : (
               feedPreviewItems.map((note, i) => (
-                <div key={`${note.type}-${note.occurred_at}-${i}`} className="flex gap-4 items-start">
-                  <div className="text-lg bg-slate-50 dark:bg-slate-800 p-2 rounded-full border border-slate-100 dark:border-slate-700 shrink-0 transition-colors">
+                <div key={`note-${note.type}-${note.occurred_at}-${i}`} className="flex gap-3 items-start group">
+                  <div className="text-sm bg-slate-50 dark:bg-slate-800/50 p-2 rounded-lg border border-slate-100 dark:border-slate-700 shrink-0 group-hover:scale-110 transition-transform">
                     {feedIconsByType[note.type] || "🔔"}
                   </div>
-                  <div>
-                    <p className="text-sm font-semibold text-[#0B1B3D] dark:text-slate-200 leading-tight transition-colors">
+                  <div className="pt-0.5">
+                    <p className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200 leading-snug">
                       {toAdminFeedText(note)}
                     </p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 transition-colors">
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mt-1">
                       {formatAdminFeedTime(note.occurred_at)}
-                      {note.actor ? ` • ${note.actor}` : ""}
                     </p>
                   </div>
                 </div>
@@ -538,42 +486,42 @@ export default function OverviewPage() {
           </div>
         </div>
 
-        <div className="bg-white dark:bg-[#1E293B] rounded-3xl p-6 shadow-sm flex-1 flex flex-col min-h-0 transition-colors">
-          <h3 className="text-[#0B1B3D] dark:text-slate-100 font-bold text-lg mb-4 shrink-0 transition-colors uppercase tracking-wider">
-            Activities
-          </h3>
-          <div className="flex-1 overflow-y-auto space-y-5 pr-2 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-200 dark:[&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full">
-            {feedError && !loading && (
-              <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">
-                Activity feed unavailable.
-              </p>
-            )}
-            {feedPreviewItems.length === 0 ? (
-              <p className="text-sm font-semibold text-slate-400 dark:text-slate-500">
-                {loading ? "Loading activities..." : feedError ? "Feed unavailable." : "No recent activities."}
-              </p>
-            ) : (
-              feedPreviewItems.map((act, i) => (
-                <div key={`${act.type}-${act.occurred_at}-${i}`} className="flex gap-4 items-start">
-                  <div
-                    className={`w-8 h-8 rounded-full shadow-inner border border-white dark:border-[#1E293B] shrink-0 ${
-                      activityColorsByType[act.type] || "bg-teal-400"
-                    } transition-colors`}
-                  />
-                  <div>
-                    <p className="text-sm font-semibold text-[#0B1B3D] dark:text-slate-200 leading-tight transition-colors">
-                      {toAdminFeedText(act)}
-                    </p>
-                    <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5 transition-colors">
-                      {formatAdminFeedTime(act.occurred_at)}
-                      {act.actor ? ` • ${act.actor}` : ""}
-                    </p>
-                  </div>
+        {/* System Log Panel */}
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex-1 flex flex-col min-h-0">
+          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100 dark:border-slate-800/50 shrink-0">
+            <div className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300">
+              <History size={16} />
+            </div>
+            <h3 className="text-[#0B1B3D] dark:text-slate-100 font-black text-sm tracking-tight">
+              System Log
+            </h3>
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700 relative">
+            <div className="absolute left-[11px] top-2 bottom-2 w-px bg-slate-100 dark:bg-slate-800 -z-10"></div>
+
+            {!feedError && feedPreviewItems.length > 0 && feedPreviewItems.map((act, i) => (
+              <div key={`act-${act.type}-${act.occurred_at}-${i}`} className="flex gap-3 items-start relative z-10">
+                <div className="pt-1 shrink-0 bg-white dark:bg-[#1E293B] py-1">
+                  <div className={`w-2.5 h-2.5 rounded-full ring-[3px] ring-white dark:ring-[#1E293B] ${activityColorsByType[act.type] || "bg-slate-300 dark:bg-slate-600"}`} />
                 </div>
-              ))
+                <div>
+                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300 leading-snug">
+                    {toAdminFeedText(act)}
+                  </p>
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mt-1">
+                    {formatAdminFeedTime(act.occurred_at)} {act.actor ? `• ${act.actor}` : ""}
+                  </p>
+                </div>
+              </div>
+            ))}
+
+            {!feedError && feedPreviewItems.length === 0 && !loading && (
+              <p className="text-xs font-bold text-slate-400 text-center mt-10 opacity-60">No recent activities.</p>
             )}
           </div>
         </div>
+
       </div>
     </div>
   );
