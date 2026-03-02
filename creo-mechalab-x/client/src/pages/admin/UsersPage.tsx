@@ -1,5 +1,5 @@
 import { Search, Plus, Upload, Pencil, Power, Download, Layers, RotateCcw, Trash2, Check, Minus, SearchX, X, Mail } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback, memo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   deleteAdminTrainee,
@@ -82,20 +82,50 @@ const writeStoredBatchCode = (batchCode: string): void => {
   }
 };
 
+const DebouncedSearchInput = memo(({
+  initialValue,
+  onSearch
+}: {
+  initialValue: string;
+  onSearch: (val: string) => void;
+}) => {
+  const [value, setValue] = useState(initialValue);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      onSearch(value.trim());
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [value, onSearch]);
+
+  return (
+    <div className="relative">
+      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} aria-hidden="true" />
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        placeholder="Search trainees..."
+        className="pl-10 pr-4 py-2.5 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-semibold w-[220px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm"
+      />
+    </div>
+  );
+});
+DebouncedSearchInput.displayName = "DebouncedSearchInput";
+
 export default function UsersPage() {
   const { search: locationSearch } = useLocation();
   const navigate = useNavigate();
+
   const [items, setItems] = useState<AdminTraineeItem[]>([]);
   const [batches, setBatches] = useState<BatchFilter[]>([]);
-  const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedBatch, setSelectedBatch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [activeView, setActiveView] = useState<ActiveView>("trainees");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [deliveryNotice, setDeliveryNotice] = useState<{ type: "success" | "warning"; message: string } | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"create" | "edit">("create");
   const [selectedItem, setSelectedItem] = useState<AdminTraineeItem | null>(null);
@@ -103,30 +133,25 @@ export default function UsersPage() {
   const [createBatchModalOpen, setCreateBatchModalOpen] = useState(false);
   const [finalizeModalOpen, setFinalizeModalOpen] = useState(false);
   const [generatedPasswordState, setGeneratedPasswordState] = useState<{ email: string; password: string; } | null>(null);
+
   const [statusActionId, setStatusActionId] = useState<string | null>(null);
   const [resendActionId, setResendActionId] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
 
-  // Selection & Delete States
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
   const [deleteTargetIds, setDeleteTargetIds] = useState<number[]>([]);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
-    return () => window.clearTimeout(timer);
-  }, [search]);
+  const params = new URLSearchParams(locationSearch);
+  const activeView: ActiveView = params.get("view") === "reports" ? "reports" : "trainees";
 
   useEffect(() => {
-    const params = new URLSearchParams(locationSearch);
     const batchFromQuery = (params.get("batch") ?? "").trim();
-    const viewFromQuery = (params.get("view") ?? "").trim().toLowerCase();
-    const nextView: ActiveView = viewFromQuery === "reports" ? "reports" : "trainees";
-    setActiveView((previous) => (previous === nextView ? previous : nextView));
     if (!batchFromQuery) return;
     setSelectedBatch((previous) => (previous === batchFromQuery ? previous : batchFromQuery));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locationSearch]);
 
   useEffect(() => {
@@ -207,18 +232,22 @@ export default function UsersPage() {
     });
   }, [listedIds]);
 
-  const openCreateModal = () => { setSelectedItem(null); setModalMode("create"); setModalOpen(true); };
-  const openEditModal = (item: AdminTraineeItem) => { setSelectedItem(item); setModalMode("edit"); setModalOpen(true); };
-  const closeModal = () => setModalOpen(false);
+  const handleSearch = useCallback((val: string) => setDebouncedSearch(val), []);
+  const openCreateModal = useCallback(() => { setSelectedItem(null); setModalMode("create"); setModalOpen(true); }, []);
+  const openEditModal = useCallback((item: AdminTraineeItem) => { setSelectedItem(item); setModalMode("edit"); setModalOpen(true); }, []);
+  const closeModal = useCallback(() => setModalOpen(false), []);
+  const openCreateBatchModal = useCallback(() => setCreateBatchModalOpen(true), []);
+  const closeCreateBatchModal = useCallback(() => setCreateBatchModalOpen(false), []);
+  const closeFinalizeModal = useCallback(() => setFinalizeModalOpen(false), []);
+  const closeImportModal = useCallback(() => setImportModalOpen(false), []);
+  const closeGeneratedPasswordModal = useCallback(() => setGeneratedPasswordState(null), []);
+  const closeDeleteModal = useCallback(() => { if (deleting) return; setDeleteModalOpen(false); setDeleteTargetIds([]); setDeleteError(null); }, [deleting]);
 
   const refreshBatchFilters = async (): Promise<BatchFilter[]> => {
     const response = await getAdminBatches();
     setBatches(response.items);
     return response.items;
   };
-
-  const openCreateBatchModal = () => setCreateBatchModalOpen(true);
-  const closeCreateBatchModal = () => setCreateBatchModalOpen(false);
 
   const ensureBatchSelected = (actionLabel: string): boolean => {
     if (selectedBatch) return true;
@@ -227,11 +256,9 @@ export default function UsersPage() {
   };
 
   const openFinalizeModal = () => { if (!ensureBatchSelected("finalize this cohort cycle")) return; setFinalizeModalOpen(true); };
-  const closeFinalizeModal = () => setFinalizeModalOpen(false);
   const openImportModal = () => { if (!ensureBatchSelected("import trainees")) return; setImportModalOpen(true); };
-  const closeImportModal = () => setImportModalOpen(false);
 
-  const handleSaved = (result: TraineeFormSaveResult) => {
+  const handleSaved = useCallback((result: TraineeFormSaveResult) => {
     setModalOpen(false);
     setSelectedItem(null);
     setRefreshKey((prev) => prev + 1);
@@ -253,11 +280,9 @@ export default function UsersPage() {
     }
 
     setTimeout(() => setDeliveryNotice(null), 8000);
-  };
+  }, []);
 
-  const closeGeneratedPasswordModal = () => setGeneratedPasswordState(null);
-
-  const handleResendCredentials = async (item: AdminTraineeItem) => {
+  const handleResendCredentials = useCallback(async (item: AdminTraineeItem) => {
     const traineeId = String(item.trainee_id);
     if (resendActionId || deleting) return;
 
@@ -283,9 +308,9 @@ export default function UsersPage() {
       setResendActionId(null);
       setTimeout(() => setDeliveryNotice(null), 8000);
     }
-  };
+  }, [resendActionId, deleting]);
 
-  const handleBatchCreated = async (batch: BatchFilter) => {
+  const handleBatchCreated = useCallback(async (batch: BatchFilter) => {
     setCreateBatchModalOpen(false);
     setSelectedBatch(batch.batch_code);
     setRefreshKey((prev) => prev + 1);
@@ -299,18 +324,18 @@ export default function UsersPage() {
         return [...prev, batch].sort((a, b) => a.batch_code.localeCompare(b.batch_code));
       });
     }
-  };
+  }, []);
 
-  const handleResetCompleted = async () => {
+  const handleResetCompleted = useCallback(async () => {
     setRefreshKey((prev) => prev + 1);
     try { await refreshBatchFilters(); setSelectedBatch(""); } catch (refreshError) { setError(toErrorMessage(refreshError)); }
-  };
+  }, []);
 
-  const handleImported = (batchCode: string, refreshedBatches: BatchFilter[]) => {
+  const handleImported = useCallback((batchCode: string, refreshedBatches: BatchFilter[]) => {
     setBatches(refreshedBatches); setSelectedBatch(batchCode); setRefreshKey((prev) => prev + 1);
-  };
+  }, []);
 
-  const handleToggleStatus = async (item: AdminTraineeItem) => {
+  const handleToggleStatus = useCallback(async (item: AdminTraineeItem) => {
     const traineeId = String(item.trainee_id);
     const nextStatus = item.status === "active" ? "inactive" : "active";
     setStatusActionId(traineeId);
@@ -324,7 +349,7 @@ export default function UsersPage() {
     } finally {
       setStatusActionId(null);
     }
-  };
+  }, []);
 
   const handleToggleSelectAll = () => {
     if (loading || rows.length === 0 || deleting) return;
@@ -346,20 +371,13 @@ export default function UsersPage() {
     });
   };
 
-  const openDeleteModal = (traineeIds: number[]) => {
+  const openDeleteModal = useCallback((traineeIds: number[]) => {
     const uniqueIds = Array.from(new Set(traineeIds.filter((value) => Number.isInteger(value) && value > 0)));
     if (uniqueIds.length === 0 || deleting) return;
     setDeleteTargetIds(uniqueIds);
     setDeleteError(null);
     setDeleteModalOpen(true);
-  };
-
-  const closeDeleteModal = () => {
-    if (deleting) return;
-    setDeleteModalOpen(false);
-    setDeleteTargetIds([]);
-    setDeleteError(null);
-  };
+  }, [deleting]);
 
   const handleConfirmDelete = async () => {
     if (deleting || deleteTargetIds.length === 0) return;
@@ -418,7 +436,7 @@ export default function UsersPage() {
   };
 
   const handleSwitchView = (nextView: ActiveView) => {
-    setActiveView(nextView);
+    if (nextView === activeView) return;
     const searchParams = new URLSearchParams(locationSearch);
     if (nextView === "reports") searchParams.set("view", "reports");
     else searchParams.delete("view");
@@ -431,16 +449,14 @@ export default function UsersPage() {
       <button
         type="button"
         onClick={() => handleSwitchView("trainees")}
-        className={`px-6 py-2 rounded-full font-bold text-sm transition-all duration-300 ${activeView === "trainees" ? "bg-[#3B82F6] text-white shadow-md shadow-blue-500/20" : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-          }`}
+        className={`px-6 py-2 rounded-full font-bold text-sm transition-colors ${activeView === "trainees" ? "bg-[#3B82F6] text-white shadow-md shadow-blue-500/20" : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
       >
         Trainees
       </button>
       <button
         type="button"
         onClick={() => handleSwitchView("reports")}
-        className={`px-6 py-2 rounded-full font-bold text-sm transition-all duration-300 ${activeView === "reports" ? "bg-[#3B82F6] text-white shadow-md shadow-blue-500/20" : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
-          }`}
+        className={`px-6 py-2 rounded-full font-bold text-sm transition-colors ${activeView === "reports" ? "bg-[#3B82F6] text-white shadow-md shadow-blue-500/20" : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
       >
         Reports
       </button>
@@ -470,8 +486,7 @@ export default function UsersPage() {
         )}
 
         {deliveryNotice && (
-          <div className={`rounded-2xl px-6 py-4 text-sm font-bold shadow-sm animate-in fade-in slide-in-from-top-2 flex items-center gap-3 ${deliveryNotice.type === "success" ? "bg-emerald-50 border border-emerald-200 text-emerald-700" : "bg-amber-50 border border-amber-200 text-amber-700"
-            }`}>
+          <div className={`rounded-2xl px-6 py-4 text-sm font-bold shadow-sm animate-in fade-in slide-in-from-top-2 flex items-center gap-3 ${deliveryNotice.type === "success" ? "bg-emerald-50 border border-emerald-200 text-emerald-700" : "bg-amber-50 border border-amber-200 text-amber-700"}`}>
             <Mail size={18} />
             {deliveryNotice.message}
           </div>
@@ -483,20 +498,12 @@ export default function UsersPage() {
 
         {/* Left Side: Search & Filters */}
         <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} aria-hidden="true" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search trainees..."
-              className="pl-10 pr-4 py-2.5 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-semibold w-[220px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-500 shadow-sm"
-            />
-          </div>
+          <DebouncedSearchInput initialValue={debouncedSearch} onSearch={handleSearch} />
 
           <select
             value={selectedBatch}
             onChange={(event) => setSelectedBatch(event.target.value)}
-            className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[140px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-500 shadow-sm cursor-pointer"
+            className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[140px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm cursor-pointer"
           >
             <option value="">All Batches</option>
             {batches.map((batch) => (
@@ -507,7 +514,7 @@ export default function UsersPage() {
           <select
             value={statusFilter}
             onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-            className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[130px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-500 shadow-sm cursor-pointer"
+            className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[130px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm cursor-pointer"
           >
             <option value="all">All Status</option>
             <option value="active">Active</option>
@@ -518,7 +525,7 @@ export default function UsersPage() {
         {/* Right Side: Actions */}
         <div className="flex items-center gap-2 flex-wrap justify-end">
           {selectedIds.size > 0 ? (
-            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 duration-300 mr-2">
+            <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 mr-2">
               <button
                 type="button"
                 onClick={() => openDeleteModal(Array.from(selectedIds))}
@@ -555,16 +562,16 @@ export default function UsersPage() {
       </div>
 
       {/* SECTION: DATA TABLE */}
-      <div className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden transition-colors duration-500 relative z-0 border border-slate-100 dark:border-slate-800/50">
+      {/* OPTIMIZATION: Only the main container has a light background transition, inner cells are snapped */}
+      <div className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden transition-colors relative z-0 border border-slate-100 dark:border-slate-800/50">
         <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
           <table className="w-full text-sm whitespace-nowrap border-collapse">
-            <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 transition-colors duration-500 after:content-[''] after:absolute after:bottom-0 after:left-4 after:right-4 after:border-b-2 after:border-slate-100 dark:after:border-slate-700/50">
-              <tr className="text-[11px] uppercase font-extrabold text-[#0B1B3D] dark:text-slate-200 tracking-wider transition-colors duration-500">
+            <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 transition-colors after:content-[''] after:absolute after:bottom-0 after:left-4 after:right-4 after:border-b-2 after:border-slate-100 dark:after:border-slate-700/50">
+              <tr className="text-[11px] uppercase font-extrabold text-[#0B1B3D] dark:text-slate-200 tracking-wider">
                 <th className="px-4 py-5 text-left w-10">
-                  {/* Custom Checkbox */}
                   <div
                     onClick={handleToggleSelectAll}
-                    className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center cursor-pointer transition-all duration-300 ${allListedSelected
+                    className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center cursor-pointer transition-colors ${allListedSelected
                       ? "bg-[#3B82F6] border-[#3B82F6]"
                       : someListedSelected
                         ? "bg-[#3B82F6] border-[#3B82F6]"
@@ -584,7 +591,7 @@ export default function UsersPage() {
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors duration-500">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
               {rows.map((row) => {
                 const actionLabel = row.raw.status === "active" ? "Deactivate" : "Reactivate";
                 const isToggling = statusActionId === row.id;
@@ -595,48 +602,47 @@ export default function UsersPage() {
                   <tr
                     key={row.id}
                     onClick={() => handleToggleSelectOne(row.numericId, !isSelected)}
-                    className={`group cursor-pointer select-none transition-all duration-300 border-y border-transparent ${isSelected ? 'bg-blue-50/80 dark:bg-[#3B82F6]/10 !border-blue-200 dark:!border-blue-900/50 relative z-10'
+                    className={`group cursor-pointer select-none transition-colors border-y border-transparent ${isSelected ? 'bg-blue-50/80 dark:bg-[#3B82F6]/10 !border-blue-200 dark:!border-blue-900/50 relative z-10'
                       : 'hover:bg-slate-50 dark:hover:bg-white/[0.02] hover:border-slate-200 dark:hover:border-slate-700/50'
                       }`}
                   >
                     <td className="px-4 py-4">
-                      {/* Custom Row Checkbox */}
                       <div
                         onClick={(e) => { e.stopPropagation(); handleToggleSelectOne(row.numericId, !isSelected); }}
-                        className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center cursor-pointer transition-all duration-300 ${isSelected
+                        className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center cursor-pointer transition-colors ${isSelected
                           ? "bg-[#3B82F6] border-[#3B82F6] shadow-sm"
                           : "bg-white dark:bg-[#0F172A] border-slate-300 dark:border-slate-600 group-hover:border-[#3B82F6]/50"
                           } ${deleting ? "opacity-50 pointer-events-none" : ""}`}
                       >
-                        <Check size={12} className={`text-white transition-transform duration-300 ${isSelected ? "scale-100" : "scale-0"}`} strokeWidth={3.5} />
+                        <Check size={12} className={`text-white transition-transform ${isSelected ? "scale-100" : "scale-0"}`} strokeWidth={3.5} />
                       </div>
                     </td>
                     <td className="px-2 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 rounded-full bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 text-xs font-bold transition-colors duration-500 shrink-0">
+                        <div className="h-9 w-9 rounded-full bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 text-xs font-bold shrink-0">
                           {row.initials}
                         </div>
                         <div className="leading-tight">
-                          <div className="font-extrabold text-[#0B1B3D] dark:text-slate-200 transition-colors">{row.fullName}</div>
+                          <div className="font-extrabold text-[#0B1B3D] dark:text-slate-200">{row.fullName}</div>
                           <div className="text-[10px] text-slate-400 font-medium mt-0.5">{row.raw.trainee_code}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-4 text-slate-500 dark:text-slate-400 font-medium text-xs transition-colors duration-500">{row.raw.email}</td>
-                    <td className="px-3 py-4 text-slate-500 dark:text-slate-400 font-bold text-xs transition-colors duration-500">{row.raw.batch.batch_code}</td>
+                    <td className="px-3 py-4 text-slate-500 dark:text-slate-400 font-medium text-xs">{row.raw.email}</td>
+                    <td className="px-3 py-4 text-slate-500 dark:text-slate-400 font-bold text-xs">{row.raw.batch.batch_code}</td>
                     <td className="px-3 py-4">
-                      <div className="w-[120px] 2xl:w-[160px] group-hover:scale-105 transition-transform duration-300">
+                      <div className="w-[120px] 2xl:w-[160px] group-hover:scale-105 transition-transform">
                         <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 font-bold mb-1.5 uppercase tracking-wider">
                           <span>{row.raw.progress.label}</span>
                           <span>{row.raw.progress.percent}%</span>
                         </div>
-                        <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden transition-colors duration-500">
-                          <div className="h-full bg-[#18B9C7] rounded-full transition-all duration-500" style={{ width: `${row.raw.progress.percent}%` }} />
+                        <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                          <div className="h-full bg-[#18B9C7] rounded-full transition-all" style={{ width: `${row.raw.progress.percent}%` }} />
                         </div>
                       </div>
                     </td>
                     <td className="px-3 py-4 text-center">
-                      <span className={`inline-flex items-center justify-center w-[80px] py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)} transition-colors duration-500`}>
+                      <span className={`inline-flex items-center justify-center w-[80px] py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)}`}>
                         {row.displayStatus}
                       </span>
                     </td>
@@ -650,7 +656,7 @@ export default function UsersPage() {
                           title="Edit Trainee"
                         >
                           <Pencil size={14} aria-hidden="true" className="shrink-0" />
-                          <span className="hidden xl:inline max-w-0 xl:max-w-[50px] opacity-0 xl:opacity-100 transition-all duration-300 whitespace-nowrap">Edit</span>
+                          <span className="hidden xl:inline max-w-0 xl:max-w-[50px] opacity-0 xl:opacity-100 transition-all whitespace-nowrap">Edit</span>
                         </button>
                         <button
                           type="button"
@@ -660,7 +666,7 @@ export default function UsersPage() {
                           title={actionLabel}
                         >
                           <Power size={14} aria-hidden="true" className="shrink-0" />
-                          <span className="hidden xl:inline max-w-0 xl:max-w-[75px] opacity-0 xl:opacity-100 transition-all duration-300 whitespace-nowrap">
+                          <span className="hidden xl:inline max-w-0 xl:max-w-[75px] opacity-0 xl:opacity-100 transition-all whitespace-nowrap">
                             {isToggling ? "..." : actionLabel}
                           </span>
                         </button>
@@ -672,7 +678,7 @@ export default function UsersPage() {
                           title="Resend Credentials"
                         >
                           <Mail size={14} className="shrink-0" />
-                          <span className="hidden xl:inline max-w-0 xl:max-w-[60px] opacity-0 xl:opacity-100 transition-all duration-300 whitespace-nowrap">
+                          <span className="hidden xl:inline max-w-0 xl:max-w-[60px] opacity-0 xl:opacity-100 transition-all whitespace-nowrap">
                             {isResending ? "..." : "Resend"}
                           </span>
                         </button>
@@ -693,7 +699,7 @@ export default function UsersPage() {
 
               {!loading && rows.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-8 py-20 text-center text-slate-500 dark:text-slate-400 transition-colors duration-500">
+                  <td colSpan={7} className="px-8 py-20 text-center text-slate-500 dark:text-slate-400">
                     <div className="flex flex-col items-center justify-center gap-3">
                       <SearchX size={40} className="text-slate-300 dark:text-slate-600" />
                       <p className="font-semibold text-lg text-[#0B1B3D] dark:text-slate-200">No trainees found.</p>
@@ -721,8 +727,8 @@ export default function UsersPage() {
 
       {/* SECTION: SLEEK DELETE MODAL */}
       {deleteModalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity duration-300 animate-in fade-in">
-          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#1E293B] shadow-2xl overflow-hidden transform transition-all duration-300 scale-100 opacity-100 animate-in zoom-in-95">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-opacity animate-in fade-in">
+          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#1E293B] shadow-2xl overflow-hidden transform transition-all scale-100 opacity-100 animate-in zoom-in-95">
             <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/20">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
@@ -759,7 +765,7 @@ export default function UsersPage() {
                 type="button"
                 onClick={closeDeleteModal}
                 disabled={deleting}
-                className="px-6 py-2.5 rounded-full text-sm font-bold text-slate-500 hover:text-[#0B1B3D] dark:hover:text-slate-200 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 transition-colors duration-500 disabled:opacity-50"
+                className="px-6 py-2.5 rounded-full text-sm font-bold text-slate-500 hover:text-[#0B1B3D] dark:hover:text-slate-200 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 transition-colors disabled:opacity-50"
               >
                 Cancel
               </button>
