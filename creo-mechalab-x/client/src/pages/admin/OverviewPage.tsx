@@ -309,7 +309,7 @@ export default function OverviewPage() {
                 {loading ? "--" : String(dashboard.summary.total_modules).padStart(2, "0")}
               </div>
               <div className="text-[8px] sm:text-[10px] font-bold text-slate-400 group-hover:text-purple-500 flex items-center gap-1 transition-colors xl:pb-0.5">
-                <span className="hidden xl:inline">Curric</span> <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
+                <span className="hidden xl:inline">Curriculum</span> <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
           </div>
@@ -440,7 +440,7 @@ export default function OverviewPage() {
                 <Bell size={16} />
               </div>
               <h3 className="text-[#0B1B3D] dark:text-slate-100 font-black text-sm tracking-tight">
-                Notifications
+                System Status
               </h3>
             </div>
           </div>
@@ -489,7 +489,7 @@ export default function OverviewPage() {
               <History size={16} />
             </div>
             <h3 className="text-[#0B1B3D] dark:text-slate-100 font-black text-sm tracking-tight">
-              System Log
+              Activity Logs
             </h3>
           </div>
 

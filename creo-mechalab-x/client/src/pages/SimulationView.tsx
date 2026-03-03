@@ -1,12 +1,11 @@
 import { useNavigate, useParams } from 'react-router-dom';
-// Added AlertTriangle to the imports
 import { ArrowLeft, CheckCircle2, Loader2, Play, RotateCcw, Zap, Moon, Sun, AlertTriangle } from 'lucide-react';
 import { Stage, Layer, Rect, Text, Group } from 'react-konva';
 import { useState, useEffect, useRef } from 'react';
 import CyberTransition from '../components/CyberTransition';
 import PortraitGuard from '../components/PortraitGuard';
 import { completeSimulation, getTraineeDashboard } from '../api/trainees';
-import type { RectConfig } from 'konva/lib/shapes/Rect'; // Imported type for strict typescript
+import type { RectConfig } from 'konva/lib/shapes/Rect';
 
 const getErrorMessage = (error: unknown, fallback: string): string => {
     if (error instanceof Error && error.message) return error.message;
@@ -126,7 +125,6 @@ const SimulationView = () => {
                 setCompletionLookupError(getErrorMessage(error, 'Unable to verify completion status.'));
                 setIsAlreadyCompleted(false);
             } finally {
-                // Fixed: Removed unsafe `return` statement from finally block
                 if (isMountedRef.current && !controller.signal.aborted) {
                     setIsCheckingCompletion(false);
                 }
@@ -164,7 +162,6 @@ const SimulationView = () => {
             if (!isMountedRef.current) return;
             setCompleteError(getErrorMessage(error, 'Failed to complete this simulation.'));
         } finally {
-            // Fixed: Removed unsafe `return` statement from finally block
             if (isMountedRef.current && !controller.signal.aborted) {
                 setIsCompleting(false);
             }
@@ -174,7 +171,7 @@ const SimulationView = () => {
     // Konva styling based on theme
     const strokeColor = isDarkMode ? '#334155' : '#cbd5e1';
     const componentFill = isDarkMode ? '#1e293b' : '#ffffff';
-    const textColor = isDarkMode ? '#ffffff' : '#0f172a'; // Now actually used!
+    const textColor = isDarkMode ? '#ffffff' : '#0f172a';
     const subTextColor = isDarkMode ? '#94a3b8' : '#64748b';
 
     return (
@@ -216,17 +213,19 @@ const SimulationView = () => {
                         </div>
 
                         {/* Right: Controls & Actions */}
-                        <div className="flex items-center justify-between w-full sm:w-auto gap-3 sm:gap-6">
+                        <div className="flex items-center justify-between w-full sm:w-auto gap-3 sm:gap-4">
 
                             {/* Theme Toggle */}
-                            <button
-                                type="button"
-                                onClick={toggleTheme}
-                                className="p-2 text-slate-500 hover:text-amber-500 dark:text-slate-400 dark:hover:text-amber-400 transition hover:bg-slate-200 dark:hover:bg-slate-800 rounded border border-transparent hover:border-slate-300 dark:hover:border-slate-700 shrink-0"
-                                title="Toggle Optics"
-                            >
-                                {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-                            </button>
+                            <div className="flex items-center border-r border-slate-300 dark:border-slate-700 pr-3 sm:pr-4">
+                                <button
+                                    type="button"
+                                    onClick={toggleTheme}
+                                    className="p-2 text-slate-500 hover:text-amber-500 dark:text-slate-400 dark:hover:text-amber-400 transition hover:bg-slate-200 dark:hover:bg-slate-800 rounded border border-transparent hover:border-slate-300 dark:hover:border-slate-700 shrink-0"
+                                    title="Toggle Optics"
+                                >
+                                    {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
+                                </button>
+                            </div>
 
                             <div className="flex items-center gap-2 sm:gap-3">
                                 <button
@@ -258,7 +257,7 @@ const SimulationView = () => {
                                 </button>
 
                                 {isAlreadyCompleted && (
-                                    <span className="hidden sm:inline-flex items-center gap-1.5 rounded-sm border border-emerald-500/50 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-[10px] sm:text-xs font-black tracking-widest uppercase text-emerald-600 dark:text-emerald-400">
+                                    <span className="hidden lg:inline-flex items-center gap-1.5 rounded-sm border border-emerald-500/50 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-[10px] sm:text-xs font-black tracking-widest uppercase text-emerald-600 dark:text-emerald-400">
                                         <CheckCircle2 size={14} />
                                         Cleared
                                     </span>
@@ -346,7 +345,6 @@ const SimulationView = () => {
                                             shadowOffsetY={4}
                                         />
                                         <Rect width={80} height={20} fill="#334155" cornerRadius={[4, 4, 0, 0]} />
-                                        {/* Fixed: Applied textColor here! */}
                                         <Text text="PB 1" x={24} y={5} fill={textColor} fontSize={10} fontFamily="monospace" fontStyle="bold" />
 
                                         {/* The Button Graphic */}
@@ -376,12 +374,10 @@ const SimulationView = () => {
     );
 };
 
-// Fixed: Added strict Type interface for Circle to eliminate the "any" warning
 interface CircleProps extends Omit<RectConfig, 'cornerRadius'> {
     radius: number;
 }
 
-// Helper component for drawing terminal circles
 const Circle = (props: CircleProps) => {
     return <Rect {...props} cornerRadius={props.radius} width={props.radius * 2} height={props.radius * 2} offsetX={props.radius} offsetY={props.radius} />
 }
