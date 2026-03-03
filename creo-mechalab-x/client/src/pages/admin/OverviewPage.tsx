@@ -217,7 +217,7 @@ export default function OverviewPage() {
 
   if (error && !loading) {
     return (
-      <div className="flex-1 flex flex-col gap-4 min-h-0 relative animate-in fade-in duration-500 -mt-2">
+      <div className="flex-1 flex flex-col gap-4 min-h-0 relative animate-in fade-in duration-500">
         <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-8 shadow-sm flex-1 grid place-items-center border border-red-100 dark:border-red-900/30">
           <div className="text-center max-w-md">
             <div className="mx-auto w-16 h-16 bg-red-50 dark:bg-red-500/10 rounded-full flex items-center justify-center mb-4">
@@ -235,104 +235,108 @@ export default function OverviewPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col xl:flex-row gap-4 min-h-0 relative animate-in fade-in slide-in-from-bottom-4 duration-500 -mt-2">
+    // OPTIMIZATION: Removed `-mt-2` to prevent shadow clipping. Added `pb-4` to ensure smooth bottom scrolling.
+    <div className="flex-1 flex flex-col xl:flex-row gap-4 xl:min-h-0 relative animate-in fade-in slide-in-from-bottom-4 duration-500 pb-4">
 
-      {/* LEFT COLUMN: The Main Focus (Z-Pattern Body) */}
-      <div className="flex-1 flex flex-col gap-4 min-h-0">
+      {/* LEFT COLUMN */}
+      <div className="flex-1 flex flex-col gap-4 xl:min-h-0">
 
-        {/* A. KPI Summary Cards ROW (3 Clickable Metrics + Static Filter) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 shrink-0">
+        {/* A. KPI Summary Cards (FORCED TO 1 ROW: grid-cols-4) */}
+        {/* We use responsive text & padding to shrink items safely without wrapping */}
+        <div className="grid grid-cols-4 gap-2 sm:gap-3 xl:gap-4 shrink-0">
 
-          {/* 1. Trainees Card (Clickable) */}
+          {/* 1. Trainees Card */}
           <div
             onClick={() => navigate("/admin/users")}
             role="button"
             tabIndex={0}
-            className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col justify-between group cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-blue-500/30 dark:hover:border-blue-400/30 hover:-translate-y-1 relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="bg-white dark:bg-[#1E293B] rounded-xl sm:rounded-2xl p-2.5 sm:p-4 lg:p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col justify-between group cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-blue-500/30 dark:hover:border-blue-400/30 hover:-translate-y-1 relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
-            <div className="text-slate-500 dark:text-slate-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest flex items-center gap-2 relative z-10">
-              <Users size={14} className="text-blue-500" /> Trainees
+            <div className="text-slate-500 dark:text-slate-400 font-bold text-[8px] sm:text-[10px] lg:text-xs uppercase tracking-widest flex items-center gap-1.5 relative z-10 truncate">
+              <Users size={14} className="text-blue-500 shrink-0 hidden sm:block" /> Trainees
             </div>
 
-            <div className="mt-2 relative z-10 flex items-end justify-between">
-              <div className="text-3xl lg:text-4xl font-black text-[#0B1B3D] dark:text-slate-100 tracking-tighter drop-shadow-sm leading-none group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+            <div className="mt-1.5 sm:mt-2 relative z-10 flex flex-col xl:flex-row xl:items-end justify-between gap-0.5 xl:gap-0">
+              <div className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-black text-[#0B1B3D] dark:text-slate-100 tracking-tighter drop-shadow-sm leading-none group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                 {loading ? "--" : dashboard.summary.total_trainees}
               </div>
-              <div className="text-[10px] font-bold text-slate-400 group-hover:text-blue-500 flex items-center gap-1 transition-colors pb-0.5">
-                Roster <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+              <div className="text-[8px] sm:text-[10px] font-bold text-slate-400 group-hover:text-blue-500 flex items-center gap-1 transition-colors xl:pb-0.5">
+                <span className="hidden xl:inline">Roster</span> <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
           </div>
 
-          {/* 2. Progress Card (Clickable) */}
+          {/* 2. Progress Card */}
           <div
             onClick={() => navigate("/admin/reports")}
             role="button"
             tabIndex={0}
-            className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col justify-between group cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-emerald-500/30 dark:hover:border-emerald-400/30 hover:-translate-y-1 relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className="bg-white dark:bg-[#1E293B] rounded-xl sm:rounded-2xl p-2.5 sm:p-4 lg:p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col justify-between group cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-emerald-500/30 dark:hover:border-emerald-400/30 hover:-translate-y-1 relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-emerald-500"
           >
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
-            <div className="text-slate-500 dark:text-slate-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest flex items-center gap-2 relative z-10">
-              <Activity size={14} className="text-emerald-500" /> Progress
+            <div className="text-slate-500 dark:text-slate-400 font-bold text-[8px] sm:text-[10px] lg:text-xs uppercase tracking-widest flex items-center gap-1.5 relative z-10 truncate">
+              <Activity size={14} className="text-emerald-500 shrink-0 hidden sm:block" /> Progress
             </div>
 
-            <div className="mt-2 relative z-10 flex items-end justify-between">
-              <div className="text-3xl lg:text-4xl font-black text-[#0B1B3D] dark:text-slate-100 tracking-tighter flex items-baseline gap-1 leading-none group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
-                {loading ? "--" : dashboard.summary.progress_percent} <span className="text-lg text-slate-400 group-hover:text-emerald-500/70 transition-colors">%</span>
+            <div className="mt-1.5 sm:mt-2 relative z-10 flex flex-col xl:flex-row xl:items-end justify-between gap-0.5 xl:gap-0">
+              <div className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-black text-[#0B1B3D] dark:text-slate-100 tracking-tighter flex items-baseline gap-[1px] sm:gap-1 leading-none group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                {loading ? "--" : dashboard.summary.progress_percent} <span className="text-xs sm:text-sm lg:text-lg text-slate-400 group-hover:text-emerald-500/70 transition-colors">%</span>
               </div>
-              <div className="text-[10px] font-bold text-slate-400 group-hover:text-emerald-500 flex items-center gap-1 transition-colors pb-0.5">
-                Reports <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+              <div className="text-[8px] sm:text-[10px] font-bold text-slate-400 group-hover:text-emerald-500 flex items-center gap-1 transition-colors xl:pb-0.5">
+                <span className="hidden xl:inline">Reports</span> <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
           </div>
 
-          {/* 3. Modules Card (Clickable) */}
+          {/* 3. Modules Card */}
           <div
             onClick={() => navigate("/admin/lessons")}
             role="button"
             tabIndex={0}
-            className="bg-white dark:bg-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col justify-between group cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-purple-500/30 dark:hover:border-purple-400/30 hover:-translate-y-1 relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-purple-500"
+            className="bg-white dark:bg-[#1E293B] rounded-xl sm:rounded-2xl p-2.5 sm:p-4 lg:p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col justify-between group cursor-pointer transition-all duration-300 hover:shadow-lg hover:border-purple-500/30 dark:hover:border-purple-400/30 hover:-translate-y-1 relative overflow-hidden focus:outline-none focus:ring-2 focus:ring-purple-500"
           >
             <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
-            <div className="text-slate-500 dark:text-slate-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest flex items-center gap-2 relative z-10">
-              <BookOpen size={14} className="text-purple-500" /> Modules
+            <div className="text-slate-500 dark:text-slate-400 font-bold text-[8px] sm:text-[10px] lg:text-xs uppercase tracking-widest flex items-center gap-1.5 relative z-10 truncate">
+              <BookOpen size={14} className="text-purple-500 shrink-0 hidden sm:block" /> Modules
             </div>
 
-            <div className="mt-2 relative z-10 flex items-end justify-between">
-              <div className="text-3xl lg:text-4xl font-black text-[#0B1B3D] dark:text-slate-100 tracking-tighter leading-none group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+            <div className="mt-1.5 sm:mt-2 relative z-10 flex flex-col xl:flex-row xl:items-end justify-between gap-0.5 xl:gap-0">
+              <div className="text-xl sm:text-2xl lg:text-3xl xl:text-4xl font-black text-[#0B1B3D] dark:text-slate-100 tracking-tighter leading-none group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                 {loading ? "--" : String(dashboard.summary.total_modules).padStart(2, "0")}
               </div>
-              <div className="text-[10px] font-bold text-slate-400 group-hover:text-purple-500 flex items-center gap-1 transition-colors pb-0.5">
-                Curriculum <ArrowRight size={12} className="group-hover:translate-x-1 transition-transform" />
+              <div className="text-[8px] sm:text-[10px] font-bold text-slate-400 group-hover:text-purple-500 flex items-center gap-1 transition-colors xl:pb-0.5">
+                <span className="hidden xl:inline">Curric</span> <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
           </div>
 
-          {/* 4. Active View Filter (Static Form Control) */}
-          <div className="bg-slate-50 dark:bg-[#1E293B] rounded-2xl p-4 sm:p-5 shadow-inner border border-slate-200 dark:border-slate-800/50 flex flex-col justify-center">
-            <div className="text-slate-500 dark:text-slate-400 font-bold text-[10px] sm:text-xs uppercase tracking-widest flex items-center gap-2 mb-3">
-              <Filter size={14} className="text-slate-400" /> Active View
+          {/* 4. Active View Filter */}
+          <div className="bg-slate-50 dark:bg-[#1E293B] rounded-xl sm:rounded-2xl p-2.5 sm:p-4 lg:p-5 shadow-inner border border-slate-200 dark:border-slate-800/50 flex flex-col justify-between">
+            <div className="text-slate-500 dark:text-slate-400 font-bold text-[8px] sm:text-[10px] lg:text-xs uppercase tracking-widest flex items-center gap-1.5 relative z-10 truncate mb-1.5 sm:mb-2">
+              <Filter size={14} className="text-slate-400 shrink-0 hidden sm:block" /> Active View
             </div>
-            <select
-              value={selectedBatch}
-              onChange={(event) => setSelectedBatch(event.target.value)}
-              className="w-full h-10 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-xs sm:text-sm font-bold text-[#0B1B3D] dark:text-slate-200 px-3 outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer shadow-sm transition-colors"
-            >
-              <option value="">All Cohorts</option>
-              {batchOptions.map((batch) => (
-                <option key={batch.batch_id} value={batch.batch_code}>{batch.batch_code}</option>
-              ))}
-            </select>
+            <div className="mt-auto">
+              <select
+                value={selectedBatch}
+                onChange={(event) => setSelectedBatch(event.target.value)}
+                className="w-full h-7 sm:h-9 lg:h-10 rounded-lg sm:rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[9px] sm:text-xs lg:text-sm font-bold text-[#0B1B3D] dark:text-slate-200 px-1 sm:px-3 outline-none focus:ring-2 focus:ring-blue-500/50 cursor-pointer shadow-sm transition-colors truncate"
+              >
+                <option value="">Global (All)</option>
+                {batchOptions.map((batch) => (
+                  <option key={batch.batch_id} value={batch.batch_code}>{batch.batch_code}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
         </div>
 
         {/* B. Milestone Tracker */}
-        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col flex-1 min-h-0 transition-colors">
+        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col flex-1 min-h-[350px] xl:min-h-0 transition-colors">
 
           <div className="flex items-center justify-between mb-4 shrink-0">
             <div>
@@ -346,8 +350,7 @@ export default function OverviewPage() {
             {loading && <Loader2 className="animate-spin text-blue-500" size={20} />}
           </div>
 
-          {/* CSS-Perfect Chart Area */}
-          <div className="flex-1 flex min-h-0 relative mt-2 gap-3 sm:gap-4">
+          <div className="flex-1 flex min-h-[250px] xl:min-h-0 relative mt-2 gap-3 sm:gap-4">
 
             {/* Y-Axis Labels */}
             <div className="flex flex-col justify-between text-slate-400 dark:text-slate-500 text-[9px] sm:text-[10px] font-bold pb-[24px] w-[30px] sm:w-[40px] shrink-0 text-right pr-2 border-r border-slate-100 dark:border-slate-800">
@@ -361,20 +364,16 @@ export default function OverviewPage() {
             {/* Graph wrapper */}
             <div className="flex-1 relative flex flex-col h-full">
 
-              {/* Graph area - Bottom border is exactly the 0% line */}
               <div className="flex-1 relative border-b-2 border-slate-300 dark:border-slate-600 z-0">
-
-                {/* Horizontal Grid Lines */}
                 <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
                   <div className="w-full border-t border-dashed border-slate-200 dark:border-slate-700/50"></div>
                   <div className="w-full border-t border-dashed border-slate-200 dark:border-slate-700/50"></div>
                   <div className="w-full border-t border-dashed border-slate-200 dark:border-slate-700/50"></div>
                   <div className="w-full border-t border-dashed border-slate-200 dark:border-slate-700/50"></div>
-                  <div className="w-full h-[1px]"></div> {/* Spacer to maintain justify-between */}
+                  <div className="w-full h-[1px]"></div>
                 </div>
 
-                {/* The Bars (inset-0 ensures they sit flush on the bottom border) */}
-                <div className="absolute inset-0 flex items-end justify-around z-10">
+                <div className="absolute inset-0 flex items-end justify-around z-10 h-full">
                   {!loading && dashboard.chart.points.length === 0 ? (
                     <div className="absolute inset-0 grid place-items-center text-sm font-semibold text-slate-400">
                       No module data available yet.
@@ -382,7 +381,7 @@ export default function OverviewPage() {
                   ) : (
                     dashboard.chart.points.map((item, idx) => {
                       const completionPercent = Math.max(0, Math.min(100, item.completion_percent));
-                      const visualHeight = Math.max(2, completionPercent); // Minimum height so 0% is visible
+                      const visualHeight = Math.max(2, completionPercent);
 
                       return (
                         <div key={item.module_id || idx} className="h-full flex flex-col justify-end w-8 sm:w-14 md:w-16 lg:w-20 relative group">
@@ -397,12 +396,10 @@ export default function OverviewPage() {
                             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-b from-white/20 to-transparent pointer-events-none" />
                           </div>
 
-                          {/* X-Axis Label pushed into the reserved space below */}
-                          <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-[9px] sm:text-[10px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                          <div className="absolute -bottom-5 left-1/2 -translate-x-1/2 text-[9px] sm:text-[10px] font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">
                             {item.module_code || `M${idx + 1}`}
                           </div>
 
-                          {/* Hover Tooltip */}
                           <div className="opacity-0 group-hover:opacity-100 absolute -top-14 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-[10px] sm:text-[11px] py-1.5 px-3 rounded-lg font-bold transition-all duration-200 pointer-events-none whitespace-nowrap text-center leading-tight shadow-xl z-50 translate-y-2 group-hover:translate-y-0">
                             <div className="text-cyan-400 mb-0.5">{item.module_code}</div>
                             <div>{completionPercent}% Cleared</div>
@@ -418,7 +415,6 @@ export default function OverviewPage() {
                 </div>
               </div>
 
-              {/* 24px of empty space to hold the X-Axis labels without getting cut off */}
               <div className="h-[24px] shrink-0 w-full"></div>
             </div>
 
@@ -433,8 +429,8 @@ export default function OverviewPage() {
 
       </div>
 
-      {/* RIGHT COLUMN: Splitting into Notifications and System Log */}
-      <div className="w-full xl:w-[320px] shrink-0 flex flex-col gap-4 min-h-0">
+      {/* RIGHT COLUMN */}
+      <div className="w-full xl:w-[320px] shrink-0 flex flex-col gap-4 min-h-[400px] xl:min-h-0">
 
         {/* Notifications Panel */}
         <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex-1 flex flex-col min-h-0">
