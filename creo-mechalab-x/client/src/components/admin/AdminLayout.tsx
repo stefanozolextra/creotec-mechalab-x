@@ -24,7 +24,7 @@ const AdminLayout = () => {
     } else {
       document.documentElement.classList.remove('dark');
     }
-  }, []);
+  }, [isDark]);
 
   const getHeaderTitle = () => {
     const currentItem = navItems.find((item) => pathname.startsWith(item.to));
@@ -78,19 +78,23 @@ const AdminLayout = () => {
           {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
 
-        <div className="h-[90px] sm:h-[100px] flex items-center px-4 sm:px-6 overflow-hidden shrink-0">
-          <div className="flex items-center gap-3 sm:gap-4 min-w-[210px]">
-            <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-[#0B1B3D] dark:bg-[#0F172A] shrink-0 grid place-items-center">
-              <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-cyan-400 dark:bg-[#3B82F6]" />
+        {/* LOGO SECTION - Mathematically Centered */}
+        <div className="h-[90px] sm:h-[100px] flex items-center px-3 overflow-hidden shrink-0">
+          <div className="flex items-center min-w-max">
+            <div className="w-[56px] flex items-center justify-center shrink-0">
+              <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-[#0B1B3D] dark:bg-[#0F172A] shrink-0 grid place-items-center shadow-sm">
+                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-cyan-400 dark:bg-[#3B82F6]" />
+              </div>
             </div>
-            <div className={`transition-all duration-300 ${isCollapsed ? "opacity-0 -translate-x-4" : "opacity-100 translate-x-0"}`}>
+            <div className={`flex flex-col justify-center overflow-hidden whitespace-nowrap transition-all duration-300 ${isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100 pl-2"}`}>
               <p className="font-bold text-base sm:text-lg dark:text-slate-100 leading-none">Creo</p>
               <p className="font-bold text-base sm:text-lg dark:text-slate-100 leading-none mt-1">Mechalab X</p>
             </div>
           </div>
         </div>
 
-        <nav className="flex-1 px-3 sm:px-4 mt-2 sm:mt-4 space-y-1.5 sm:space-y-2 overflow-y-auto overflow-x-hidden">
+        {/* NAVIGATION ITEMS - Mathematically Centered */}
+        <nav className="flex-1 px-3 mt-2 sm:mt-4 space-y-1.5 sm:space-y-2 overflow-y-auto overflow-x-hidden">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -98,24 +102,27 @@ const AdminLayout = () => {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `flex items-center h-[48px] sm:h-[52px] rounded-2xl font-bold transition-all duration-300 whitespace-nowrap ${isActive
+                  `flex items-center h-[48px] sm:h-[52px] rounded-2xl font-bold transition-all duration-300 overflow-hidden ${isActive
                     ? "bg-white text-[#0B1B3D] shadow-sm dark:bg-[#3B82F6]/20 dark:text-[#60A5FA]"
                     : "text-slate-500 hover:bg-white/40 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-slate-200"
                   }`
                 }
               >
-                <div className="w-[50px] sm:w-[56px] flex items-center justify-center shrink-0">
+                <div className="w-[56px] flex items-center justify-center shrink-0">
                   <Icon size={20} className="sm:w-[22px] sm:h-[22px]" />
                 </div>
-                <span className={`text-sm sm:text-base transition-all duration-300 ${isCollapsed ? "opacity-0 -translate-x-4" : "opacity-100 translate-x-0"}`}>
+                <div className={`text-sm sm:text-base transition-all duration-300 whitespace-nowrap overflow-hidden ${isCollapsed ? "w-0 opacity-0" : "flex-1 opacity-100 pr-4"}`}>
                   {item.label}
-                </span>
+                </div>
               </NavLink>
             );
           })}
         </nav>
 
-        <div className="p-3 sm:p-4 space-y-3 sm:space-y-4 mb-2 sm:mb-4">
+        {/* BOTTOM SECTION - Mathematically Centered */}
+        <div className="p-3 space-y-3 sm:space-y-4 mb-2 sm:mb-4">
+
+          {/* Theme Toggle */}
           <div
             className={`relative h-10 sm:h-11 flex items-center rounded-full transition-all duration-500 ${isCollapsed ? "w-10 sm:w-11 mx-auto" : "w-full px-1"
               } ${isDark ? "bg-[#0F172A] border border-white/5" : "bg-[#D1DCE8] shadow-inner"}`}
@@ -147,13 +154,14 @@ const AdminLayout = () => {
             )}
           </div>
 
+          {/* User Profile / Logout */}
           <div onClick={handleLogout} className="flex items-center h-12 sm:h-14 rounded-2xl hover:bg-white/40 dark:hover:bg-white/5 transition-all cursor-pointer group overflow-hidden">
-            <div className="w-[50px] sm:w-[56px] flex items-center justify-center shrink-0">
+            <div className="w-[56px] flex items-center justify-center shrink-0">
               <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gradient-to-tr from-orange-400 to-blue-900 border-2 border-white dark:border-slate-700 shadow-sm" />
             </div>
-            <div className={`flex-1 border-l-2 border-slate-300 dark:border-slate-700 pl-3 transition-all duration-300 ${isCollapsed ? "opacity-0 -translate-x-4" : "opacity-100 translate-x-0"}`}>
-              <p className="font-bold whitespace-nowrap text-xs sm:text-sm dark:text-slate-200">Juan Dela Cruz</p>
-              <div className="flex items-center gap-1 text-[9px] sm:text-[10px] text-slate-500 uppercase font-bold group-hover:text-red-500 transition-colors">
+            <div className={`flex flex-col justify-center overflow-hidden whitespace-nowrap transition-all duration-300 ${isCollapsed ? "w-0 opacity-0 border-transparent" : "flex-1 opacity-100 pl-3 border-l-2 border-slate-300 dark:border-slate-700"}`}>
+              <p className="font-bold text-xs sm:text-sm dark:text-slate-200">Juan Dela Cruz</p>
+              <div className="flex items-center gap-1 text-[9px] sm:text-[10px] text-slate-500 uppercase font-bold group-hover:text-red-500 transition-colors mt-0.5">
                 <LogOutIcon size={10} /> Logout
               </div>
             </div>
@@ -162,15 +170,17 @@ const AdminLayout = () => {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-[80px] sm:h-[100px] px-4 sm:px-8 flex items-center justify-between shrink-0 gap-4">
+        {/* RESPONSIVE HEADER: Text will no longer vanish on portrait sizes */}
+        <header className="h-[80px] sm:h-[100px] px-4 sm:px-8 flex items-center justify-between shrink-0 gap-4 border-b border-transparent">
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight dark:text-slate-100 transition-all truncate pr-2">
             {getHeaderTitle()}
           </h1>
-          <div className="text-left md:text-right mt-1 md:mt-0">
-            <p className="text-base sm:text-lg lg:text-xl font-bold dark:text-slate-100 leading-none">Creo Mechalab X</p>
+          <div className="text-left md:text-right mt-1 md:mt-0 shrink-0">
+            <p className="text-sm sm:text-lg lg:text-xl font-bold dark:text-slate-100 leading-none">Creo Mechalab X</p>
             <p className="text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs lg:text-sm font-medium mt-1">TESDA NC II Trainer</p>
           </div>
         </header>
+
         <main className="flex-1 overflow-auto p-4 md:p-8 pt-0 flex flex-col relative z-0">
           <Outlet />
         </main>

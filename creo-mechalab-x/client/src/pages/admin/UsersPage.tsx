@@ -1,4 +1,4 @@
-import { Search, Plus, Upload, Pencil, Power, Download, Layers, RotateCcw, Trash2, Check, Minus, SearchX, X, Mail } from "lucide-react";
+import { Search, Plus, Upload, Pencil, Power, Download, Layers, CheckCircle, Trash2, Check, Minus, SearchX, X, Mail, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState, useCallback, memo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
@@ -99,13 +99,13 @@ const DebouncedSearchInput = memo(({
   }, [value, onSearch]);
 
   return (
-    <div className="relative">
+    <div className="relative w-full sm:max-w-[240px]">
       <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} aria-hidden="true" />
       <input
         value={value}
         onChange={(e) => setValue(e.target.value)}
         placeholder="Search trainees..."
-        className="pl-10 pr-4 py-2.5 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-semibold w-[220px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm"
+        className="pl-10 pr-4 py-2.5 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-semibold w-full outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm"
       />
     </div>
   );
@@ -473,7 +473,7 @@ export default function UsersPage() {
   }
 
   return (
-    <div className="flex-1 flex flex-col gap-4 min-h-0 relative">
+    <div className="flex-1 flex flex-col gap-4 min-h-0 min-w-0 w-full relative">
 
       {/* SECTION: VIEW TOGGLE & BANNERS */}
       <div className="flex flex-col gap-3 shrink-0">
@@ -494,36 +494,38 @@ export default function UsersPage() {
       </div>
 
       {/* SECTION: TOOLBAR */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 shrink-0 z-20">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 shrink-0 z-20 w-full min-w-0">
 
         {/* Left Side: Search & Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto flex-1 min-w-0">
           <DebouncedSearchInput initialValue={debouncedSearch} onSearch={handleSearch} />
 
-          <select
-            value={selectedBatch}
-            onChange={(event) => setSelectedBatch(event.target.value)}
-            className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[140px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm cursor-pointer"
-          >
-            <option value="">All Batches</option>
-            {batches.map((batch) => (
-              <option key={batch.batch_id} value={batch.batch_code}>{batch.batch_code}</option>
-            ))}
-          </select>
+          <div className="flex flex-col sm:flex-row gap-3 flex-1 sm:flex-none">
+            <select
+              value={selectedBatch}
+              onChange={(event) => setSelectedBatch(event.target.value)}
+              className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-full sm:w-[140px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm cursor-pointer"
+            >
+              <option value="">All Batches</option>
+              {batches.map((batch) => (
+                <option key={batch.batch_id} value={batch.batch_code}>{batch.batch_code}</option>
+              ))}
+            </select>
 
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-            className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[130px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm cursor-pointer"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+              className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-full sm:w-[130px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm cursor-pointer"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
         </div>
 
         {/* Right Side: Actions */}
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-2 justify-start sm:justify-end w-full lg:w-auto overflow-x-auto pb-1 sm:pb-0 hide-scrollbar shrink-0">
           {selectedIds.size > 0 ? (
             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 mr-2">
               <button
@@ -538,37 +540,41 @@ export default function UsersPage() {
             </div>
           ) : (
             <>
-              <button onClick={openCreateBatchModal} className="bg-white dark:bg-[#1E293B] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800 px-4 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm">
-                <Layers size={16} aria-hidden="true" /> <span className="hidden xl:inline">Create Batch</span>
+              <button onClick={openCreateBatchModal} className="bg-white dark:bg-[#1E293B] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800 w-10 h-10 p-0 lg:w-auto lg:px-4 lg:py-2.5 rounded-full text-sm font-bold flex items-center justify-center transition-all shadow-sm shrink-0">
+                <Layers size={16} aria-hidden="true" /> <span className="hidden lg:inline ml-2">Create Batch</span>
               </button>
-              <button onClick={openFinalizeModal} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm">
-                <RotateCcw size={16} aria-hidden="true" /> <span className="hidden xl:inline">Finalize Batch</span>
+
+              <button onClick={openFinalizeModal} className="bg-amber-500 hover:bg-amber-600 text-white w-10 h-10 p-0 lg:w-auto lg:px-4 lg:py-2.5 rounded-full text-sm font-bold flex items-center justify-center transition-all shadow-sm shrink-0">
+                <CheckCircle size={16} aria-hidden="true" /> <span className="hidden lg:inline ml-2">Finalize Batch</span>
               </button>
+
               {ENABLE_CSV_IMPORT ? (
-                <button onClick={openImportModal} className="bg-white dark:bg-[#1E293B] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800 px-4 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm">
-                  <Upload size={16} aria-hidden="true" /> <span className="hidden xl:inline">Import CSV</span>
+                <button onClick={openImportModal} className="bg-white dark:bg-[#1E293B] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800 w-10 h-10 p-0 lg:w-auto lg:px-4 lg:py-2.5 rounded-full text-sm font-bold flex items-center justify-center transition-all shadow-sm shrink-0">
+                  <Upload size={16} aria-hidden="true" /> <span className="hidden lg:inline ml-2">Import CSV</span>
                 </button>
               ) : null}
-              <button onClick={() => { void handleExportCsv(); }} disabled={exporting} className="bg-[#1E293B] dark:bg-slate-700 text-white px-4 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm disabled:opacity-50">
-                <Download size={16} aria-hidden="true" /> <span className="hidden xl:inline">{exporting ? "..." : "Export"}</span>
+
+              <button onClick={() => { void handleExportCsv(); }} disabled={exporting} className="bg-[#1E293B] dark:bg-slate-700 text-white w-10 h-10 p-0 lg:w-auto lg:px-4 lg:py-2.5 rounded-full text-sm font-bold flex items-center justify-center transition-all shadow-sm disabled:opacity-50 shrink-0">
+                <Download size={16} aria-hidden="true" /> <span className="hidden lg:inline ml-2">{exporting ? "..." : "Export"}</span>
               </button>
             </>
           )}
 
-          <button onClick={openCreateModal} className="bg-[#3B82F6] text-white px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all hover:scale-105 shadow-sm">
-            <Plus size={16} aria-hidden="true" /> <span className="hidden sm:inline">Add User</span>
+          <button onClick={openCreateModal} className="bg-[#3B82F6] text-white px-4 lg:px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all hover:scale-105 shadow-sm shrink-0 ml-auto sm:ml-0">
+            <Plus size={16} aria-hidden="true" /> Add User
           </button>
         </div>
       </div>
 
       {/* SECTION: DATA TABLE */}
-      {/* OPTIMIZATION: Only the main container has a light background transition, inner cells are snapped */}
-      <div className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden transition-colors relative z-0 border border-slate-100 dark:border-slate-800/50">
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-          <table className="w-full text-sm whitespace-nowrap border-collapse">
+      {/* OPTIMIZED: Removed fixed min-w-[950px] so table can fully compress dynamically into portrait screens */}
+      <div className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden transition-colors relative z-0 border border-slate-100 dark:border-slate-800/50 w-full">
+        <div className="flex-1 overflow-x-auto overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700 w-full">
+
+          <table className="w-full text-sm whitespace-nowrap border-collapse min-w-full">
             <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 transition-colors after:content-[''] after:absolute after:bottom-0 after:left-4 after:right-4 after:border-b-2 after:border-slate-100 dark:after:border-slate-700/50">
               <tr className="text-[11px] uppercase font-extrabold text-[#0B1B3D] dark:text-slate-200 tracking-wider">
-                <th className="px-4 py-5 text-left w-10">
+                <th className="px-3 sm:px-5 py-5 text-left w-8">
                   <div
                     onClick={handleToggleSelectAll}
                     className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center cursor-pointer transition-colors ${allListedSelected
@@ -582,12 +588,12 @@ export default function UsersPage() {
                     {!allListedSelected && someListedSelected && <Minus size={12} className="text-white" strokeWidth={3.5} />}
                   </div>
                 </th>
-                <th className="px-2 py-5 text-left">Name</th>
-                <th className="px-3 py-5 text-left">Email Address</th>
-                <th className="px-3 py-5 text-left">Batch</th>
-                <th className="px-3 py-5 text-left">Progress</th>
-                <th className="px-3 py-5 text-center">Status</th>
-                <th className="px-4 py-5 text-center">Actions</th>
+                <th className="px-2 sm:px-3 py-5 text-left">Name</th>
+                <th className="px-3 sm:px-4 py-5 text-left hidden lg:table-cell">Email Address</th>
+                <th className="px-3 sm:px-4 py-5 text-left hidden md:table-cell">Batch</th>
+                <th className="px-2 sm:px-4 py-5 text-left">Progress</th>
+                <th className="px-2 sm:px-4 py-5 text-center">Status</th>
+                <th className="px-3 sm:px-5 py-5 text-center">Actions</th>
               </tr>
             </thead>
 
@@ -606,7 +612,7 @@ export default function UsersPage() {
                       : 'hover:bg-slate-50 dark:hover:bg-white/[0.02] hover:border-slate-200 dark:hover:border-slate-700/50'
                       }`}
                   >
-                    <td className="px-4 py-4">
+                    <td className="px-3 sm:px-5 py-4">
                       <div
                         onClick={(e) => { e.stopPropagation(); handleToggleSelectOne(row.numericId, !isSelected); }}
                         className={`w-[18px] h-[18px] rounded-[5px] border-2 flex items-center justify-center cursor-pointer transition-colors ${isSelected
@@ -617,21 +623,23 @@ export default function UsersPage() {
                         <Check size={12} className={`text-white transition-transform ${isSelected ? "scale-100" : "scale-0"}`} strokeWidth={3.5} />
                       </div>
                     </td>
-                    <td className="px-2 py-4">
+                    <td className="px-2 sm:px-3 py-4">
                       <div className="flex items-center gap-3">
                         <div className="h-9 w-9 rounded-full bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 text-xs font-bold shrink-0">
                           {row.initials}
                         </div>
                         <div className="leading-tight">
-                          <div className="font-extrabold text-[#0B1B3D] dark:text-slate-200">{row.fullName}</div>
-                          <div className="text-[10px] text-slate-400 font-medium mt-0.5">{row.raw.trainee_code}</div>
+                          {/* OPTIMIZED: Dynamic truncation ensures names shrink aggressively on small screens */}
+                          <div className="font-extrabold text-[#0B1B3D] dark:text-slate-200 truncate max-w-[100px] sm:max-w-[140px] xl:max-w-[200px]">{row.fullName}</div>
+                          <div className="text-[10px] text-slate-400 font-medium mt-0.5 truncate max-w-[100px] sm:max-w-[140px] xl:max-w-[200px]">{row.raw.trainee_code}</div>
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-4 text-slate-500 dark:text-slate-400 font-medium text-xs">{row.raw.email}</td>
-                    <td className="px-3 py-4 text-slate-500 dark:text-slate-400 font-bold text-xs">{row.raw.batch.batch_code}</td>
-                    <td className="px-3 py-4">
-                      <div className="w-[120px] 2xl:w-[160px] group-hover:scale-105 transition-transform">
+                    <td className="px-3 sm:px-4 py-4 text-slate-500 dark:text-slate-400 font-medium text-xs hidden lg:table-cell">{row.raw.email}</td>
+                    <td className="px-3 sm:px-4 py-4 text-slate-500 dark:text-slate-400 font-bold text-xs hidden md:table-cell">{row.raw.batch.batch_code}</td>
+                    <td className="px-2 sm:px-4 py-4">
+                      {/* OPTIMIZED: Dynamic width scales heavily on portrait */}
+                      <div className="w-[70px] sm:w-[120px] lg:w-[140px] 2xl:w-[180px] group-hover:scale-105 transition-transform">
                         <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 font-bold mb-1.5 uppercase tracking-wider">
                           <span>{row.raw.progress.label}</span>
                           <span>{row.raw.progress.percent}%</span>
@@ -641,55 +649,52 @@ export default function UsersPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-3 py-4 text-center">
-                      <span className={`inline-flex items-center justify-center w-[80px] py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)}`}>
+                    <td className="px-2 sm:px-4 py-4 text-center">
+                      <span className={`inline-flex items-center justify-center w-[70px] py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)}`}>
                         {row.displayStatus}
                       </span>
                     </td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center justify-center gap-1.5">
+                    <td className="px-3 sm:px-5 py-4 pr-6">
+                      {/* OPTIMIZED: Full text buttons transform into sleek circular icon buttons ONLY on tablet/mobile screens */}
+                      <div className="flex items-center justify-end gap-1.5">
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); openEditModal(row.raw); }}
                           disabled={deleting}
-                          className="group/btn bg-[#1E293B] dark:bg-slate-700 text-white p-1.5 xl:px-4 xl:py-1.5 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50 overflow-hidden"
+                          className="group/btn bg-[#1E293B] text-white p-2 xl:px-3 xl:py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50"
                           title="Edit Trainee"
                         >
-                          <Pencil size={14} aria-hidden="true" className="shrink-0" />
-                          <span className="hidden xl:inline max-w-0 xl:max-w-[50px] opacity-0 xl:opacity-100 transition-all whitespace-nowrap">Edit</span>
+                          <Pencil size={14} className="shrink-0" />
+                          <span className="hidden xl:inline">Edit</span>
                         </button>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); void handleToggleStatus(row.raw); }}
                           disabled={isToggling || deleting}
-                          className={`group/btn ${row.raw.status === "active" ? "bg-[#DC2626] hover:bg-[#B91C1C]" : "bg-[#22C55E] hover:bg-[#16A34A]"} text-white p-1.5 xl:px-4 xl:py-1.5 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50 overflow-hidden`}
+                          className={`group/btn ${row.raw.status === "active" ? "bg-[#DC2626] hover:bg-[#B91C1C]" : "bg-[#22C55E] hover:bg-[#16A34A]"} text-white p-2 xl:px-3 xl:py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50`}
                           title={actionLabel}
                         >
-                          <Power size={14} aria-hidden="true" className="shrink-0" />
-                          <span className="hidden xl:inline max-w-0 xl:max-w-[75px] opacity-0 xl:opacity-100 transition-all whitespace-nowrap">
-                            {isToggling ? "..." : actionLabel}
-                          </span>
+                          {isToggling ? <Loader2 size={14} className="animate-spin shrink-0" /> : <Power size={14} className="shrink-0" />}
+                          <span className="hidden xl:inline">{isToggling ? "..." : actionLabel}</span>
                         </button>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); void handleResendCredentials(row.raw); }}
                           disabled={isResending || deleting}
-                          className="group/btn bg-[#2E415F] dark:bg-slate-600 hover:bg-[#243247] dark:hover:bg-slate-500 text-white p-1.5 xl:px-4 xl:py-1.5 rounded-full text-xs font-bold flex items-center justify-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50 overflow-hidden"
+                          className="group/btn bg-[#2E415F] text-white p-2 xl:px-3 xl:py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 transition-all hover:scale-105 shadow-sm disabled:opacity-50"
                           title="Resend Credentials"
                         >
-                          <Mail size={14} className="shrink-0" />
-                          <span className="hidden xl:inline max-w-0 xl:max-w-[60px] opacity-0 xl:opacity-100 transition-all whitespace-nowrap">
-                            {isResending ? "..." : "Resend"}
-                          </span>
+                          {isResending ? <Loader2 size={14} className="animate-spin shrink-0" /> : <Mail size={14} className="shrink-0" />}
+                          <span className="hidden xl:inline">{isResending ? "..." : "Resend"}</span>
                         </button>
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); openDeleteModal([row.numericId]); }}
                           disabled={deleting}
-                          className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 p-1.5 transition-colors disabled:opacity-50 shrink-0"
-                          title="Delete"
+                          className="text-slate-400 hover:text-red-500 p-1.5 xl:p-2 transition-colors disabled:opacity-50 shrink-0"
+                          title="Delete Trainee"
                         >
-                          <Trash2 size={16} aria-hidden="true" />
+                          <Trash2 size={16} />
                         </button>
                       </div>
                     </td>
@@ -775,7 +780,7 @@ export default function UsersPage() {
                 disabled={deleting}
                 className="px-8 py-2.5 rounded-full text-sm font-bold text-white bg-[#DC2626] hover:bg-[#B91C1C] shadow-lg shadow-red-500/20 transition-all hover:scale-105 disabled:opacity-50 flex items-center gap-2"
               >
-                {deleting && <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                {deleting && <Loader2 size={16} className="animate-spin" />}
                 {deleting ? "Deleting..." : "Confirm Delete"}
               </button>
             </div>
