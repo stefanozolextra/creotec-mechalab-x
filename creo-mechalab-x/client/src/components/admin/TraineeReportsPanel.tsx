@@ -1,5 +1,5 @@
-import { Download, Search, SearchX, X, Layers, Activity } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Download, Search, SearchX, Layers, MousePointerClick, AlertTriangle } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import {
   exportModuleStatusCsv,
   getAdminTraineeModuleStatus,
@@ -13,6 +13,8 @@ import { getAuthToken } from "../../utils/auth";
 type StatusFilter = "all" | "active" | "inactive";
 type PillStatus = "Passed" | "Active" | "Inactive";
 type ModuleStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+
+// --- Helpers ---
 
 const statusPillClass = (status: PillStatus): string => {
   if (status === "Passed") return "bg-[#22C55E] text-white";
@@ -68,6 +70,8 @@ const formatModuleExportFileName = (batchCode: string, value = new Date()): stri
   return `module-status_${batchCode}_${year}${month}${day}-${hours}${minutes}.csv`;
 };
 
+// --- Main Component ---
+
 export default function TraineeReportsPanel() {
   const [items, setItems] = useState<AdminTraineeItem[]>([]);
   const [batches, setBatches] = useState<BatchFilter[]>([]);
@@ -80,23 +84,19 @@ export default function TraineeReportsPanel() {
   const [exporting, setExporting] = useState(false);
   const [exportingModuleReport, setExportingModuleReport] = useState(false);
 
-  // Details Modal State
-  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
-  const [detailsTrainee, setDetailsTrainee] = useState<AdminTraineeItem | null>(null);
-  const [detailsRows, setDetailsRows] = useState<AdminTraineeModuleStatusItem[]>([]);
-  const [detailsLoading, setDetailsLoading] = useState(false);
-  const [detailsError, setDetailsError] = useState<string | null>(null);
-
-  // Animation State for Details Modal
-  const [shouldRenderModal, setShouldRenderModal] = useState(false);
-  const [isModalVisible, setIsModalVisible] = useState(false);
-
-  const detailsRequestIdRef = useRef(0);
+  // Split-View State
+  const [selectedTraineeId, setSelectedTraineeId] = useState<string | null>(null);
+  const [moduleData, setModuleData] = useState<Record<string, { loading: boolean; error: string | null; data: AdminTraineeModuleStatusItem[] }>>({});
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => window.clearTimeout(timer);
   }, [search]);
+
+  // Clear selection if filters change
+  useEffect(() => {
+    setSelectedTraineeId(null);
+  }, [debouncedSearch, selectedBatch, statusFilter]);
 
   useEffect(() => {
     let active = true;
@@ -132,6 +132,7 @@ export default function TraineeReportsPanel() {
       const fullName = toDisplayName(item);
       return {
         id: String(item.trainee_id),
+        numericId: Number(item.trainee_id),
         raw: item,
         displayStatus,
         fullName,
@@ -140,65 +141,27 @@ export default function TraineeReportsPanel() {
     });
   }, [items]);
 
-  // Handle Modal Animation
-  useEffect(() => {
-    let showTimer: number;
-    let unmountTimer: number;
+  const selectedTrainee = useMemo(() => {
+    return rows.find(r => r.id === selectedTraineeId) || null;
+  }, [rows, selectedTraineeId]);
 
-    if (detailsModalOpen) {
-      setShouldRenderModal(true);
-      showTimer = window.setTimeout(() => setIsModalVisible(true), 10);
-    } else {
-      setIsModalVisible(false);
-      unmountTimer = window.setTimeout(() => setShouldRenderModal(false), 300);
-    }
-
-    return () => {
-      window.clearTimeout(showTimer);
-      window.clearTimeout(unmountTimer);
-    };
-  }, [detailsModalOpen]);
-
-  const closeDetailsModal = () => {
-    detailsRequestIdRef.current += 1;
-    setDetailsModalOpen(false);
-    setTimeout(() => {
-      setDetailsTrainee(null);
-      setDetailsRows([]);
-      setDetailsLoading(false);
-      setDetailsError(null);
-    }, 300);
-  };
-
-  const handleViewDetails = async (item: AdminTraineeItem) => {
-    const traineeId = Number(item.trainee_id);
-    if (!Number.isInteger(traineeId) || traineeId < 1) {
-      setDetailsModalOpen(true);
-      setDetailsTrainee(item);
-      setDetailsRows([]);
-      setDetailsLoading(false);
-      setDetailsError("Invalid trainee id.");
+  const handleSelectTrainee = async (traineeId: string) => {
+    if (selectedTraineeId === traineeId) {
+      setSelectedTraineeId(null); // Toggle off if clicked again
       return;
     }
 
-    const requestId = detailsRequestIdRef.current + 1;
-    detailsRequestIdRef.current = requestId;
+    setSelectedTraineeId(traineeId);
 
-    setDetailsModalOpen(true);
-    setDetailsTrainee(item);
-    setDetailsRows([]);
-    setDetailsError(null);
-    setDetailsLoading(true);
-
-    try {
-      const moduleRows = await getAdminTraineeModuleStatus(traineeId);
-      if (detailsRequestIdRef.current !== requestId) return;
-      setDetailsRows(moduleRows);
-    } catch (loadError) {
-      if (detailsRequestIdRef.current !== requestId) return;
-      setDetailsError(toErrorMessage(loadError, "Failed to load module details."));
-    } finally {
-      if (detailsRequestIdRef.current === requestId) setDetailsLoading(false);
+    // Fetch module data if we haven't already cached it
+    if (!moduleData[traineeId]) {
+      setModuleData((prev) => ({ ...prev, [traineeId]: { loading: true, error: null, data: [] } }));
+      try {
+        const data = await getAdminTraineeModuleStatus(Number(traineeId));
+        setModuleData((prev) => ({ ...prev, [traineeId]: { loading: false, error: null, data } }));
+      } catch (err) {
+        setModuleData((prev) => ({ ...prev, [traineeId]: { loading: false, error: toErrorMessage(err, "Failed to load modules"), data: [] } }));
+      }
     }
   };
 
@@ -262,8 +225,10 @@ export default function TraineeReportsPanel() {
     }
   };
 
+  const currentModuleData = selectedTraineeId ? moduleData[selectedTraineeId] : null;
+
   return (
-    <div className="flex-1 flex flex-col gap-6 min-h-0 relative">
+    <div className="flex-1 flex flex-col gap-4 min-h-0 relative w-full">
 
       {/* ERROR BANNER */}
       {error && (
@@ -272,272 +237,248 @@ export default function TraineeReportsPanel() {
         </div>
       )}
 
-      {/* SECTION: TOOLBAR */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 shrink-0 z-20">
+      {/* SECTION: TOOLBAR (Matched to UsersPage styling) */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 shrink-0 z-20 w-full min-w-0">
 
-        {/* Left Side: Search & Filters */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="relative">
+        {/* Left Side: Search, Filters & Navigation Hint */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto flex-1 min-w-0">
+          <div className="relative w-full sm:max-w-[240px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} aria-hidden="true" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search trainees..."
-              className="pl-10 pr-4 py-2.5 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-semibold w-[220px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-500 shadow-sm"
+              className="pl-10 pr-4 py-2.5 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-semibold w-full outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm"
             />
           </div>
 
-          <select
-            value={selectedBatch}
-            onChange={(event) => setSelectedBatch(event.target.value)}
-            className="py-2.5 px-4 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[160px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-500 shadow-sm cursor-pointer"
-          >
-            <option value="">All Batches</option>
-            {batches.map((batch) => (
-              <option key={batch.batch_id} value={batch.batch_code}>{batch.batch_code}</option>
-            ))}
-          </select>
+          <div className="flex flex-col sm:flex-row gap-3 flex-1 sm:flex-none">
+            {/* OPTIMIZED: Changed padding from px-4 to px-3 and exact widths to match Trainees Tab */}
+            <select
+              value={selectedBatch}
+              onChange={(event) => setSelectedBatch(event.target.value)}
+              className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-full sm:w-[140px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm cursor-pointer"
+            >
+              <option value="">All Batches</option>
+              {batches.map((batch) => (
+                <option key={batch.batch_id} value={batch.batch_code}>{batch.batch_code}</option>
+              ))}
+            </select>
 
-          <select
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-            className="py-2.5 px-4 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-[160px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-500 shadow-sm cursor-pointer"
-          >
-            <option value="all">All Status</option>
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-          </select>
+            <select
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
+              className="py-2.5 px-3 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-[#0B1B3D] dark:text-slate-200 text-sm font-bold w-full sm:w-[130px] outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors shadow-sm cursor-pointer"
+            >
+              <option value="all">All Status</option>
+              <option value="active">Active</option>
+              <option value="inactive">Inactive</option>
+            </select>
+          </div>
+
+          {/* HINT BANNER (Styled precisely like the Lessons Page) */}
+          <div className="hidden xl:flex items-center gap-2 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white/50 dark:bg-[#1E293B]/30 text-xs select-none shadow-sm ml-2">
+            <MousePointerClick size={14} className="text-[#3B82F6]" />
+            <span className="text-slate-500 dark:text-slate-400 font-medium">
+              <strong className="text-slate-700 dark:text-slate-200 font-bold">Left-click</strong> a row <span className="opacity-80">to view modules</span>
+            </span>
+          </div>
         </div>
 
         {/* Right Side: Actions */}
-        <div className="flex items-center gap-2 flex-wrap justify-end">
+        <div className="flex items-center gap-2 justify-start sm:justify-end w-full lg:w-auto shrink-0">
           <button
             type="button"
             onClick={() => { void handleExportModuleReportCsv(); }}
             disabled={!selectedBatch || exportingModuleReport}
-            className="bg-white dark:bg-[#1E293B] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800 px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm disabled:opacity-50"
+            className="bg-white dark:bg-[#1E293B] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/50 hover:bg-slate-50 dark:hover:bg-slate-800 px-4 lg:px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm disabled:opacity-50 shrink-0"
           >
-            <Download size={16} aria-hidden="true" /> {exportingModuleReport ? "Exporting..." : "Export Module Report"}
+            <Download size={16} aria-hidden="true" /> <span className="hidden lg:inline">Export Module Report</span>
           </button>
           <button
             type="button"
             onClick={() => { void handleExportCsv(); }}
             disabled={exporting}
-            className="bg-[#1E293B] dark:bg-slate-700 text-white px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm disabled:opacity-50"
+            className="bg-[#1E293B] dark:bg-slate-700 text-white px-4 lg:px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all shadow-sm disabled:opacity-50 shrink-0"
           >
-            <Download size={16} aria-hidden="true" /> {exporting ? "Exporting..." : "Export CSV"}
+            <Download size={16} aria-hidden="true" /> <span className="hidden lg:inline">Export CSV</span>
           </button>
         </div>
       </div>
 
-      {/* SECTION: DATA TABLE */}
-      <div className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden transition-colors duration-500 relative z-0 border border-slate-100 dark:border-slate-800/50">
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-          <table className="w-full text-sm whitespace-nowrap border-collapse">
-            <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 transition-colors duration-500 after:content-[''] after:absolute after:bottom-0 after:left-4 after:right-4 after:border-b-2 after:border-slate-100 dark:after:border-slate-700/50">
-              <tr className="text-[12px] uppercase font-extrabold text-[#0B1B3D] dark:text-slate-200 tracking-wider transition-colors duration-500">
-                <th className="px-8 py-6 text-left">Name</th>
-                <th className="px-6 py-6 text-left">Email Address</th>
-                <th className="px-6 py-6 text-left">Batch</th>
-                <th className="px-6 py-6 text-left">Progress</th>
-                <th className="px-6 py-6 text-center">Modules</th>
-                <th className="px-6 py-6 text-center">Status</th>
-                <th className="px-8 py-6 text-center">Actions</th>
-              </tr>
-            </thead>
+      {/* SECTION: SPLIT VIEW CONTAINER */}
+      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 w-full">
 
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors duration-500">
-              {rows.map((row) => (
-                <tr key={row.id} className="group hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors duration-300">
-                  <td className="px-8 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 font-bold transition-colors duration-500">
-                        {row.initials}
-                      </div>
-                      <div className="leading-tight">
-                        <div className="font-extrabold text-[#0B1B3D] dark:text-slate-200 transition-colors">{row.fullName}</div>
-                        <div className="text-xs text-slate-400 font-medium mt-0.5">{row.raw.trainee_code}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-medium transition-colors duration-500">{row.raw.email}</td>
-                  <td className="px-6 py-5 text-slate-500 dark:text-slate-400 font-bold transition-colors duration-500">{row.raw.batch.batch_code}</td>
-                  <td className="px-6 py-5">
-                    <div className="w-[160px] group-hover:scale-105 transition-transform duration-300">
-                      <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold mb-1.5 uppercase tracking-wider">
-                        <span>{row.raw.progress.label}</span>
-                        <span>{row.raw.progress.percent}%</span>
-                      </div>
-                      <div className="h-2 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden transition-colors duration-500">
-                        <div className="h-full bg-[#18B9C7] rounded-full transition-all duration-500" style={{ width: `${row.raw.progress.percent}%` }} />
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-5 text-center text-slate-500 dark:text-slate-400 font-bold transition-colors duration-500">
-                    <span className="bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full text-xs transition-colors">
-                      {row.raw.progress.completed_modules} / {row.raw.progress.total_modules}
-                    </span>
-                  </td>
-                  <td className="px-6 py-5 text-center">
-                    <span className={`inline-flex items-center justify-center w-[90px] py-1.5 rounded-full text-[10px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)} transition-colors duration-500`}>
-                      {row.displayStatus}
-                    </span>
-                  </td>
-                  <td className="px-8 py-5 text-center">
-                    <button
-                      type="button"
-                      onClick={() => { void handleViewDetails(row.raw); }}
-                      className="bg-[#1E293B] dark:bg-slate-700 text-white px-5 py-1.5 rounded-full text-xs font-bold transition-all hover:scale-105 shadow-sm"
+        {/* LEFT PANEL: Master Table */}
+        <div className="flex-[2] bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex flex-col min-h-0 overflow-hidden transition-colors duration-500 border border-slate-100 dark:border-slate-800/50 relative">
+          <div className="flex-1 overflow-x-auto overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+            <table className="w-full text-sm whitespace-nowrap border-collapse min-w-[550px]">
+              {/* Header synchronized with UsersPage layout */}
+              <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 transition-colors duration-500 after:content-[''] after:absolute after:bottom-0 after:left-0 after:right-0 after:border-b-2 after:border-slate-100 dark:after:border-slate-700/50">
+                <tr className="text-[11px] uppercase font-extrabold text-[#0B1B3D] dark:text-slate-200 tracking-wider">
+                  <th className="px-5 py-5 text-left">Name</th>
+                  <th className="px-4 py-5 text-left">Batch</th>
+                  <th className="px-4 py-5 text-left">Progress</th>
+                  <th className="px-5 py-5 text-right pr-8">Status</th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50 transition-colors duration-500">
+                {rows.map((row) => {
+                  const isSelected = selectedTraineeId === row.id;
+
+                  return (
+                    <tr
+                      key={row.id}
+                      onClick={() => void handleSelectTrainee(row.id)}
+                      className={`group cursor-pointer transition-all duration-300 border-l-4 ${isSelected ? "bg-blue-50/60 dark:bg-[#3B82F6]/10 border-[#3B82F6]" : "border-transparent hover:bg-slate-50 dark:hover:bg-white/[0.02] hover:border-slate-300 dark:hover:border-slate-600"}`}
                     >
-                      View Details
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          {/* Avatar fully matched to UsersPage */}
+                          <div className={`h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold transition-colors duration-300 shrink-0 ${isSelected ? "bg-[#3B82F6] text-white shadow-md shadow-blue-500/30 border border-transparent" : "bg-slate-200 dark:bg-slate-700 border border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300"}`}>
+                            {row.initials}
+                          </div>
+                          <div className="leading-tight">
+                            {/* Text sizes fully matched to UsersPage */}
+                            <div className="font-extrabold text-sm text-[#0B1B3D] dark:text-slate-200 transition-colors">{row.fullName}</div>
+                            <div className="text-[10px] text-slate-400 font-medium mt-0.5">{row.raw.trainee_code}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-4 py-4 text-slate-500 dark:text-slate-400 font-bold text-sm transition-colors duration-500">{row.raw.batch.batch_code}</td>
+                      <td className="px-4 py-4">
+                        {/* Progress Bar fully matched to UsersPage (140-180px width) */}
+                        <div className="w-[140px] 2xl:w-[180px] group-hover:scale-105 transition-transform duration-300">
+                          <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold mb-1.5 uppercase tracking-wider">
+                            <span>{row.raw.progress.label}</span>
+                            <span>{row.raw.progress.percent}%</span>
+                          </div>
+                          <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden transition-colors duration-500">
+                            <div className="h-full bg-[#18B9C7] rounded-full transition-all duration-500" style={{ width: `${row.raw.progress.percent}%` }} />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 text-right pr-8">
+                        {/* Status Pill fully matched to UsersPage */}
+                        <span className={`inline-flex items-center justify-center w-[80px] py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)} transition-colors duration-500`}>
+                          {row.displayStatus}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
 
-              {!loading && rows.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-8 py-20 text-center text-slate-500 dark:text-slate-400 transition-colors duration-500">
-                    <div className="flex flex-col items-center justify-center gap-3">
-                      <SearchX size={40} className="text-slate-300 dark:text-slate-600" />
-                      <p className="font-semibold text-lg text-[#0B1B3D] dark:text-slate-200">No report rows found.</p>
-                      <p className="text-sm">Try adjusting your search or filters.</p>
-                    </div>
-                  </td>
-                </tr>
-              ) : null}
+                {!loading && rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-8 py-20 text-center text-slate-500 dark:text-slate-400 transition-colors duration-500">
+                      <div className="flex flex-col items-center justify-center gap-3">
+                        <SearchX size={40} className="text-slate-300 dark:text-slate-600" />
+                        <p className="font-semibold text-lg text-[#0B1B3D] dark:text-slate-200">No trainees found.</p>
+                        <p className="text-sm">Try adjusting your search or filters.</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
 
-              {loading ? (
-                <tr>
-                  <td colSpan={7} className="px-8 py-20 text-center">
-                    <div className="flex justify-center items-center gap-2">
-                      <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* SECTION: SLEEK DETAILS MODAL */}
-      {shouldRenderModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-
-          {/* Animated Backdrop */}
-          <div
-            className={`absolute inset-0 bg-[#0B1B3D]/40 dark:bg-[#0F172A]/80 backdrop-blur-sm transition-opacity duration-300 ease-out ${isModalVisible ? 'opacity-100' : 'opacity-0'}`}
-            onClick={closeDetailsModal}
-          />
-
-          {/* Animated Modal Container */}
-          <div className={`relative w-full max-w-4xl rounded-3xl bg-white dark:bg-[#1E293B] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden transform transition-all duration-300 ease-out ${isModalVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
-
-            {/* Header */}
-            <div className="px-8 py-6 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/20 shrink-0">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-blue-50 dark:bg-[#3B82F6]/20 text-[#3B82F6] rounded-2xl">
-                    <Activity size={24} />
-                  </div>
-                  <div>
-                    <h2 className="text-xl font-extrabold text-[#0B1B3D] dark:text-slate-100">Trainee Module Details</h2>
-                    {detailsTrainee && (
-                      <p className="text-sm text-slate-500 dark:text-slate-400 font-medium mt-1">
-                        <span className="font-bold text-slate-700 dark:text-slate-300">{toDisplayName(detailsTrainee)}</span> • {detailsTrainee.trainee_code}
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <button
-                  type="button"
-                  onClick={closeDetailsModal}
-                  className="text-slate-400 hover:text-[#0B1B3D] dark:hover:text-slate-200 transition-colors bg-white dark:bg-[#0F172A] p-2 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm"
-                >
-                  <X size={20} aria-hidden="true" />
-                </button>
-              </div>
-            </div>
-
-            {/* Scrollable Content */}
-            <div className="flex-1 overflow-y-auto p-8 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-
-              {detailsLoading ? (
-                <div className="flex justify-center items-center gap-2 py-10">
-                  <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-              ) : null}
-
-              {detailsError ? (
-                <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-5 py-4 text-sm font-semibold text-red-600 dark:text-red-400">
-                  {detailsError}
-                </div>
-              ) : null}
-
-              {!detailsLoading && !detailsError && (
-                <div className="rounded-2xl border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] overflow-hidden shadow-sm">
-                  <table className="w-full text-sm">
-                    <thead className="bg-slate-50 dark:bg-slate-800/50">
-                      <tr className="text-[11px] font-extrabold text-[#0B1B3D] dark:text-slate-200 uppercase tracking-wider border-b border-slate-200 dark:border-slate-700/50">
-                        <th className="px-6 py-4 text-left">Module</th>
-                        <th className="px-4 py-4 text-center">Required Sims</th>
-                        <th className="px-4 py-4 text-center">Completed</th>
-                        <th className="px-6 py-4 text-left">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
-                      {detailsRows.map((row) => {
-                        const moduleId = String(row.module_id);
-                        const moduleStatus = row.module_status as ModuleStatus;
-                        return (
-                          <tr key={moduleId} className="hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors duration-300">
-                            <td className="px-6 py-4">
-                              <div className="font-bold text-[#0B1B3D] dark:text-slate-200">{row.module_code}</div>
-                              <div className="text-xs text-slate-500 dark:text-slate-400 font-medium mt-0.5">{row.module_title}</div>
-                            </td>
-                            <td className="px-4 py-4 text-center text-slate-600 dark:text-slate-300 font-bold">{row.required_sims}</td>
-                            <td className="px-4 py-4 text-center text-[#3B82F6] font-black">{row.completed_required_sims}</td>
-                            <td className="px-6 py-4">
-                              <span className={`inline-flex items-center justify-center px-4 py-1.5 rounded-full text-[10px] font-black tracking-wide uppercase border ${moduleStatusPillClass(moduleStatus)}`}>
-                                {formatModuleStatus(moduleStatus)}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-
-                      {detailsRows.length === 0 ? (
-                        <tr>
-                          <td colSpan={4} className="px-6 py-10 text-center text-slate-500 dark:text-slate-400">
-                            <Layers size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
-                            No module status records found for this trainee.
-                          </td>
-                        </tr>
-                      ) : null}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="px-8 py-6 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/20 shrink-0 flex justify-end">
-              <button
-                type="button"
-                onClick={closeDetailsModal}
-                className="px-6 py-2.5 rounded-full text-sm font-bold text-slate-500 hover:text-[#0B1B3D] dark:hover:text-slate-200 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 transition-colors duration-300 shadow-sm"
-              >
-                Close
-              </button>
-            </div>
+                {loading ? (
+                  <tr>
+                    <td colSpan={4} className="px-8 py-20 text-center">
+                      <div className="flex justify-center items-center gap-2">
+                        <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </div>
+                    </td>
+                  </tr>
+                ) : null}
+              </tbody>
+            </table>
           </div>
         </div>
-      )}
+
+        {/* RIGHT PANEL: Pure Module Details Sidebar (No Redundancies) */}
+        <div className="flex-[1] min-w-[350px] max-w-md bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex flex-col min-h-[400px] overflow-hidden transition-colors duration-500 border border-slate-100 dark:border-slate-800/50">
+
+          {selectedTrainee ? (
+            <div className="flex flex-col h-full animate-in fade-in zoom-in-95 duration-300">
+
+              {/* Clean, Non-Redundant Header */}
+              <div className="p-6 border-b border-slate-100 dark:border-slate-700/50 shrink-0 flex items-center justify-between bg-slate-50/50 dark:bg-[#0B1120]/30">
+                <h3 className="text-sm font-black text-[#0B1B3D] dark:text-slate-200 uppercase tracking-widest flex items-center gap-2">
+                  <Layers size={18} className="text-[#3B82F6]" /> Module Status
+                </h3>
+                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full shadow-sm truncate max-w-[150px]">
+                  {selectedTrainee.fullName}
+                </span>
+              </div>
+
+              {/* Scrollable Modules List */}
+              <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700 bg-slate-50/30 dark:bg-transparent">
+
+                {currentModuleData?.loading && (
+                  <div className="flex justify-center items-center gap-2 py-10">
+                    <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <div className="w-2 h-2 bg-[#3B82F6] rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                )}
+
+                {currentModuleData?.error && (
+                  <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-4 text-xs font-semibold text-red-600 dark:text-red-400 flex items-start gap-3">
+                    <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                    <span>{currentModuleData.error}</span>
+                  </div>
+                )}
+
+                {currentModuleData?.data && !currentModuleData.loading && !currentModuleData.error && (
+                  <div className="flex flex-col gap-3">
+                    {currentModuleData.data.map((mod) => {
+                      const moduleStatus = mod.module_status as ModuleStatus;
+                      return (
+                        <div key={mod.module_id} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700/50 bg-slate-50/50 dark:bg-[#0B1120]/30 hover:bg-white dark:hover:bg-[#1E293B] shadow-sm transition-colors">
+                          <div className="flex justify-between items-start gap-4 mb-3">
+                            <div className="min-w-0">
+                              <h4 className="font-extrabold text-sm text-[#0B1B3D] dark:text-slate-200 truncate">{mod.module_code}</h4>
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-relaxed">{mod.module_title}</p>
+                            </div>
+                            <span className={`shrink-0 inline-flex items-center justify-center px-3 py-1 rounded-full text-[9px] font-black tracking-wide uppercase border ${moduleStatusPillClass(moduleStatus)}`}>
+                              {formatModuleStatus(moduleStatus)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300 mt-3 pt-3 border-t border-slate-200 dark:border-slate-800/50">
+                            <span className="uppercase tracking-wider text-[10px]">Simulations</span>
+                            <span><span className="text-[#3B82F6]">{mod.completed_required_sims}</span> / {mod.required_sims} Completed</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {currentModuleData.data.length === 0 && (
+                      <div className="text-center py-10 px-4 bg-white dark:bg-[#1E293B] rounded-2xl border border-slate-200 dark:border-slate-700/50 border-dashed">
+                        <Layers size={32} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+                        <p className="text-sm font-semibold text-slate-500 dark:text-slate-400">No modules found for this trainee.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            // Empty State (No Trainee Selected)
+            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-50/50 dark:bg-transparent animate-in fade-in duration-500">
+              <div className="w-20 h-20 bg-blue-50 dark:bg-[#3B82F6]/10 rounded-full flex items-center justify-center mb-4 border-4 border-white dark:border-[#1E293B] shadow-sm">
+                <MousePointerClick size={32} className="text-[#3B82F6] ml-1 mt-1" />
+              </div>
+              <h3 className="text-xl font-extrabold text-[#0B1B3D] dark:text-slate-200 mb-2">Module Details</h3>
+              <p className="text-sm font-medium text-slate-500 dark:text-slate-400 max-w-[250px] leading-relaxed">
+                Select a trainee from the list on the left to view their specific module completion progress.
+              </p>
+            </div>
+          )}
+        </div>
+
+      </div>
     </div>
   );
 }
