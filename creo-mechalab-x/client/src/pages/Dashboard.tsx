@@ -19,7 +19,6 @@ import {
     Crosshair
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-// 1. REPLACED PageTransition with our new CyberTransition
 import CyberTransition from '../components/CyberTransition';
 import { clearAuthRole } from '../utils/auth';
 import { getTraineeDashboard } from '../api/trainees';

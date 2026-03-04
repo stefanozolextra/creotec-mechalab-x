@@ -1,385 +1,1347 @@
-import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, CheckCircle2, Loader2, Play, RotateCcw, Zap, Moon, Sun, AlertTriangle } from 'lucide-react';
-import { Stage, Layer, Rect, Text, Group } from 'react-konva';
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { Stage, Layer, Circle, Line } from 'react-konva';
+import type { KonvaEventObject } from 'konva/lib/Node';
+
+// Lucide Icons for the unified HUD
+import { ArrowLeft, Play, Copy, ClipboardPaste, Trash2, Undo2, Redo2, RotateCw, FlipHorizontal } from 'lucide-react';
 import CyberTransition from '../components/CyberTransition';
-import PortraitGuard from '../components/PortraitGuard';
-import { completeSimulation, getTraineeDashboard } from '../api/trainees';
-import type { RectConfig } from 'konva/lib/shapes/Rect';
 
-const getErrorMessage = (error: unknown, fallback: string): string => {
-    if (error instanceof Error && error.message) return error.message;
-    return fallback;
+// Simulation Logic Imports (pointing to the simulation folder)
+import { SIMULATION_ACTIVITIES, evaluateActivity } from '../simulation/constants/activities';
+import { CUSTOM_NODE_ASSETS, TOP_ROW_PINS, BOTTOM_ROW_PINS } from '../simulation/constants/customNodes';
+import buttonDeviceImageSrc from '../simulation/assets/devices/button.png';
+import buzzerDeviceImageSrc from '../simulation/assets/devices/buzzer.png';
+import counterDeviceImageSrc from '../simulation/assets/devices/counter.png';
+import lightIndicatorDeviceImageSrc from '../simulation/assets/devices/light-indicator.png';
+import { getBatteryRailForPin } from '../simulation/constants/pinConfiguration';
+import magneticContactorDeviceImageSrc from '../simulation/assets/devices/magnetic-motor-contactor.png';
+import relayModuleDeviceImageSrc from '../simulation/assets/devices/relay-module.png';
+import rollerLeverDeviceImageSrc from '../simulation/assets/devices/roller-lever.png';
+import solenoidValveDeviceImageSrc from '../simulation/assets/devices/solenoid-valve.png';
+import CircuitComponent from '../simulation/components/CircuitComponent';
+import AssetComponent from '../simulation/components/AssetComponent';
+import { getOrthogonalElbow, getSnappedIntermediatePoint, getDistanceSquaredToSegment } from '../simulation/utils/geometry';
+import { computeWireDuctIntermediatePoints } from '../simulation/utils/wireRouting';
+import { getPinMeta as getPinMetaHelper, inferPaletteTypeFromComponentId as inferPaletteTypeHelper } from '../simulation/utils/simulationHelpers';
+import { resolveTerminalStripTooltip } from '../simulation/constants/pinTooltips';
+
+// Keep the original simulation CSS
+import '../simulation/SimulationApp.css';
+
+const NODE_SIZE = 3;
+
+// Terminal-strip customization: keep simulation components as fixed strips and show per-component labels.
+const COMPONENTS_MOVABLE = false;
+const BATTERY_NODE = CUSTOM_NODE_ASSETS.terminalStrip;
+void BATTERY_NODE;
+const GENERAL_TERMINAL_STRIP_ASSET = CUSTOM_NODE_ASSETS.terminalStrip;
+type SimulationComponentType =
+    | 'battery'
+    | 'switch'
+    | 'button'
+    | 'buzzer'
+    | 'counter'
+    | 'lightIndicator'
+    | 'magneticMotorContactor'
+    | 'relayModule'
+    | 'rollerLever'
+    | 'solenoidValve';
+type PaletteComponentType = Exclude<SimulationComponentType, 'battery' | 'switch'>;
+const SIMULATION_COMPONENT_TYPES: SimulationComponentType[] = [
+    'battery',
+    'switch',
+    'button',
+    'buzzer',
+    'counter',
+    'lightIndicator',
+    'magneticMotorContactor',
+    'relayModule',
+    'rollerLever',
+    'solenoidValve',
+];
+const PALETTE_COMPONENT_TYPES: PaletteComponentType[] = [
+    'button',
+    'buzzer',
+    'counter',
+    'lightIndicator',
+    'magneticMotorContactor',
+    'relayModule',
+    'rollerLever',
+    'solenoidValve',
+];
+const PALETTE_DEVICE_META: Record<PaletteComponentType, { name: string; imageSrc: string }> = {
+    button: { name: 'Push Button', imageSrc: buttonDeviceImageSrc },
+    buzzer: { name: 'Buzzer', imageSrc: buzzerDeviceImageSrc },
+    counter: { name: 'Counter', imageSrc: counterDeviceImageSrc },
+    lightIndicator: { name: 'Light Indicator', imageSrc: lightIndicatorDeviceImageSrc },
+    magneticMotorContactor: { name: 'Magnetic Contactor', imageSrc: magneticContactorDeviceImageSrc },
+    relayModule: { name: 'Relay Module', imageSrc: relayModuleDeviceImageSrc },
+    rollerLever: { name: 'Roller Lever', imageSrc: rollerLeverDeviceImageSrc },
+    solenoidValve: { name: 'Solenoid Valve', imageSrc: solenoidValveDeviceImageSrc },
+};
+const COMPONENT_PALETTE = PALETTE_COMPONENT_TYPES.map((type) => {
+    const device = PALETTE_DEVICE_META[type];
+    return {
+        type,
+        name: device.name,
+        imageSrc: device.imageSrc,
+    };
+});
+
+const TERMINAL_STRIP_PLACEMENTS: Partial<Record<SimulationComponentType, ShapePos>> = {
+    battery: { x: 120, y: 280 },
+    switch: { x: 215, y: 420 },
+    button: { x: 400, y: 420 },
+    buzzer: { x: 370, y: 640 },
+    counter: { x: 185, y: 640 },
+    lightIndicator: { x: 440, y: 130 },
+    magneticMotorContactor: { x: 558, y: 335 },
+    relayModule: { x: 558, y: 150 },
+    rollerLever: { x: 700, y: 640 },
+    solenoidValve: { x: 885, y: 640 },
 };
 
-const isAbortError = (error: unknown): boolean => {
-    return (
-        (error instanceof DOMException && error.name === 'AbortError') ||
-        (error instanceof Error && error.name === 'AbortError')
-    );
+const INITIAL_COMPONENTS: Record<string, ShapePos> = {
+    'battery-1': TERMINAL_STRIP_PLACEMENTS.battery!,
+    'lightIndicator-1': TERMINAL_STRIP_PLACEMENTS.lightIndicator!,
+    'relayModule-1': { x: 124, y: 420 },
+    'relayModule-2': { x: 309, y: 420 },
+    'relayModule-3': { x: 500, y: 420 },
+    'counter-1': { x: 309, y: 640 },
+    'counter-2': { x: 500, y: 640 },
+    'magneticMotor-1': { x: 800, y: 515 },
+    'rollerLever-1': { x: 800, y: 335 },
+    'solenoidValve-1': { x: 800, y: 150 },
+    'rollerLever-2': { x: 1000, y: 640 },
+    'solenoidValve-2': { x: 1185, y: 640 }
 };
 
-const toNumber = (value: string | number | null | undefined): number => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) ? parsed : 0;
+const INITIAL_COMPONENT_TRANSFORMS: Record<string, { rotation: number; flipX: boolean }> = {
+    'battery-1': { rotation: 180, flipX: false },
+    'lightIndicator-1': { rotation: 90, flipX: false },
+    'relayModule-1': { rotation: 0, flipX: false },
+    'relayModule-2': { rotation: 0, flipX: false },
+    'relayModule-3': { rotation: 0, flipX: false },
+    'counter-1': { rotation: 180, flipX: false },
+    'counter-2': { rotation: 180, flipX: false },
+    'magneticMotor-1': { rotation: 270, flipX: false },
+    'rollerLever-1': { rotation: 270, flipX: false },
+    'solenoidValve-1': { rotation: 270, flipX: false },
+    'rollerLever-2': { rotation: 180, flipX: false },
+    'solenoidValve-2': { rotation: 180, flipX: false }
 };
 
-const isCompletedValue = (value: boolean | string | number | null | undefined): boolean => {
-    if (typeof value === 'boolean') return value;
-    if (typeof value === 'string') return value.toLowerCase() === 'true';
-    if (typeof value === 'number') return value === 1;
-    return false;
+const WIRE_COLOR_OPTIONS = [
+    { label: 'Green', value: '#27ae60' },
+    { label: 'Red', value: '#e74c3c' },
+    { label: 'Blue', value: '#3498db' },
+    { label: 'Orange', value: '#e67e22' },
+    { label: 'Purple', value: '#9b59b6' },
+    { label: 'Black', value: '#2c3e50' },
+];
+
+const createEmptyTypeCount = () => ({
+    battery: 0,
+    switch: 0,
+    button: 0,
+    buzzer: 0,
+    counter: 0,
+    led: 0,
+    resistor: 0,
+    lightIndicator: 0,
+    magneticMotorContactor: 0,
+    relayModule: 0,
+    rollerLever: 0,
+    solenoidValve: 0,
+});
+
+const countPaletteTypes = (items: PaletteComponentType[]) => items.reduce((acc, type) => {
+    if (Object.prototype.hasOwnProperty.call(acc, type)) {
+        acc[type as keyof typeof acc] += 1;
+    }
+    return acc;
+}, createEmptyTypeCount());
+
+const countCanvasComponentTypes = (componentIds: string[]) => componentIds.reduce((acc, id) => {
+    const inferredType = inferPaletteTypeFromComponentId(id);
+    if (inferredType) {
+        acc[inferredType] += 1;
+    }
+    return acc;
+}, createEmptyTypeCount());
+
+const getPinMeta = (pinId: string) => getPinMetaHelper(pinId);
+
+const inferPaletteTypeFromComponentId = (componentId: string): SimulationComponentType | null => {
+    return inferPaletteTypeHelper(componentId, SIMULATION_COMPONENT_TYPES) as SimulationComponentType | null;
 };
 
-const SimulationView = () => {
+const TERMINAL_COLORS = {
+    positive: '#e74c3c',
+    negative: '#2c3e50',
+} as const;
+
+const getEnforcedWireColor = (fromPin: string, toPin: string) => {
+    const fromRail = getBatteryRailForPin(fromPin);
+    const toRail = getBatteryRailForPin(toPin);
+
+    if (fromRail === 'positive' || toRail === 'positive') {
+        return TERMINAL_COLORS.positive;
+    }
+    if (fromRail === 'negative' || toRail === 'negative') {
+        return TERMINAL_COLORS.negative;
+    }
+    return null;
+};
+
+interface ShapePos {
+    x: number;
+    y: number;
+}
+
+interface ComponentTransform {
+    rotation: number;
+    flipX: boolean;
+}
+
+interface Connection {
+    id: string;
+    fromPin: string;
+    toPin: string;
+    color: string;
+    intermediatePoints: Array<{ x: number; y: number }>;
+}
+
+interface CircuitSnapshot {
+    components: Record<string, ShapePos>;
+    wires: Connection[];
+    componentTransforms: Record<string, ComponentTransform>;
+    switchStates: Record<string, boolean>;
+}
+
+interface ClipboardComponent {
+    type: SimulationComponentType;
+    sourcePosition: ShapePos;
+    transform: ComponentTransform;
+    switchOn?: boolean;
+}
+
+interface SelectedIntermediatePoint {
+    wireId: string;
+    index: number;
+}
+
+const DEFAULT_PIN_OFFSETS = {
+    in: { x: 40, y: 0 },
+    out: { x: 40, y: 120 },
+} as const;
+
+const DEFAULT_TRANSFORM: ComponentTransform = {
+    rotation: 0,
+    flipX: false,
+};
+
+// =========================================================================
+// MAIN SIMULATION VIEW COMPONENT
+// =========================================================================
+export default function SimulationView() {
+    const { id: routeId } = useParams();
     const navigate = useNavigate();
-    const { id } = useParams();
 
-    const simulationId = Number(id);
-    const hasValidSimulationId = Number.isInteger(simulationId) && simulationId > 0;
-
-    const [isCompleting, setIsCompleting] = useState(false);
-    const [completeError, setCompleteError] = useState<string | null>(null);
-    const [isCheckingCompletion, setIsCheckingCompletion] = useState(true);
-    const [isAlreadyCompleted, setIsAlreadyCompleted] = useState(false);
-    const [completionLookupError, setCompletionLookupError] = useState<string | null>(null);
-
-    // Light/Dark Mode State
-    const [isDarkMode, setIsDarkMode] = useState(true);
-
-    // State to handle the responsive size of our Canvas window
-    const [dimensions, setDimensions] = useState({ width: window.innerWidth, height: window.innerHeight });
     const containerRef = useRef<HTMLDivElement>(null);
-    const completeControllerRef = useRef<AbortController | null>(null);
-    const completionLookupControllerRef = useRef<AbortController | null>(null);
-    const isMountedRef = useRef(true);
+    const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
+    const [components, setComponents] = useState<Record<string, ShapePos>>(INITIAL_COMPONENTS);
+    const [isDeviceSidebarCollapsed, setIsDeviceSidebarCollapsed] = useState(true);
+    const [isControlsPanelCollapsed, setIsControlsPanelCollapsed] = useState(false);
 
-    // Initialize theme based on document class
-    useEffect(() => {
-        setIsDarkMode(document.documentElement.classList.contains('dark'));
-    }, []);
+    const [wires, setWires] = useState<Connection[]>([]);
+    const [wireColor, setWireColor] = useState<string>('#27ae60');
+    const [activePin, setActivePin] = useState<string | null>(null);
+    const [mousePos, setMousePos] = useState<ShapePos | null>(null);
+    const [pinTooltip, setPinTooltip] = useState<{ text: string; pos: ShapePos } | null>(null);
+    const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
+    const [selectedIntermediatePoint, setSelectedIntermediatePoint] = useState<SelectedIntermediatePoint | null>(null);
+    const [selectedComponentId, setSelectedComponentId] = useState<string | null>(null);
+    const [clipboardComponent, setClipboardComponent] = useState<ClipboardComponent | null>(null);
+    const [historyPast, setHistoryPast] = useState<CircuitSnapshot[]>([]);
+    const [historyFuture, setHistoryFuture] = useState<CircuitSnapshot[]>([]);
+    const [componentTransforms, setComponentTransforms] = useState<Record<string, ComponentTransform>>(INITIAL_COMPONENT_TRANSFORMS);
+    const [switchStates, setSwitchStates] = useState<Record<string, boolean>>({});
+    const [inputDeviceTypes, setInputDeviceTypes] = useState<PaletteComponentType[]>([]);
+    const [outputDeviceTypes, setOutputDeviceTypes] = useState<PaletteComponentType[]>([]);
+    const [activeActivityIndex] = useState(0);
+    const [activityFeedback, setActivityFeedback] = useState('%');
+    const [, setIsActivityPassed] = useState(false);
+    const [, setCompletedActivityIds] = useState<string[]>([]);
+    const [instructionImageFailures, setInstructionImageFailures] = useState<Record<string, boolean>>({});
+    const isApplyingHistoryRef = useRef(false);
+    const previousSnapshotRef = useRef<CircuitSnapshot>({
+        components: INITIAL_COMPONENTS,
+        wires: [],
+        componentTransforms: INITIAL_COMPONENT_TRANSFORMS,
+        switchStates: {},
+    });
 
-    const toggleTheme = () => {
-        const newMode = !isDarkMode;
-        setIsDarkMode(newMode);
-        if (newMode) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
+    const sidebarWidth = Math.max(180, Math.min(280, Math.round(viewport.width * 0.2)));
+    const deviceSidebarWidth = sidebarWidth;
+    const controlsPanelWidth = Math.max(280, Math.min(360, Math.round(viewport.width * 0.28)));
+
+    // Notice we don't subtract NAVBAR_HEIGHT anymore because we observe the inner container!
+    const stageWidth = Math.max(320, viewport.width);
+    const stageHeight = Math.max(260, viewport.height);
+    const controlsToggleLeft = isControlsPanelCollapsed ? 12 : controlsPanelWidth + 20;
+    const deviceListToggleRight = isDeviceSidebarCollapsed ? 12 : deviceSidebarWidth + 20;
+
+    const createComponentId = (prefix: string) => {
+        const nextIndex = Object.keys(components).filter((id) => id.startsWith(`${prefix}-`)).length + 1;
+        return `${prefix}-${nextIndex}`;
     };
 
-    // Keep the canvas sized correctly if the user resizes their browser
-    useEffect(() => {
-        const checkSize = () => {
-            if (containerRef.current) {
-                setDimensions({
-                    width: containerRef.current.offsetWidth,
-                    height: containerRef.current.offsetHeight,
-                });
-            }
-        };
-        // Initial tiny delay ensures container has rendered before measuring
-        setTimeout(checkSize, 50);
-        window.addEventListener('resize', checkSize);
-        return () => window.removeEventListener('resize', checkSize);
+    const addComponent = (type: SimulationComponentType) => {
+        const id = createComponentId(type);
+        const index = Object.keys(components).length;
+        setComponents((prev) => ({
+            ...prev,
+            [id]: { x: 40 + (index % 3) * 140, y: 80 + (index % 4) * 90 },
+        }));
+        setComponentTransforms((prev) => ({
+            ...prev,
+            [id]: { rotation: 0, flipX: false },
+        }));
+        if (type === 'switch') {
+            setSwitchStates((prev) => ({
+                ...prev,
+                [id]: false,
+            }));
+        }
+        return id;
+    };
+
+    const inferComponentType = (componentId: string): ClipboardComponent['type'] => (
+        inferPaletteTypeFromComponentId(componentId) ?? 'button'
+    );
+
+    const getPaletteItem = (type: PaletteComponentType) => COMPONENT_PALETTE.find((item) => item.type === type);
+
+    const getPinTooltipText = useCallback((fullPinId: string): string | undefined => {
+        return resolveTerminalStripTooltip(fullPinId, inferPaletteTypeFromComponentId);
     }, []);
 
-    useEffect(() => {
-        return () => {
-            isMountedRef.current = false;
-            completeControllerRef.current?.abort();
-            completionLookupControllerRef.current?.abort();
-        };
-    }, []);
+    const handlePaletteDragStart = (event: React.DragEvent<HTMLButtonElement>, type: PaletteComponentType) => {
+        event.dataTransfer.setData('application/x-device-type', type);
+        event.dataTransfer.effectAllowed = 'copy';
+    };
 
-    useEffect(() => {
-        completionLookupControllerRef.current?.abort();
-
-        if (!hasValidSimulationId) {
-            setIsCheckingCompletion(false);
-            setIsAlreadyCompleted(false);
-            setCompletionLookupError(null);
+    const handleDeviceCanvasDrop = (
+        event: React.DragEvent<HTMLDivElement>,
+        target: 'input' | 'output',
+    ) => {
+        event.preventDefault();
+        const droppedType = event.dataTransfer.getData('application/x-device-type') as PaletteComponentType;
+        if (!COMPONENT_PALETTE.some((item) => item.type === droppedType)) {
             return;
         }
 
-        const controller = new AbortController();
-        completionLookupControllerRef.current = controller;
+        if (target === 'input') {
+            setInputDeviceTypes((prev) => [...prev, droppedType]);
+        } else {
+            setOutputDeviceTypes((prev) => [...prev, droppedType]);
+        }
+    };
 
-        setIsCheckingCompletion(true);
-        setCompletionLookupError(null);
+    const allowDeviceCanvasDrop = (event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'copy';
+    };
 
-        const loadCompletionState = async () => {
-            try {
-                const dashboard = await getTraineeDashboard({ signal: controller.signal });
-                if (!isMountedRef.current || controller.signal.aborted) return;
+    const removeInputDevice = (indexToRemove: number) => {
+        setInputDeviceTypes((prev) => prev.filter((_, index) => index !== indexToRemove));
+    };
 
-                const progressRow = dashboard.simulationProgress.find(
-                    (progress) => toNumber(progress.simulation_id) === simulationId
+    const removeOutputDevice = (indexToRemove: number) => {
+        setOutputDeviceTypes((prev) => prev.filter((_, index) => index !== indexToRemove));
+    };
+
+    const getCurrentSnapshot = useCallback(
+        (): CircuitSnapshot => ({
+            components,
+            wires,
+            componentTransforms,
+            switchStates,
+        }),
+        [components, wires, componentTransforms, switchStates],
+    );
+
+    const activeActivity = SIMULATION_ACTIVITIES[activeActivityIndex];
+    const shouldShowInstructionImage = Boolean(activeActivity.instructionImageSrc)
+        && !instructionImageFailures[activeActivity.id];
+
+    const componentTypeCounts = useMemo(
+        () => countCanvasComponentTypes(Object.keys(components)),
+        [components],
+    );
+
+    const inputTypeCounts = useMemo(
+        () => countPaletteTypes(inputDeviceTypes),
+        [inputDeviceTypes],
+    );
+
+    const outputTypeCounts = useMemo(
+        () => countPaletteTypes(outputDeviceTypes),
+        [outputDeviceTypes],
+    );
+
+    const switchOnCount = useMemo(
+        () => Object.entries(switchStates).filter(([id, isOn]) => id.startsWith('switch') && Boolean(isOn)).length,
+        [switchStates],
+    );
+
+    const runActivityValidation = () => {
+        const result = evaluateActivity(activeActivity, {
+            componentCounts: componentTypeCounts,
+            inputDeviceCounts: inputTypeCounts,
+            outputDeviceCounts: outputTypeCounts,
+            wireCount: wires.length,
+            switchOnCount,
+            litLedCount: 0,
+        });
+
+        setActivityFeedback(result.passed ? '100%' : '0%');
+        setIsActivityPassed(result.passed);
+
+        if (result.passed) {
+            setCompletedActivityIds((prev) => (
+                prev.includes(activeActivity.id)
+                    ? prev
+                    : [...prev, activeActivity.id]
+            ));
+        }
+    };
+
+    const applySnapshot = (snapshot: CircuitSnapshot) => {
+        isApplyingHistoryRef.current = true;
+        setComponents(snapshot.components);
+        setWires(snapshot.wires);
+        setComponentTransforms(snapshot.componentTransforms);
+        setSwitchStates(snapshot.switchStates);
+        setActivePin(null);
+        setMousePos(null);
+        setSelectedWireId(null);
+        setSelectedIntermediatePoint(null);
+        setSelectedComponentId(null);
+    };
+
+    const getComponentNodeConfig = useCallback((componentId: string) => {
+        const inferredType = inferPaletteTypeFromComponentId(componentId);
+        if (inferredType) {
+            const asset = GENERAL_TERMINAL_STRIP_ASSET;
+            return { width: asset.width, height: asset.height, pins: asset.pins };
+        }
+        return { width: 80, height: 120, pins: DEFAULT_PIN_OFFSETS };
+    }, []);
+
+    const getPinWireColor = (pinId: string): string | undefined => {
+        if (selectedWireId) {
+            const selected = wires.find((w) => w.id === selectedWireId);
+            if (selected && (selected.fromPin === pinId || selected.toPin === pinId)) {
+                return selected.color;
+            }
+        }
+
+        const connected = wires.filter((w) => w.fromPin === pinId || w.toPin === pinId);
+        if (connected.length > 0) {
+            return connected[connected.length - 1].color;
+        }
+
+        return undefined;
+    };
+
+    const getPinPos = useCallback((pinId: string) => {
+        const parts = pinId.split('-');
+        const side = parts.pop() as string;
+        const compId = parts.join('-');
+        const pos = components[compId];
+
+        if (!pos) {
+            return { x: 0, y: 0 };
+        }
+
+        const config = getComponentNodeConfig(compId);
+        const pinMap = config.pins as Record<string, { x: number; y: number }>;
+        const localPin = pinMap[side] ?? { x: 0, y: 0 };
+        const transform = componentTransforms[compId] ?? DEFAULT_TRANSFORM;
+        const rotatedDegrees = ((transform.rotation % 360) + 360) % 360;
+        const theta = (rotatedDegrees * Math.PI) / 180;
+
+        const flippedX = transform.flipX ? config.width - localPin.x : localPin.x;
+        const centerX = config.width / 2;
+        const centerY = config.height / 2;
+        const dx = flippedX - centerX;
+        const dy = localPin.y - centerY;
+
+        const transformedX = centerX + (dx * Math.cos(theta) - dy * Math.sin(theta));
+        const transformedY = centerY + (dx * Math.sin(theta) + dy * Math.cos(theta));
+
+        return {
+            x: pos.x + transformedX,
+            y: pos.y + transformedY,
+        };
+    }, [components, componentTransforms, getComponentNodeConfig]);
+
+    const getWireDuctIntermediatePoints = useCallback((fromPin: string, toPin: string) => (
+        computeWireDuctIntermediatePoints({
+            fromPin,
+            toPin,
+            getPinPos,
+            stageWidth,
+            stageHeight,
+            wires,
+            getPinMeta,
+            getComponentNodeConfig,
+            componentTransforms,
+            defaultTransform: DEFAULT_TRANSFORM,
+            inferPaletteTypeFromComponentId,
+            terminalStripPlacements: TERMINAL_STRIP_PLACEMENTS,
+            topRowPins: TOP_ROW_PINS,
+            bottomRowPins: BOTTOM_ROW_PINS,
+        })
+    ), [getPinPos, stageWidth, stageHeight, wires, getComponentNodeConfig, componentTransforms]);
+
+    const rotateSelectedComponent = () => {
+        if (!selectedComponentId) {
+            return;
+        }
+
+        setComponentTransforms((prev) => {
+            const current = prev[selectedComponentId] ?? DEFAULT_TRANSFORM;
+            return {
+                ...prev,
+                [selectedComponentId]: {
+                    ...current,
+                    rotation: (current.rotation + 90) % 360,
+                },
+            };
+        });
+    };
+
+    const flipSelectedComponent = () => {
+        if (!selectedComponentId) {
+            return;
+        }
+
+        setComponentTransforms((prev) => {
+            const current = prev[selectedComponentId] ?? DEFAULT_TRANSFORM;
+            return {
+                ...prev,
+                [selectedComponentId]: {
+                    ...current,
+                    flipX: !current.flipX,
+                },
+            };
+        });
+    };
+
+    const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
+        if (activePin) {
+            const pos = e.target.getStage()?.getPointerPosition();
+            if (pos) setMousePos(pos);
+        }
+    };
+
+    const handleStageMouseUp = (e: KonvaEventObject<MouseEvent>) => {
+        if (activePin) {
+            const targetPin = (e.target as { attrs?: { pinId?: string } }).attrs?.pinId;
+            if (targetPin && targetPin !== activePin) {
+                const isDuplicate = wires.some((wire) =>
+                    (wire.fromPin === activePin && wire.toPin === targetPin)
+                    || (wire.fromPin === targetPin && wire.toPin === activePin)
                 );
-                setIsAlreadyCompleted(isCompletedValue(progressRow?.is_completed));
-            } catch (error) {
-                if (controller.signal.aborted || isAbortError(error)) return;
-                if (!isMountedRef.current) return;
 
-                setCompletionLookupError(getErrorMessage(error, 'Unable to verify completion status.'));
-                setIsAlreadyCompleted(false);
-            } finally {
-                if (isMountedRef.current && !controller.signal.aborted) {
-                    setIsCheckingCompletion(false);
+                if (!isDuplicate) {
+                    const ductIntermediatePoints = getWireDuctIntermediatePoints(activePin, targetPin);
+                    const enforcedColor = getEnforcedWireColor(activePin, targetPin);
+                    setWires(prev => [...prev, {
+                        id: crypto.randomUUID(),
+                        fromPin: activePin,
+                        toPin: targetPin,
+                        color: enforcedColor ?? wireColor,
+                        intermediatePoints: ductIntermediatePoints,
+                    }]);
+                }
+            }
+            setActivePin(null);
+            setMousePos(null);
+            setSelectedWireId(null);
+            setSelectedIntermediatePoint(null);
+        }
+    };
+
+    const handlePinMouseDown = (pinId: string) => {
+        setPinTooltip(null);
+        if (selectedWireId) {
+            const selectedWire = wires.find((wire) => wire.id === selectedWireId);
+            if (selectedWire && (selectedWire.fromPin === pinId || selectedWire.toPin === pinId)) {
+                setWires(prev => prev.filter((wire) => wire.id !== selectedWireId));
+            }
+            setSelectedWireId(null);
+            setSelectedIntermediatePoint(null);
+            setActivePin(null);
+            setMousePos(null);
+            return;
+        }
+
+        setActivePin(pinId);
+        setSelectedIntermediatePoint(null);
+        setSelectedComponentId(null);
+        setMousePos(getPinPos(pinId));
+    };
+
+    const handleShowPinTooltip = useCallback((text: string, pos: ShapePos) => {
+        setPinTooltip({ text, pos });
+    }, []);
+
+    const handleHidePinTooltip = useCallback(() => {
+        setPinTooltip(null);
+    }, []);
+
+    const handleWireColorChange = (color: string) => {
+        setWireColor(color);
+        if (selectedWireId) {
+            setWires((prev) => prev.map((wire) => (
+                wire.id === selectedWireId
+                    ? {
+                        ...wire,
+                        color,
+                    }
+                    : wire
+            )));
+        }
+        if (selectedComponentId) {
+            setWires((prev) => prev.map((wire) => {
+                const fromComp = wire.fromPin.split('-').slice(0, -1).join('-');
+                const toComp = wire.toPin.split('-').slice(0, -1).join('-');
+                if (fromComp === selectedComponentId || toComp === selectedComponentId) {
+                    return { ...wire, color };
+                }
+                return wire;
+            }));
+        }
+    };
+
+    const deleteSelected = useCallback(() => {
+        if (selectedIntermediatePoint) {
+            setWires((prev) => prev.map((wire) => {
+                if (wire.id !== selectedIntermediatePoint.wireId) {
+                    return wire;
+                }
+
+                return {
+                    ...wire,
+                    intermediatePoints: (wire.intermediatePoints ?? []).filter((_, index) => index !== selectedIntermediatePoint.index),
+                };
+            }));
+            setSelectedIntermediatePoint(null);
+            return;
+        }
+
+        if (selectedWireId) {
+            setWires((prev) => prev.filter((wire) => wire.id !== selectedWireId));
+            setSelectedWireId(null);
+            setSelectedIntermediatePoint(null);
+            return;
+        }
+
+        if (selectedComponentId) {
+            setComponents((prev) => {
+                const next = { ...prev };
+                delete next[selectedComponentId];
+                return next;
+            });
+            setComponentTransforms((prev) => {
+                const next = { ...prev };
+                delete next[selectedComponentId];
+                return next;
+            });
+            setSwitchStates((prev) => {
+                const next = { ...prev };
+                delete next[selectedComponentId];
+                return next;
+            });
+            setWires((prev) => prev.filter((wire) => {
+                const fromComponent = wire.fromPin.split('-').slice(0, -1).join('-');
+                const toComponent = wire.toPin.split('-').slice(0, -1).join('-');
+                return fromComponent !== selectedComponentId && toComponent !== selectedComponentId;
+            }));
+            if (activePin?.startsWith(`${selectedComponentId}-`)) {
+                setActivePin(null);
+                setMousePos(null);
+            }
+            setSelectedComponentId(null);
+        }
+    }, [activePin, selectedComponentId, selectedWireId, selectedIntermediatePoint]);
+
+    useEffect(() => {
+        let raf = 0;
+        raf = requestAnimationFrame(() => {
+            setWires((prev) => {
+                let changed = false;
+                const next = prev.map((wire) => {
+                    try {
+                        const newPoints = getWireDuctIntermediatePoints(wire.fromPin, wire.toPin);
+                        const oldPoints = wire.intermediatePoints ?? [];
+                        const a = JSON.stringify(oldPoints);
+                        const b = JSON.stringify(newPoints);
+                        if (a === b) return wire;
+                        changed = true;
+                        return { ...wire, intermediatePoints: newPoints };
+                    } catch {
+                        return wire;
+                    }
+                });
+
+                return changed ? next : prev;
+            });
+        });
+
+        return () => {
+            if (raf) cancelAnimationFrame(raf);
+        };
+    }, [componentTransforms, components, stageWidth, stageHeight, getWireDuctIntermediatePoints]);
+
+    const handleCopy = () => {
+        if (!selectedComponentId) {
+            return;
+        }
+
+        const selectedPos = components[selectedComponentId];
+        if (!selectedPos) {
+            return;
+        }
+
+        const selectedTransform = componentTransforms[selectedComponentId] ?? DEFAULT_TRANSFORM;
+        setClipboardComponent({
+            type: inferComponentType(selectedComponentId),
+            sourcePosition: selectedPos,
+            transform: selectedTransform,
+            switchOn: switchStates[selectedComponentId],
+        });
+    };
+
+    const handlePaste = () => {
+        if (!clipboardComponent) {
+            return;
+        }
+
+        const newId = createComponentId(clipboardComponent.type);
+        const pastedPos = {
+            x: clipboardComponent.sourcePosition.x + 28,
+            y: clipboardComponent.sourcePosition.y + 28,
+        };
+
+        setComponents((prev) => ({
+            ...prev,
+            [newId]: pastedPos,
+        }));
+        setComponentTransforms((prev) => ({
+            ...prev,
+            [newId]: clipboardComponent.transform,
+        }));
+        if (clipboardComponent.type === 'switch') {
+            setSwitchStates((prev) => ({
+                ...prev,
+                [newId]: Boolean(clipboardComponent.switchOn),
+            }));
+        }
+        setSelectedComponentId(newId);
+        setSelectedWireId(null);
+    };
+
+    const handleUndo = () => {
+        if (!historyPast.length) {
+            return;
+        }
+
+        const previous = historyPast[historyPast.length - 1];
+        const current = getCurrentSnapshot();
+        setHistoryPast((prev) => prev.slice(0, -1));
+        setHistoryFuture((prev) => [current, ...prev].slice(0, 50));
+        applySnapshot(previous);
+    };
+
+    const handleRedo = () => {
+        if (!historyFuture.length) {
+            return;
+        }
+
+        const next = historyFuture[0];
+        const current = getCurrentSnapshot();
+        setHistoryFuture((prev) => prev.slice(1));
+        setHistoryPast((prev) => [...prev, current].slice(-50));
+        applySnapshot(next);
+    };
+
+    useEffect(() => {
+        const onKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Delete' || e.key === 'Backspace') {
+                if (selectedWireId || selectedComponentId || selectedIntermediatePoint) {
+                    e.preventDefault();
+                    deleteSelected();
                 }
             }
         };
 
-        void loadCompletionState();
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [selectedWireId, selectedComponentId, selectedIntermediatePoint, deleteSelected]);
 
-        return () => {
-            controller.abort();
-        };
-    }, [hasValidSimulationId, simulationId]);
+    useEffect(() => {
+        const currentSnapshot = getCurrentSnapshot();
+        const previousSnapshot = previousSnapshotRef.current;
 
-    const handleComplete = async () => {
-        if (!hasValidSimulationId) {
-            setCompleteError('Invalid simulation id from route.');
+        if (isApplyingHistoryRef.current) {
+            previousSnapshotRef.current = currentSnapshot;
+            isApplyingHistoryRef.current = false;
             return;
         }
-        if (isCheckingCompletion || isAlreadyCompleted) return;
 
-        completeControllerRef.current?.abort();
-        const controller = new AbortController();
-        completeControllerRef.current = controller;
-
-        setCompleteError(null);
-        setIsCompleting(true);
-
-        try {
-            await completeSimulation(simulationId, undefined, { signal: controller.signal });
-            if (!isMountedRef.current || controller.signal.aborted) return;
-            setIsAlreadyCompleted(true);
-            navigate('/dashboard', { replace: true });
-        } catch (error) {
-            if (controller.signal.aborted || isAbortError(error)) return;
-            if (!isMountedRef.current) return;
-            setCompleteError(getErrorMessage(error, 'Failed to complete this simulation.'));
-        } finally {
-            if (isMountedRef.current && !controller.signal.aborted) {
-                setIsCompleting(false);
-            }
+        const hasChanged = JSON.stringify(previousSnapshot) !== JSON.stringify(currentSnapshot);
+        if (hasChanged) {
+            setHistoryPast((prev) => [...prev, previousSnapshot].slice(-50));
+            setHistoryFuture([]);
+            previousSnapshotRef.current = currentSnapshot;
         }
-    };
+    }, [components, wires, componentTransforms, switchStates, getCurrentSnapshot]);
 
-    // Konva styling based on theme
-    const strokeColor = isDarkMode ? '#334155' : '#cbd5e1';
-    const componentFill = isDarkMode ? '#1e293b' : '#ffffff';
-    const textColor = isDarkMode ? '#ffffff' : '#0f172a';
-    const subTextColor = isDarkMode ? '#94a3b8' : '#64748b';
+    // Responsive Observer for the Canvas Container
+    useEffect(() => {
+        if (!containerRef.current) return;
+        const observer = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                setViewport({
+                    width: entry.contentRect.width,
+                    height: entry.contentRect.height,
+                });
+            }
+        });
+        observer.observe(containerRef.current);
+        return () => observer.disconnect();
+    }, []);
 
     return (
         <CyberTransition>
-            <PortraitGuard>
-                <div className="h-screen flex flex-col bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 select-none overflow-hidden transition-colors duration-300 relative z-0">
+            <div className="flex flex-col h-screen w-screen bg-[#0B1120] text-slate-200 font-sans overflow-hidden select-none">
 
-                    {/* GAME HUD GRID BACKGROUND */}
-                    <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:32px_32px] dark:bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] pointer-events-none -z-10" />
+                {/* ========================================= */}
+                {/* NEW UNIFIED CYBERPUNK HUD HEADER          */}
+                {/* ========================================= */}
+                <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-[#0B1120] border-b border-cyan-900/50 z-50 shadow-md">
 
-                    {/* SECTION: HUD NAVIGATION BAR */}
-                    <header className="bg-white/95 dark:bg-[#0B1120]/95 border-b-2 border-slate-300 dark:border-cyan-900/50 p-3 sm:px-6 sm:py-4 flex flex-col sm:flex-row items-center justify-between sticky top-0 z-50 shadow-[0_4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_4px_20px_rgba(6,182,212,0.1)] backdrop-blur-md transition-colors duration-300 gap-4 sm:gap-0 shrink-0">
+                    {/* Left: Branding & Back Button */}
+                    <div className="flex items-center gap-4">
+                        <button
+                            onClick={() => navigate('/dashboard')}
+                            className="p-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded transition-colors shadow-sm"
+                            title="Abort Sequence"
+                        >
+                            <ArrowLeft size={20} />
+                        </button>
+                        <div>
+                            <h1 className="font-black text-lg text-white uppercase tracking-widest flex items-center gap-2">
+                                <Play size={16} className="text-cyan-500" /> Simulation Environment
+                            </h1>
+                            <p className="text-[10px] text-cyan-500/70 font-mono tracking-widest uppercase">
+                                Active Sequence: {routeId || 'UNKNOWN'}
+                            </p>
+                        </div>
+                    </div>
 
-                        {/* Left: Return Action & Title */}
-                        <div className="flex items-center gap-3 sm:gap-5 w-full sm:w-auto">
-                            <button
-                                onClick={() => navigate('/dashboard')}
-                                className="group p-2 sm:px-4 sm:py-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 transition-colors flex items-center gap-2 rounded-sm border-l-2 border-transparent hover:border-cyan-500 shrink-0"
-                                title="Abort Simulation"
+                    {/* Right: Simulation Toolbar & Status */}
+                    <div className="flex items-center gap-6">
+
+                        {/* Embedded Toolbar replacing the old white one */}
+                        <div className="flex items-center gap-1.5 bg-slate-900/80 p-1.5 rounded-xl border border-slate-800 shadow-inner">
+                            <button type="button" onClick={handleCopy} disabled={!selectedComponentId} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Copy"><Copy size={16} /></button>
+                            <button type="button" onClick={handlePaste} disabled={!clipboardComponent} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Paste"><ClipboardPaste size={16} /></button>
+                            <button type="button" onClick={deleteSelected} disabled={!selectedWireId && !selectedComponentId && !selectedIntermediatePoint} className="p-1.5 text-slate-400 hover:text-red-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Delete"><Trash2 size={16} /></button>
+
+                            <div className="w-px h-5 bg-slate-700 mx-1" />
+
+                            <button type="button" onClick={handleUndo} disabled={!historyPast.length} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Undo"><Undo2 size={16} /></button>
+                            <button type="button" onClick={handleRedo} disabled={!historyFuture.length} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Redo"><Redo2 size={16} /></button>
+
+                            <div className="w-px h-5 bg-slate-700 mx-1" />
+
+                            <button type="button" onClick={rotateSelectedComponent} disabled={!selectedComponentId} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Rotate"><RotateCw size={16} /></button>
+                            <button type="button" onClick={flipSelectedComponent} disabled={!selectedComponentId} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Flip"><FlipHorizontal size={16} /></button>
+
+                            <div className="w-px h-5 bg-slate-700 mx-1" />
+
+                            <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} className="bg-transparent text-xs text-slate-300 font-bold cursor-pointer py-1 px-2 rounded outline-none hover:bg-slate-800 transition-colors border-none" title="Wire Color">
+                                {WIRE_COLOR_OPTIONS.map((option) => (
+                                    <option key={option.value} value={option.value} className="bg-slate-900">{option.label}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Sys.Online</span>
+                        </div>
+                    </div>
+                </header>
+
+                {/* ========================================= */}
+                {/* MAIN SIMULATION CANVAS AREA               */}
+                {/* ========================================= */}
+                <main className="flex-1 relative w-full h-full bg-slate-900 overflow-hidden" ref={containerRef}>
+                    <div className="app-layout" style={{ position: 'absolute', inset: 0 }}>
+
+                        <div className="simulation-canvas-frame" style={{ width: stageWidth, height: stageHeight }}>
+                            <Stage
+                                width={stageWidth}
+                                height={stageHeight}
+                                onMouseMove={handleMouseMove}
+                                onMouseUp={handleStageMouseUp}
+                                onMouseDown={() => {
+                                    setPinTooltip(null);
+                                    if (!activePin) {
+                                        setSelectedWireId(null);
+                                        setSelectedIntermediatePoint(null);
+                                        setSelectedComponentId(null);
+                                    }
+                                }}
                             >
-                                <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
-                                <span className="font-black text-[10px] sm:text-xs uppercase tracking-widest font-mono hidden sm:inline">Abort Sim</span>
-                            </button>
-
-                            <div className="h-6 w-px bg-slate-300 dark:bg-slate-700 hidden sm:block"></div>
-
-                            <div className="flex flex-col min-w-0">
-                                <h1 className="font-black text-sm sm:text-base text-slate-900 dark:text-white flex items-center gap-2 uppercase tracking-widest truncate">
-                                    <Zap className="text-amber-500 dark:text-yellow-400 shrink-0" size={16} />
-                                    <span className="truncate">WORKSPACE: SIM_{String(id).padStart(2, '0')}</span>
-                                </h1>
-                                <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="inline-block w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse shrink-0"></span>
-                                    <p className="text-[9px] text-slate-500 dark:text-cyan-400/70 uppercase tracking-widest font-mono transition-colors truncate">
-                                        CANVAS_ACTIVE
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Right: Controls & Actions */}
-                        <div className="flex items-center justify-between w-full sm:w-auto gap-3 sm:gap-4">
-
-                            {/* Theme Toggle */}
-                            <div className="flex items-center border-r border-slate-300 dark:border-slate-700 pr-3 sm:pr-4">
-                                <button
-                                    type="button"
-                                    onClick={toggleTheme}
-                                    className="p-2 text-slate-500 hover:text-amber-500 dark:text-slate-400 dark:hover:text-amber-400 transition hover:bg-slate-200 dark:hover:bg-slate-800 rounded border border-transparent hover:border-slate-300 dark:hover:border-slate-700 shrink-0"
-                                    title="Toggle Optics"
-                                >
-                                    {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-                                </button>
-                            </div>
-
-                            <div className="flex items-center gap-2 sm:gap-3">
-                                <button
-                                    type="button"
-                                    className="flex items-center gap-2 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 px-3 sm:px-4 py-2 rounded-sm text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700"
-                                >
-                                    <RotateCcw size={14} /> <span className="hidden sm:inline">Reset Board</span>
-                                </button>
-
-                                <button
-                                    type="button"
-                                    onClick={() => { void handleComplete(); }}
-                                    disabled={isCompleting || isCheckingCompletion || isAlreadyCompleted || !hasValidSimulationId}
-                                    className="group/btn relative overflow-hidden flex items-center gap-2 bg-cyan-600 hover:bg-cyan-700 dark:bg-cyan-500 dark:hover:bg-cyan-400 disabled:opacity-50 disabled:grayscale px-4 sm:px-6 py-2 rounded-sm text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all text-white dark:text-slate-900 shadow-[0_0_15px_rgba(6,182,212,0.3)]"
-                                >
-                                    <span className="absolute inset-0 bg-white/30 translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-500 ease-out" />
-                                    {isCompleting || isCheckingCompletion ? (
-                                        <Loader2 size={14} className="animate-spin" />
-                                    ) : (
-                                        <Play size={14} fill="currentColor" />
-                                    )}
-                                    {isAlreadyCompleted
-                                        ? 'Verified'
-                                        : isCheckingCompletion
-                                            ? 'Scanning...'
-                                            : isCompleting
-                                                ? 'Processing...'
-                                                : 'Mark Complete'}
-                                </button>
-
-                                {isAlreadyCompleted && (
-                                    <span className="hidden lg:inline-flex items-center gap-1.5 rounded-sm border border-emerald-500/50 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 text-[10px] sm:text-xs font-black tracking-widest uppercase text-emerald-600 dark:text-emerald-400">
-                                        <CheckCircle2 size={14} />
-                                        Cleared
-                                    </span>
-                                )}
-                            </div>
-                        </div>
-                    </header>
-
-                    {/* STATUS MESSAGES */}
-                    {completionLookupError && (
-                        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 w-full max-w-md px-4">
-                            <div className="rounded-sm border border-amber-500/50 bg-amber-50 dark:bg-amber-950/80 text-amber-700 dark:text-amber-400 px-4 py-3 text-xs font-mono font-bold shadow-lg flex items-center gap-3">
-                                <AlertTriangle size={16} />
-                                {completionLookupError}
-                            </div>
-                        </div>
-                    )}
-
-                    {completeError && (
-                        <div className="absolute top-20 left-1/2 -translate-x-1/2 z-40 w-full max-w-md px-4">
-                            <div className="rounded-sm border-l-4 border-red-500 bg-white dark:bg-[#111827] text-red-600 dark:text-red-400 px-4 py-3 text-xs font-mono font-bold shadow-lg flex items-center gap-3">
-                                <AlertTriangle size={16} />
-                                {completeError}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* SECTION: INTERACTIVE CANVAS (Konva) */}
-                    <main
-                        ref={containerRef}
-                        className="flex-1 relative z-10"
-                    >
-                        {dimensions.width > 0 && dimensions.height > 0 && (
-                            <Stage width={dimensions.width} height={dimensions.height}>
                                 <Layer>
+                                    {/* Render Established Wires from the Netlist */}
+                                    {wires.map((wire) => {
+                                        const start = getPinPos(wire.fromPin);
+                                        const end = getPinPos(wire.toPin);
+                                        const intermediatePoints = wire.intermediatePoints ?? [];
+                                        const polylinePoints = [start, ...intermediatePoints, end];
+                                        const flattenedPoints = polylinePoints.flatMap((point) => [point.x, point.y]);
+                                        const isSelected = selectedWireId === wire.id;
+                                        return (
+                                            <Line
+                                                key={wire.id}
+                                                points={flattenedPoints}
+                                                stroke={wire.color}
+                                                strokeWidth={isSelected ? 6 : 4}
+                                                hitStrokeWidth={14}
+                                                lineCap="round"
+                                                lineJoin="round"
+                                                tension={0}
+                                                shadowColor={isSelected ? '#f39c12' : undefined}
+                                                shadowBlur={isSelected ? 12 : 0}
+                                                onMouseDown={(e) => {
+                                                    e.cancelBubble = true;
+                                                    setSelectedWireId(wire.id);
+                                                    setSelectedIntermediatePoint(null);
+                                                    setSelectedComponentId(null);
+                                                    setActivePin(null);
+                                                    setMousePos(null);
+                                                }}
+                                                onDblClick={(e) => {
+                                                    e.cancelBubble = true;
+                                                    const stagePointer = e.target.getStage()?.getPointerPosition();
+                                                    if (!stagePointer) {
+                                                        return;
+                                                    }
 
-                                    {/* MOCK COMPONENT: 24V Power Supply */}
-                                    <Group draggable x={50} y={50}>
-                                        {/* Main Body */}
-                                        <Rect
-                                            width={140}
-                                            height={90}
-                                            fill={componentFill}
-                                            stroke={strokeColor}
+                                                    let nearestSegmentIndex = 0;
+                                                    let nearestDistanceSquared = Number.POSITIVE_INFINITY;
+
+                                                    for (let i = 0; i < polylinePoints.length - 1; i += 1) {
+                                                        const distanceSquared = getDistanceSquaredToSegment(
+                                                            stagePointer,
+                                                            polylinePoints[i],
+                                                            polylinePoints[i + 1],
+                                                        );
+
+                                                        if (distanceSquared < nearestDistanceSquared) {
+                                                            nearestDistanceSquared = distanceSquared;
+                                                            nearestSegmentIndex = i;
+                                                        }
+                                                    }
+
+                                                    setWires((prev) => prev.map((currentWire) => {
+                                                        if (currentWire.id !== wire.id) {
+                                                            return currentWire;
+                                                        }
+
+                                                        const nextIntermediatePoints = [...(currentWire.intermediatePoints ?? [])];
+                                                        const elbow = getOrthogonalElbow(
+                                                            stagePointer,
+                                                            polylinePoints[nearestSegmentIndex],
+                                                            polylinePoints[nearestSegmentIndex + 1],
+                                                        );
+                                                        nextIntermediatePoints.splice(nearestSegmentIndex, 0, elbow);
+
+                                                        return {
+                                                            ...currentWire,
+                                                            intermediatePoints: nextIntermediatePoints,
+                                                        };
+                                                    }));
+                                                    setSelectedWireId(wire.id);
+                                                    setSelectedIntermediatePoint({ wireId: wire.id, index: nearestSegmentIndex });
+                                                    setSelectedComponentId(null);
+                                                    setActivePin(null);
+                                                    setMousePos(null);
+                                                }}
+                                            />
+                                        );
+                                    })}
+
+                                    {wires.flatMap((wire) => {
+                                        if (selectedWireId !== wire.id) {
+                                            return [];
+                                        }
+
+                                        const points = wire.intermediatePoints ?? [];
+                                        return points.map((point, index) => {
+                                            const isPointSelected =
+                                                selectedIntermediatePoint?.wireId === wire.id
+                                                && selectedIntermediatePoint.index === index
+                                                && selectedWireId === wire.id;
+
+                                            return (
+                                                <Circle
+                                                    key={`${wire.id}-point-${index}`}
+                                                    x={point.x}
+                                                    y={point.y}
+                                                    radius={isPointSelected ? 7 : 6}
+                                                    fill={isPointSelected ? '#f39c12' : '#ffffff'}
+                                                    stroke="#2c3e50"
+                                                    strokeWidth={2}
+                                                    draggable={!activePin}
+                                                    onMouseDown={(e) => {
+                                                        e.cancelBubble = true;
+                                                        setSelectedWireId(wire.id);
+                                                        setSelectedIntermediatePoint({ wireId: wire.id, index });
+                                                        setSelectedComponentId(null);
+                                                        setActivePin(null);
+                                                        setMousePos(null);
+                                                    }}
+                                                    onDragMove={(e) => {
+                                                        const wireStart = getPinPos(wire.fromPin);
+                                                        const wireEnd = getPinPos(wire.toPin);
+                                                        const pointer = { x: e.target.x(), y: e.target.y() };
+                                                        const previousPoint = index === 0
+                                                            ? wireStart
+                                                            : points[index - 1];
+                                                        const nextPoint = index === points.length - 1
+                                                            ? wireEnd
+                                                            : points[index + 1];
+                                                        const snappedPoint = getSnappedIntermediatePoint(pointer, previousPoint, nextPoint);
+
+                                                        e.target.x(snappedPoint.x);
+                                                        e.target.y(snappedPoint.y);
+
+                                                        setWires((prev) => prev.map((currentWire) => {
+                                                            if (currentWire.id !== wire.id) {
+                                                                return currentWire;
+                                                            }
+
+                                                            const nextIntermediatePoints = [...(currentWire.intermediatePoints ?? [])];
+                                                            nextIntermediatePoints[index] = snappedPoint;
+                                                            return {
+                                                                ...currentWire,
+                                                                intermediatePoints: nextIntermediatePoints,
+                                                            };
+                                                        }));
+                                                    }}
+                                                    onDblClick={(e) => {
+                                                        e.cancelBubble = true;
+                                                        setWires((prev) => prev.map((currentWire) => {
+                                                            if (currentWire.id !== wire.id) {
+                                                                return currentWire;
+                                                            }
+
+                                                            return {
+                                                                ...currentWire,
+                                                                intermediatePoints: (currentWire.intermediatePoints ?? []).filter((_, pointIndex) => pointIndex !== index),
+                                                            };
+                                                        }));
+                                                        setSelectedIntermediatePoint(null);
+                                                    }}
+                                                />
+                                            );
+                                        });
+                                    })}
+
+                                    {/* Live Ghost Wire during dragging */}
+                                    {activePin && mousePos && (
+                                        <Line
+                                            points={[getPinPos(activePin).x, getPinPos(activePin).y, mousePos.x, mousePos.y]}
+                                            stroke="#e67e22"
                                             strokeWidth={2}
-                                            cornerRadius={4}
-                                            shadowColor="rgba(0,0,0,0.1)"
-                                            shadowBlur={10}
-                                            shadowOffsetY={4}
+                                            dash={[10, 5]}
                                         />
-                                        {/* Header Bar */}
-                                        <Rect width={140} height={24} fill="#0ea5e9" cornerRadius={[4, 4, 0, 0]} />
-                                        <Text text="24V PSU" x={12} y={7} fill="white" fontSize={11} fontFamily="monospace" fontStyle="bold" />
+                                    )}
 
-                                        {/* Decorative Lines */}
-                                        <Rect x={100} y={8} width={28} height={2} fill="rgba(255,255,255,0.3)" />
-                                        <Rect x={100} y={14} width={28} height={2} fill="rgba(255,255,255,0.3)" />
+                                    {/* Component Instances */}
+                                    {Object.entries(components).map(([id, pos]) => {
+                                        const componentType = inferPaletteTypeFromComponentId(id);
 
-                                        {/* 24V Terminal (+) */}
-                                        <Group x={30} y={45}>
-                                            <Rect width={20} height={20} fill="#fca5a5" stroke="#ef4444" strokeWidth={2} cornerRadius={10} />
-                                            <Circle radius={4} x={10} y={10} fill="#ef4444" />
-                                            <Text text="+24V" x={-3} y={28} fill={subTextColor} fontSize={10} fontFamily="monospace" fontStyle="bold" />
-                                        </Group>
+                                        return componentType ? (
+                                            (() => {
+                                                const asset = GENERAL_TERMINAL_STRIP_ASSET;
+                                                const pinKeys = Object.keys(asset.pins)
+                                                    .filter((key) => /^pin_\d+$/.test(key))
+                                                    .sort((a, b) => Number(a.replace('pin_', '')) - Number(b.replace('pin_', '')));
+                                                const pinAKey = pinKeys[0] ?? 'in';
+                                                const pinBKey = pinKeys[1] ?? 'out';
+                                                const pinAOffset = asset.pins[pinAKey] ?? { x: 8, y: asset.height / 2 };
+                                                const pinBOffset = asset.pins[pinBKey] ?? { x: asset.width - 8, y: asset.height / 2 };
+                                                const pinOffsets = Object.fromEntries(
+                                                    pinKeys.map((key) => [key, asset.pins[key]]),
+                                                );
 
-                                        {/* 0V Terminal (-) */}
-                                        <Group x={90} y={45}>
-                                            <Rect width={20} height={20} fill="#bfdbfe" stroke="#3b82f6" strokeWidth={2} cornerRadius={10} />
-                                            <Circle radius={4} x={10} y={10} fill="#3b82f6" />
-                                            <Text text="0V" x={4} y={28} fill={subTextColor} fontSize={10} fontFamily="monospace" fontStyle="bold" />
-                                        </Group>
-                                    </Group>
+                                                return (
+                                                    <AssetComponent
+                                                        key={id}
+                                                        id={id}
+                                                        x={pos.x}
+                                                        y={pos.y}
+                                                        rotation={componentTransforms[id]?.rotation ?? 0}
+                                                        flipX={componentTransforms[id]?.flipX ?? false}
+                                                        isWiring={Boolean(activePin)}
+                                                        isSelected={selectedComponentId === id}
+                                                        imageSrc={asset.imageSrc}
+                                                        width={asset.width}
+                                                        height={asset.height}
+                                                        nodeSize={NODE_SIZE}
+                                                        isLocked={!COMPONENTS_MOVABLE}
+                                                        pinAId={pinAKey}
+                                                        pinBId={pinBKey}
+                                                        pinAOffset={pinAOffset}
+                                                        pinBOffset={pinBOffset}
+                                                        pinOffsets={pinOffsets}
+                                                        onPinMouseDown={handlePinMouseDown}
+                                                        pinWireColorForPin={getPinWireColor}
+                                                        pinTooltipForPin={getPinTooltipText}
+                                                        onShowPinTooltip={handleShowPinTooltip}
+                                                        onHidePinTooltip={handleHidePinTooltip}
+                                                        onSelect={(componentId) => {
+                                                            setSelectedComponentId(componentId);
+                                                            setSelectedWireId(null);
+                                                            setActivePin(null);
+                                                            setMousePos(null);
+                                                        }}
+                                                        onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
+                                                    />
+                                                );
+                                            })()
+                                        ) : (
+                                            <CircuitComponent
+                                                key={id}
+                                                id={id}
+                                                x={pos.x}
+                                                y={pos.y}
+                                                rotation={componentTransforms[id]?.rotation ?? 0}
+                                                flipX={componentTransforms[id]?.flipX ?? false}
+                                                label={id.toUpperCase()}
+                                                color="#e74c3c"
+                                                nodeSize={NODE_SIZE}
+                                                isWiring={Boolean(activePin)}
+                                                isLocked={!COMPONENTS_MOVABLE}
+                                                isSelected={selectedComponentId === id}
+                                                onPinMouseDown={handlePinMouseDown}
+                                                pinWireColorForPin={getPinWireColor}
+                                                onShowPinTooltip={handleShowPinTooltip}
+                                                onHidePinTooltip={handleHidePinTooltip}
+                                                onSelect={(componentId) => {
+                                                    setSelectedComponentId(componentId);
+                                                    setSelectedWireId(null);
+                                                    setActivePin(null);
+                                                    setMousePos(null);
+                                                }}
+                                                onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
+                                            />
+                                        )
 
-                                    {/* MOCK COMPONENT: Push Button (PB1) */}
-                                    <Group draggable x={250} y={50}>
-                                        <Rect
-                                            width={80}
-                                            height={90}
-                                            fill={componentFill}
-                                            stroke={strokeColor}
-                                            strokeWidth={2}
-                                            cornerRadius={4}
-                                            shadowColor="rgba(0,0,0,0.1)"
-                                            shadowBlur={10}
-                                            shadowOffsetY={4}
-                                        />
-                                        <Rect width={80} height={20} fill="#334155" cornerRadius={[4, 4, 0, 0]} />
-                                        <Text text="PB 1" x={24} y={5} fill={textColor} fontSize={10} fontFamily="monospace" fontStyle="bold" />
-
-                                        {/* The Button Graphic */}
-                                        <Rect
-                                            x={20}
-                                            y={35}
-                                            width={40}
-                                            height={40}
-                                            fill="#10b981"
-                                            stroke="#059669"
-                                            strokeWidth={2}
-                                            cornerRadius={20}
-                                            shadowBlur={4}
-                                            shadowColor="rgba(0,0,0,0.3)"
-                                            shadowOffsetY={2}
-                                        />
-                                        <Circle radius={12} x={40} y={55} fill="rgba(255,255,255,0.2)" />
-                                    </Group>
-
+                                    })}
                                 </Layer>
                             </Stage>
+                            {pinTooltip && (
+                                <div
+                                    className="pin-tooltip-popup"
+                                    style={{
+                                        left: pinTooltip.pos.x + 12,
+                                        top: pinTooltip.pos.y - 10,
+                                    }}
+                                >
+                                    {pinTooltip.text}
+                                </div>
+                            )}
+                        </div>
+
+                        <button
+                            type="button"
+                            className="controls-container-toggle"
+                            style={{ left: controlsToggleLeft }}
+                            aria-label={isControlsPanelCollapsed ? 'Show controls panel' : 'Hide controls panel'}
+                            title={isControlsPanelCollapsed ? 'Show controls' : 'Hide controls'}
+                            onClick={() => setIsControlsPanelCollapsed((prev) => !prev)}
+                        >
+                            {isControlsPanelCollapsed ? '⟩' : '⟨'}
+                        </button>
+
+                        <button
+                            type="button"
+                            className="controls-container-toggle"
+                            style={{ right: deviceListToggleRight }}
+                            aria-label={isDeviceSidebarCollapsed ? 'Expand device list' : 'Collapse device list'}
+                            title={isDeviceSidebarCollapsed ? 'Expand' : 'Collapse'}
+                            onClick={() => setIsDeviceSidebarCollapsed((prev) => !prev)}
+                        >
+                            {isDeviceSidebarCollapsed ? '⟨' : '⟩'}
+                        </button>
+
+                        {!isControlsPanelCollapsed && (
+                            <aside className="ladder-sidebar" style={{ width: controlsPanelWidth }}>
+                                <h3 className="ladder-sidebar-title">Controls</h3>
+                                <div className="ladder-sidebar-section ladder-sidebar-section-devices">
+                                    <h3 className="ladder-sidebar-title">List of Devices to Use</h3>
+                                    <div className="device-canvas-grid">
+                                        <div
+                                            className="device-drop-canvas"
+                                            onDragOver={allowDeviceCanvasDrop}
+                                            onDrop={(event) => handleDeviceCanvasDrop(event, 'input')}
+                                        >
+                                            <h4 className="device-canvas-title">Input Device</h4>
+                                            <div className="device-chip-list">
+                                                {inputDeviceTypes.length === 0 && <p className="device-empty-text">Drag devices here</p>}
+                                                {inputDeviceTypes.map((type, index) => {
+                                                    const item = getPaletteItem(type);
+                                                    if (!item) return null;
+                                                    return (
+                                                        <div key={`input-${type}-${index}`} className="device-chip">
+                                                            <img src={item.imageSrc} alt={item.name} className="device-chip-image" />
+                                                            <span className="device-chip-name">{item.name}</span>
+                                                            <button
+                                                                type="button"
+                                                                className="device-chip-remove"
+                                                                aria-label={`Remove ${item.name} from input`}
+                                                                title="Remove"
+                                                                onClick={() => removeInputDevice(index)}
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+
+                                        <div
+                                            className="device-drop-canvas"
+                                            onDragOver={allowDeviceCanvasDrop}
+                                            onDrop={(event) => handleDeviceCanvasDrop(event, 'output')}
+                                        >
+                                            <h4 className="device-canvas-title">Output/Control Device</h4>
+                                            <div className="device-chip-list">
+                                                {outputDeviceTypes.length === 0 && <p className="device-empty-text">Drag devices here</p>}
+                                                {outputDeviceTypes.map((type, index) => {
+                                                    const item = getPaletteItem(type);
+                                                    if (!item) return null;
+                                                    return (
+                                                        <div key={`output-${type}-${index}`} className="device-chip">
+                                                            <img src={item.imageSrc} alt={item.name} className="device-chip-image" />
+                                                            <span className="device-chip-name">{item.name}</span>
+                                                            <button
+                                                                type="button"
+                                                                className="device-chip-remove"
+                                                                aria-label={`Remove ${item.name} from output`}
+                                                                title="Remove"
+                                                                onClick={() => removeOutputDevice(index)}
+                                                            >
+                                                                ×
+                                                            </button>
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="ladder-sidebar-section ladder-sidebar-section-diagram">
+                                    <div className="ladder-diagram-header">
+                                        <h3 className="ladder-sidebar-title">Ladder Diagram</h3>
+                                        <p className={`activity-feedback ${activityFeedback === '100%' ? 'activity-feedback-pass' : 'activity-feedback-fail'}`}>
+                                            {activityFeedback}
+                                        </p>
+                                    </div>
+                                    <div className="activity-panel">
+                                        <h4 className="activity-title">{activeActivity.title}</h4>
+                                        {shouldShowInstructionImage ? (
+                                            <img
+                                                src={activeActivity.instructionImageSrc}
+                                                alt={`${activeActivity.title} instructions`}
+                                                className="activity-instruction-image"
+                                                onError={() => {
+                                                    setInstructionImageFailures((prev) => ({
+                                                        ...prev,
+                                                        [activeActivity.id]: true,
+                                                    }));
+                                                }}
+                                            />
+                                        ) : activeActivity.instructions?.length ? (
+                                            <ul className="activity-instruction-list">
+                                                {activeActivity.instructions.map((instruction, index) => (
+                                                    <li key={`${activeActivity.id}-instruction-${index}`} className="activity-instruction-item">
+                                                        {instruction}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                        ) : null}
+
+                                        <div className="activity-actions">
+                                            <button
+                                                type="button"
+                                                className="activity-button activity-button-primary"
+                                                onClick={runActivityValidation}
+                                            >
+                                                Check Answer
+                                            </button>
+                                        </div>
+
+                                    </div>
+                                </div>
+                            </aside>
                         )}
-                    </main>
-                </div>
-            </PortraitGuard>
+
+                        {!isDeviceSidebarCollapsed && (
+                            <aside className="sidebar" style={{ width: deviceSidebarWidth }}>
+                                <div className="sidebar-header">
+                                    <h3 className="sidebar-title">List of Devices</h3>
+                                </div>
+                                <div className="palette-grid">
+                                    {COMPONENT_PALETTE.map((item) => (
+                                        <button
+                                            key={item.type}
+                                            type="button"
+                                            onClick={() => addComponent(item.type)}
+                                            className="palette-item"
+                                            draggable
+                                            onDragStart={(event) => handlePaletteDragStart(event, item.type)}
+                                        >
+                                            <img
+                                                src={item.imageSrc}
+                                                alt={item.name}
+                                                className="palette-item-image"
+                                            />
+                                            <span className="palette-item-name">{item.name}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </aside>
+                        )}
+
+                    </div>
+                </main>
+
+            </div>
         </CyberTransition>
     );
-};
-
-interface CircleProps extends Omit<RectConfig, 'cornerRadius'> {
-    radius: number;
 }
-
-const Circle = (props: CircleProps) => {
-    return <Rect {...props} cornerRadius={props.radius} width={props.radius * 2} height={props.radius * 2} offsetX={props.radius} offsetY={props.radius} />
-}
-
-export default SimulationView;
