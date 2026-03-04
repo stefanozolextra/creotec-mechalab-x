@@ -22,10 +22,10 @@ const PortraitGuard = ({ children }: Props) => {
                 setBlockReason(isPortraitMode ? 'portrait' : null);
             } else {
                 // PC LOGIC: The "Anti-Split-Screen" Breakpoint
-                // By requiring a minimum width of 1100px, we mathematically guarantee the user 
+                // By requiring a minimum width of 1440px, we mathematically guarantee the user 
                 // cannot use the app snapped to half their screen (half of 1080p = 960px).
                 // They MUST maximize or stretch the window across their screen to pass this.
-                const isWindowTooSmall = window.innerWidth < 1100 || window.innerHeight < 600;
+                const isWindowTooSmall = window.innerWidth < 1440 || window.innerHeight < 600;
 
                 setBlockReason(isWindowTooSmall ? 'not_maximized' : null);
             }

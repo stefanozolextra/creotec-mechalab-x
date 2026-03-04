@@ -275,14 +275,6 @@ export default function TraineeReportsPanel() {
               <option value="inactive">Inactive</option>
             </select>
           </div>
-
-          {/* HINT BANNER (Styled precisely like the Lessons Page) */}
-          <div className="hidden xl:flex items-center gap-2 px-4 py-2 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white/50 dark:bg-[#1E293B]/30 text-xs select-none shadow-sm ml-2">
-            <MousePointerClick size={14} className="text-[#3B82F6]" />
-            <span className="text-slate-500 dark:text-slate-400 font-medium">
-              <strong className="text-slate-700 dark:text-slate-200 font-bold">Left-click</strong> a row <span className="opacity-80">to view modules</span>
-            </span>
-          </div>
         </div>
 
         {/* Right Side: Actions */}
