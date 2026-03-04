@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Stage, Layer, Circle, Line } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 
 // Lucide Icons for the unified HUD
-import { ArrowLeft, Play, Copy, ClipboardPaste, Trash2, Undo2, Redo2, RotateCw, FlipHorizontal } from 'lucide-react';
+import { ArrowLeft, Play, Copy, ClipboardPaste, Trash2, Undo2, Redo2, RotateCw, FlipHorizontal, Sun, Moon, RefreshCw, } from 'lucide-react';
 import CyberTransition from '../components/CyberTransition';
 
-// Simulation Logic Imports (pointing to the simulation folder)
+// Simulation Logic Imports
 import { SIMULATION_ACTIVITIES, evaluateActivity } from '../simulation/constants/activities';
 import { CUSTOM_NODE_ASSETS, TOP_ROW_PINS, BOTTOM_ROW_PINS } from '../simulation/constants/customNodes';
 import buttonDeviceImageSrc from '../simulation/assets/devices/button.png';
@@ -26,50 +26,30 @@ import { computeWireDuctIntermediatePoints } from '../simulation/utils/wireRouti
 import { getPinMeta as getPinMetaHelper, inferPaletteTypeFromComponentId as inferPaletteTypeHelper } from '../simulation/utils/simulationHelpers';
 import { resolveTerminalStripTooltip } from '../simulation/constants/pinTooltips';
 
-// Keep the original simulation CSS
 import '../simulation/SimulationApp.css';
 
 const NODE_SIZE = 3;
+const NAVBAR_HEIGHT = 72; // Adjusted to match the new custom header height
 
-// Terminal-strip customization: keep simulation components as fixed strips and show per-component labels.
 const COMPONENTS_MOVABLE = false;
 const BATTERY_NODE = CUSTOM_NODE_ASSETS.terminalStrip;
 void BATTERY_NODE;
 const GENERAL_TERMINAL_STRIP_ASSET = CUSTOM_NODE_ASSETS.terminalStrip;
 type SimulationComponentType =
-    | 'battery'
-    | 'switch'
-    | 'button'
-    | 'buzzer'
-    | 'counter'
-    | 'lightIndicator'
-    | 'magneticMotorContactor'
-    | 'relayModule'
-    | 'rollerLever'
-    | 'solenoidValve';
+    | 'battery' | 'switch' | 'button' | 'buzzer' | 'counter' | 'lightIndicator'
+    | 'magneticMotorContactor' | 'relayModule' | 'rollerLever' | 'solenoidValve';
 type PaletteComponentType = Exclude<SimulationComponentType, 'battery' | 'switch'>;
+
 const SIMULATION_COMPONENT_TYPES: SimulationComponentType[] = [
-    'battery',
-    'switch',
-    'button',
-    'buzzer',
-    'counter',
-    'lightIndicator',
-    'magneticMotorContactor',
-    'relayModule',
-    'rollerLever',
-    'solenoidValve',
+    'battery', 'switch', 'button', 'buzzer', 'counter', 'lightIndicator',
+    'magneticMotorContactor', 'relayModule', 'rollerLever', 'solenoidValve',
 ];
+
 const PALETTE_COMPONENT_TYPES: PaletteComponentType[] = [
-    'button',
-    'buzzer',
-    'counter',
-    'lightIndicator',
-    'magneticMotorContactor',
-    'relayModule',
-    'rollerLever',
-    'solenoidValve',
+    'button', 'buzzer', 'counter', 'lightIndicator', 'magneticMotorContactor',
+    'relayModule', 'rollerLever', 'solenoidValve',
 ];
+
 const PALETTE_DEVICE_META: Record<PaletteComponentType, { name: string; imageSrc: string }> = {
     button: { name: 'Push Button', imageSrc: buttonDeviceImageSrc },
     buzzer: { name: 'Buzzer', imageSrc: buzzerDeviceImageSrc },
@@ -80,6 +60,7 @@ const PALETTE_DEVICE_META: Record<PaletteComponentType, { name: string; imageSrc
     rollerLever: { name: 'Roller Lever', imageSrc: rollerLeverDeviceImageSrc },
     solenoidValve: { name: 'Solenoid Valve', imageSrc: solenoidValveDeviceImageSrc },
 };
+
 const COMPONENT_PALETTE = PALETTE_COMPONENT_TYPES.map((type) => {
     const device = PALETTE_DEVICE_META[type];
     return {
@@ -142,18 +123,9 @@ const WIRE_COLOR_OPTIONS = [
 ];
 
 const createEmptyTypeCount = () => ({
-    battery: 0,
-    switch: 0,
-    button: 0,
-    buzzer: 0,
-    counter: 0,
-    led: 0,
-    resistor: 0,
-    lightIndicator: 0,
-    magneticMotorContactor: 0,
-    relayModule: 0,
-    rollerLever: 0,
-    solenoidValve: 0,
+    battery: 0, switch: 0, button: 0, buzzer: 0, counter: 0, led: 0,
+    resistor: 0, lightIndicator: 0, magneticMotorContactor: 0, relayModule: 0,
+    rollerLever: 0, solenoidValve: 0,
 });
 
 const countPaletteTypes = (items: PaletteComponentType[]) => items.reduce((acc, type) => {
@@ -195,52 +167,15 @@ const getEnforcedWireColor = (fromPin: string, toPin: string) => {
     return null;
 };
 
-interface ShapePos {
-    x: number;
-    y: number;
-}
+interface ShapePos { x: number; y: number; }
+interface ComponentTransform { rotation: number; flipX: boolean; }
+interface Connection { id: string; fromPin: string; toPin: string; color: string; intermediatePoints: Array<{ x: number; y: number }>; }
+interface CircuitSnapshot { components: Record<string, ShapePos>; wires: Connection[]; componentTransforms: Record<string, ComponentTransform>; switchStates: Record<string, boolean>; }
+interface ClipboardComponent { type: SimulationComponentType; sourcePosition: ShapePos; transform: ComponentTransform; switchOn?: boolean; }
+interface SelectedIntermediatePoint { wireId: string; index: number; }
 
-interface ComponentTransform {
-    rotation: number;
-    flipX: boolean;
-}
-
-interface Connection {
-    id: string;
-    fromPin: string;
-    toPin: string;
-    color: string;
-    intermediatePoints: Array<{ x: number; y: number }>;
-}
-
-interface CircuitSnapshot {
-    components: Record<string, ShapePos>;
-    wires: Connection[];
-    componentTransforms: Record<string, ComponentTransform>;
-    switchStates: Record<string, boolean>;
-}
-
-interface ClipboardComponent {
-    type: SimulationComponentType;
-    sourcePosition: ShapePos;
-    transform: ComponentTransform;
-    switchOn?: boolean;
-}
-
-interface SelectedIntermediatePoint {
-    wireId: string;
-    index: number;
-}
-
-const DEFAULT_PIN_OFFSETS = {
-    in: { x: 40, y: 0 },
-    out: { x: 40, y: 120 },
-} as const;
-
-const DEFAULT_TRANSFORM: ComponentTransform = {
-    rotation: 0,
-    flipX: false,
-};
+const DEFAULT_PIN_OFFSETS = { in: { x: 40, y: 0 }, out: { x: 40, y: 120 } } as const;
+const DEFAULT_TRANSFORM: ComponentTransform = { rotation: 0, flipX: false };
 
 // =========================================================================
 // MAIN SIMULATION VIEW COMPONENT
@@ -249,7 +184,14 @@ export default function SimulationView() {
     const { id: routeId } = useParams();
     const navigate = useNavigate();
 
-    const containerRef = useRef<HTMLDivElement>(null);
+    // FIX 1: Safely initialize theme to avoid React cascading render crashes
+    const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+        if (typeof document !== 'undefined') {
+            return document.documentElement.classList.contains('dark');
+        }
+        return true;
+    });
+
     const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
     const [components, setComponents] = useState<Record<string, ShapePos>>(INITIAL_COMPONENTS);
     const [isDeviceSidebarCollapsed, setIsDeviceSidebarCollapsed] = useState(true);
@@ -283,15 +225,33 @@ export default function SimulationView() {
         switchStates: {},
     });
 
+    // Layout Measurements
     const sidebarWidth = Math.max(180, Math.min(280, Math.round(viewport.width * 0.2)));
     const deviceSidebarWidth = sidebarWidth;
     const controlsPanelWidth = Math.max(280, Math.min(360, Math.round(viewport.width * 0.28)));
-
-    // Notice we don't subtract NAVBAR_HEIGHT anymore because we observe the inner container!
     const stageWidth = Math.max(320, viewport.width);
-    const stageHeight = Math.max(260, viewport.height);
+    const stageHeight = Math.max(260, viewport.height - NAVBAR_HEIGHT);
     const controlsToggleLeft = isControlsPanelCollapsed ? 12 : controlsPanelWidth + 20;
     const deviceListToggleRight = isDeviceSidebarCollapsed ? 12 : deviceSidebarWidth + 20;
+
+    // --- FIX 2: Replaced ResizeObserver with window resize to prevent infinite loop crashes ---
+    useEffect(() => {
+        const handleResize = () => {
+            setViewport({ width: window.innerWidth, height: window.innerHeight });
+        };
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    const toggleTheme = () => {
+        const newMode = !isDarkMode;
+        setIsDarkMode(newMode);
+        if (newMode) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    };
 
     const createComponentId = (prefix: string) => {
         const nextIndex = Object.keys(components).filter((id) => id.startsWith(`${prefix}-`)).length + 1;
@@ -509,10 +469,7 @@ export default function SimulationView() {
     ), [getPinPos, stageWidth, stageHeight, wires, getComponentNodeConfig, componentTransforms]);
 
     const rotateSelectedComponent = () => {
-        if (!selectedComponentId) {
-            return;
-        }
-
+        if (!selectedComponentId) return;
         setComponentTransforms((prev) => {
             const current = prev[selectedComponentId] ?? DEFAULT_TRANSFORM;
             return {
@@ -526,10 +483,7 @@ export default function SimulationView() {
     };
 
     const flipSelectedComponent = () => {
-        if (!selectedComponentId) {
-            return;
-        }
-
+        if (!selectedComponentId) return;
         setComponentTransforms((prev) => {
             const current = prev[selectedComponentId] ?? DEFAULT_TRANSFORM;
             return {
@@ -609,12 +563,7 @@ export default function SimulationView() {
         setWireColor(color);
         if (selectedWireId) {
             setWires((prev) => prev.map((wire) => (
-                wire.id === selectedWireId
-                    ? {
-                        ...wire,
-                        color,
-                    }
-                    : wire
+                wire.id === selectedWireId ? { ...wire, color } : wire
             )));
         }
         if (selectedComponentId) {
@@ -635,7 +584,6 @@ export default function SimulationView() {
                 if (wire.id !== selectedIntermediatePoint.wireId) {
                     return wire;
                 }
-
                 return {
                     ...wire,
                     intermediatePoints: (wire.intermediatePoints ?? []).filter((_, index) => index !== selectedIntermediatePoint.index),
@@ -710,14 +658,9 @@ export default function SimulationView() {
     }, [componentTransforms, components, stageWidth, stageHeight, getWireDuctIntermediatePoints]);
 
     const handleCopy = () => {
-        if (!selectedComponentId) {
-            return;
-        }
-
+        if (!selectedComponentId) return;
         const selectedPos = components[selectedComponentId];
-        if (!selectedPos) {
-            return;
-        }
+        if (!selectedPos) return;
 
         const selectedTransform = componentTransforms[selectedComponentId] ?? DEFAULT_TRANSFORM;
         setClipboardComponent({
@@ -729,9 +672,7 @@ export default function SimulationView() {
     };
 
     const handlePaste = () => {
-        if (!clipboardComponent) {
-            return;
-        }
+        if (!clipboardComponent) return;
 
         const newId = createComponentId(clipboardComponent.type);
         const pastedPos = {
@@ -739,29 +680,19 @@ export default function SimulationView() {
             y: clipboardComponent.sourcePosition.y + 28,
         };
 
-        setComponents((prev) => ({
-            ...prev,
-            [newId]: pastedPos,
-        }));
-        setComponentTransforms((prev) => ({
-            ...prev,
-            [newId]: clipboardComponent.transform,
-        }));
+        setComponents((prev) => ({ ...prev, [newId]: pastedPos }));
+        setComponentTransforms((prev) => ({ ...prev, [newId]: clipboardComponent.transform }));
+
         if (clipboardComponent.type === 'switch') {
-            setSwitchStates((prev) => ({
-                ...prev,
-                [newId]: Boolean(clipboardComponent.switchOn),
-            }));
+            setSwitchStates((prev) => ({ ...prev, [newId]: Boolean(clipboardComponent.switchOn) }));
         }
+
         setSelectedComponentId(newId);
         setSelectedWireId(null);
     };
 
     const handleUndo = () => {
-        if (!historyPast.length) {
-            return;
-        }
-
+        if (!historyPast.length) return;
         const previous = historyPast[historyPast.length - 1];
         const current = getCurrentSnapshot();
         setHistoryPast((prev) => prev.slice(0, -1));
@@ -770,15 +701,29 @@ export default function SimulationView() {
     };
 
     const handleRedo = () => {
-        if (!historyFuture.length) {
-            return;
-        }
-
+        if (!historyFuture.length) return;
         const next = historyFuture[0];
         const current = getCurrentSnapshot();
         setHistoryFuture((prev) => prev.slice(1));
         setHistoryPast((prev) => [...prev, current].slice(-50));
         applySnapshot(next);
+    };
+
+    const handleResetBoard = () => {
+        const current = getCurrentSnapshot();
+        setHistoryPast(prev => [...prev, current].slice(-50));
+        setHistoryFuture([]);
+
+        setComponents(INITIAL_COMPONENTS);
+        setComponentTransforms(INITIAL_COMPONENT_TRANSFORMS);
+        setWires([]);
+        setSwitchStates({});
+
+        setSelectedComponentId(null);
+        setSelectedWireId(null);
+        setSelectedIntermediatePoint(null);
+        setActivePin(null);
+        setMousePos(null);
     };
 
     useEffect(() => {
@@ -813,80 +758,87 @@ export default function SimulationView() {
         }
     }, [components, wires, componentTransforms, switchStates, getCurrentSnapshot]);
 
-    // Responsive Observer for the Canvas Container
-    useEffect(() => {
-        if (!containerRef.current) return;
-        const observer = new ResizeObserver((entries) => {
-            for (const entry of entries) {
-                setViewport({
-                    width: entry.contentRect.width,
-                    height: entry.contentRect.height,
-                });
-            }
-        });
-        observer.observe(containerRef.current);
-        return () => observer.disconnect();
-    }, []);
-
     return (
         <CyberTransition>
-            <div className="flex flex-col h-screen w-screen bg-[#0B1120] text-slate-200 font-sans overflow-hidden select-none">
+            <div className={`flex flex-col h-screen w-screen text-slate-800 dark:text-slate-200 font-sans overflow-hidden select-none transition-colors duration-300 ${isDarkMode ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
 
                 {/* ========================================= */}
-                {/* NEW UNIFIED CYBERPUNK HUD HEADER          */}
+                {/* HEADER: High-Visibility Taskbar           */}
                 {/* ========================================= */}
-                <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-[#0B1120] border-b border-cyan-900/50 z-50 shadow-md">
+                <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-[#0B1120] border-b border-slate-200 dark:border-cyan-900/50 z-50 shadow-md">
 
                     {/* Left: Branding & Back Button */}
                     <div className="flex items-center gap-4">
                         <button
                             onClick={() => navigate('/dashboard')}
-                            className="p-2 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded transition-colors shadow-sm"
+                            className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm"
                             title="Abort Sequence"
                         >
                             <ArrowLeft size={20} />
                         </button>
                         <div>
-                            <h1 className="font-black text-lg text-white uppercase tracking-widest flex items-center gap-2">
-                                <Play size={16} className="text-cyan-500" /> Simulation Environment
+                            <h1 className="font-black text-lg text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
+                                <Play size={16} className="text-cyan-600 dark:text-cyan-500" /> Simulation Environment
                             </h1>
-                            <p className="text-[10px] text-cyan-500/70 font-mono tracking-widest uppercase">
+                            <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">
                                 Active Sequence: {routeId || 'UNKNOWN'}
                             </p>
                         </div>
                     </div>
 
                     {/* Right: Simulation Toolbar & Status */}
-                    <div className="flex items-center gap-6">
+                    <div className="flex items-center gap-3">
 
-                        {/* Embedded Toolbar replacing the old white one */}
-                        <div className="flex items-center gap-1.5 bg-slate-900/80 p-1.5 rounded-xl border border-slate-800 shadow-inner">
-                            <button type="button" onClick={handleCopy} disabled={!selectedComponentId} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Copy"><Copy size={16} /></button>
-                            <button type="button" onClick={handlePaste} disabled={!clipboardComponent} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Paste"><ClipboardPaste size={16} /></button>
-                            <button type="button" onClick={deleteSelected} disabled={!selectedWireId && !selectedComponentId && !selectedIntermediatePoint} className="p-1.5 text-slate-400 hover:text-red-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Delete"><Trash2 size={16} /></button>
+                        {/* Toolbar: Enhanced Contrast Boxed Buttons */}
+                        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-xl border border-slate-300 dark:border-slate-800 shadow-inner">
+                            <button type="button" onClick={handleCopy} disabled={!selectedComponentId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-cyan-600 dark:hover:text-cyan-400 disabled:opacity-30 rounded-lg transition-colors" title="Copy"><Copy size={16} strokeWidth={2.5} /></button>
+                            <button type="button" onClick={handlePaste} disabled={!clipboardComponent} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-cyan-600 dark:hover:text-cyan-400 disabled:opacity-30 rounded-lg transition-colors" title="Paste"><ClipboardPaste size={16} strokeWidth={2.5} /></button>
+                            <button type="button" onClick={deleteSelected} disabled={!selectedWireId && !selectedComponentId && !selectedIntermediatePoint} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 disabled:opacity-30 rounded-lg transition-colors" title="Delete"><Trash2 size={16} strokeWidth={2.5} /></button>
 
-                            <div className="w-px h-5 bg-slate-700 mx-1" />
+                            <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
 
-                            <button type="button" onClick={handleUndo} disabled={!historyPast.length} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Undo"><Undo2 size={16} /></button>
-                            <button type="button" onClick={handleRedo} disabled={!historyFuture.length} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Redo"><Redo2 size={16} /></button>
+                            <button type="button" onClick={handleUndo} disabled={!historyPast.length} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-cyan-600 dark:hover:text-cyan-400 disabled:opacity-30 rounded-lg transition-colors" title="Undo"><Undo2 size={16} strokeWidth={2.5} /></button>
+                            <button type="button" onClick={handleRedo} disabled={!historyFuture.length} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-cyan-600 dark:hover:text-cyan-400 disabled:opacity-30 rounded-lg transition-colors" title="Redo"><Redo2 size={16} strokeWidth={2.5} /></button>
 
-                            <div className="w-px h-5 bg-slate-700 mx-1" />
+                            <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
 
-                            <button type="button" onClick={rotateSelectedComponent} disabled={!selectedComponentId} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Rotate"><RotateCw size={16} /></button>
-                            <button type="button" onClick={flipSelectedComponent} disabled={!selectedComponentId} className="p-1.5 text-slate-400 hover:text-cyan-400 disabled:opacity-30 disabled:hover:text-slate-400 rounded hover:bg-slate-800 transition-colors" title="Flip"><FlipHorizontal size={16} /></button>
+                            <button type="button" onClick={rotateSelectedComponent} disabled={!selectedComponentId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-cyan-600 dark:hover:text-cyan-400 disabled:opacity-30 rounded-lg transition-colors" title="Rotate"><RotateCw size={16} strokeWidth={2.5} /></button>
+                            <button type="button" onClick={flipSelectedComponent} disabled={!selectedComponentId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-cyan-600 dark:hover:text-cyan-400 disabled:opacity-30 rounded-lg transition-colors" title="Flip"><FlipHorizontal size={16} strokeWidth={2.5} /></button>
 
-                            <div className="w-px h-5 bg-slate-700 mx-1" />
+                            <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
 
-                            <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} className="bg-transparent text-xs text-slate-300 font-bold cursor-pointer py-1 px-2 rounded outline-none hover:bg-slate-800 transition-colors border-none" title="Wire Color">
-                                {WIRE_COLOR_OPTIONS.map((option) => (
-                                    <option key={option.value} value={option.value} className="bg-slate-900">{option.label}</option>
-                                ))}
-                            </select>
+                            <div className="px-2">
+                                <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1" title="Wire Color">
+                                    {WIRE_COLOR_OPTIONS.map((option) => (
+                                        <option key={option.value} value={option.value} className="bg-white dark:bg-slate-900">{option.label}</option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
-                        <div className="flex items-center gap-2">
-                            <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">Sys.Online</span>
+                        {/* Reset Board Button */}
+                        <button
+                            type="button"
+                            onClick={handleResetBoard}
+                            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm"
+                        >
+                            <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden xl:inline">Reset</span>
+                        </button>
+
+                        {/* Theme Toggle */}
+                        <button
+                            type="button"
+                            onClick={toggleTheme}
+                            className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm"
+                            title="Toggle Theme"
+                        >
+                            {isDarkMode ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
+                        </button>
+
+                        {/* Status Indicator */}
+                        <div className="flex items-center gap-2 pl-3 border-l border-slate-300 dark:border-slate-700 h-8">
+                            <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400 font-black tracking-widest uppercase">Sys.Online</span>
                         </div>
                     </div>
                 </header>
@@ -894,7 +846,7 @@ export default function SimulationView() {
                 {/* ========================================= */}
                 {/* MAIN SIMULATION CANVAS AREA               */}
                 {/* ========================================= */}
-                <main className="flex-1 relative w-full h-full bg-slate-900 overflow-hidden" ref={containerRef}>
+                <main className="flex-1 relative w-full h-full min-h-0 overflow-hidden">
                     <div className="app-layout" style={{ position: 'absolute', inset: 0 }}>
 
                         <div className="simulation-canvas-frame" style={{ width: stageWidth, height: stageHeight }}>
