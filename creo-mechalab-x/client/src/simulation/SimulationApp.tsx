@@ -82,14 +82,14 @@ const TERMINAL_STRIP_PLACEMENTS: Partial<Record<SimulationComponentType, ShapePo
 };
 
 const INITIAL_COMPONENTS: Record<string, ShapePos> = {
-  'battery-1': TERMINAL_STRIP_PLACEMENTS.battery ?? { x: 120, y: 280 },
-  'battery-2': { x: (TERMINAL_STRIP_PLACEMENTS.battery?.x ?? 120) + 160, y: (TERMINAL_STRIP_PLACEMENTS.battery?.y ?? 280) },
-  'lightIndicator-1': TERMINAL_STRIP_PLACEMENTS.lightIndicator ?? { x: 320, y: 130 },
-  'relayModule-1': { x: 124, y: 420 },
-  'relayModule-2': { x: 309, y: 420 },
-  'relayModule-3': { x: 450, y: 420 },
-  'counter-1': TERMINAL_STRIP_PLACEMENTS.counter ?? { x: 309, y: 640 },
-  'timer-1': TERMINAL_STRIP_PLACEMENTS.timer ?? { x: 450, y: 640 },
+  'battery-1': { x: 120, y: 280 },
+  'battery-2': { x: 300, y: 280 },
+  'lightIndicator-1': { x: 640, y: 130 },
+  'relayModule-1': { x: 120, y: 420 },
+  'relayModule-2': { x: 300, y: 420 },
+  'relayModule-3': { x: 480, y: 420 },
+  'counter-1': { x: 309, y: 640 },
+  'timer-1': { x: 490, y: 640 },
   'magneticMotor-1': { x: 800, y: 515 },
   'rollerLever-1': { x: 800, y: 335 },
   'solenoidValve-1': { x: 800, y: 150 },
