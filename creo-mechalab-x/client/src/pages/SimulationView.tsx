@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Stage, Layer, Circle, Line } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
+import { motion } from 'framer-motion';
 
 // Lucide Icons for the unified HUD
-import { ArrowLeft, Play, Copy, ClipboardPaste, Trash2, Undo2, Redo2, RotateCw, FlipHorizontal, Sun, Moon, RefreshCw, } from 'lucide-react';
+import {
+    ArrowLeft, Play, Copy, ClipboardPaste, Trash2,
+    Undo2, Redo2, RotateCw, FlipHorizontal, Sun, Moon, RefreshCw,
+    Lock, Unlock
+} from 'lucide-react';
 import CyberTransition from '../components/CyberTransition';
 
 // Simulation Logic Imports
@@ -29,12 +34,11 @@ import { resolveTerminalStripTooltip } from '../simulation/constants/pinTooltips
 import '../simulation/SimulationApp.css';
 
 const NODE_SIZE = 3;
-const NAVBAR_HEIGHT = 72; // Adjusted to match the new custom header height
-
 const COMPONENTS_MOVABLE = false;
 const BATTERY_NODE = CUSTOM_NODE_ASSETS.terminalStrip;
 void BATTERY_NODE;
 const GENERAL_TERMINAL_STRIP_ASSET = CUSTOM_NODE_ASSETS.terminalStrip;
+
 type SimulationComponentType =
     | 'battery' | 'switch' | 'button' | 'buzzer' | 'counter' | 'lightIndicator'
     | 'magneticMotorContactor' | 'relayModule' | 'rollerLever' | 'solenoidValve';
@@ -63,11 +67,7 @@ const PALETTE_DEVICE_META: Record<PaletteComponentType, { name: string; imageSrc
 
 const COMPONENT_PALETTE = PALETTE_COMPONENT_TYPES.map((type) => {
     const device = PALETTE_DEVICE_META[type];
-    return {
-        type,
-        name: device.name,
-        imageSrc: device.imageSrc,
-    };
+    return { type, name: device.name, imageSrc: device.imageSrc };
 });
 
 const TERMINAL_STRIP_PLACEMENTS: Partial<Record<SimulationComponentType, ShapePos>> = {
@@ -114,12 +114,9 @@ const INITIAL_COMPONENT_TRANSFORMS: Record<string, { rotation: number; flipX: bo
 };
 
 const WIRE_COLOR_OPTIONS = [
-    { label: 'Green', value: '#27ae60' },
-    { label: 'Red', value: '#e74c3c' },
-    { label: 'Blue', value: '#3498db' },
-    { label: 'Orange', value: '#e67e22' },
-    { label: 'Purple', value: '#9b59b6' },
-    { label: 'Black', value: '#2c3e50' },
+    { label: 'Green', value: '#27ae60' }, { label: 'Red', value: '#e74c3c' },
+    { label: 'Blue', value: '#3498db' }, { label: 'Orange', value: '#e67e22' },
+    { label: 'Purple', value: '#9b59b6' }, { label: 'Black', value: '#2c3e50' },
 ];
 
 const createEmptyTypeCount = () => ({
@@ -129,41 +126,28 @@ const createEmptyTypeCount = () => ({
 });
 
 const countPaletteTypes = (items: PaletteComponentType[]) => items.reduce((acc, type) => {
-    if (Object.prototype.hasOwnProperty.call(acc, type)) {
-        acc[type as keyof typeof acc] += 1;
-    }
+    if (Object.prototype.hasOwnProperty.call(acc, type)) acc[type as keyof typeof acc] += 1;
     return acc;
 }, createEmptyTypeCount());
 
 const countCanvasComponentTypes = (componentIds: string[]) => componentIds.reduce((acc, id) => {
     const inferredType = inferPaletteTypeFromComponentId(id);
-    if (inferredType) {
-        acc[inferredType] += 1;
-    }
+    if (inferredType) acc[inferredType] += 1;
     return acc;
 }, createEmptyTypeCount());
 
 const getPinMeta = (pinId: string) => getPinMetaHelper(pinId);
-
 const inferPaletteTypeFromComponentId = (componentId: string): SimulationComponentType | null => {
     return inferPaletteTypeHelper(componentId, SIMULATION_COMPONENT_TYPES) as SimulationComponentType | null;
 };
 
-const TERMINAL_COLORS = {
-    positive: '#e74c3c',
-    negative: '#2c3e50',
-} as const;
+const TERMINAL_COLORS = { positive: '#e74c3c', negative: '#2c3e50' } as const;
 
 const getEnforcedWireColor = (fromPin: string, toPin: string) => {
     const fromRail = getBatteryRailForPin(fromPin);
     const toRail = getBatteryRailForPin(toPin);
-
-    if (fromRail === 'positive' || toRail === 'positive') {
-        return TERMINAL_COLORS.positive;
-    }
-    if (fromRail === 'negative' || toRail === 'negative') {
-        return TERMINAL_COLORS.negative;
-    }
+    if (fromRail === 'positive' || toRail === 'positive') return TERMINAL_COLORS.positive;
+    if (fromRail === 'negative' || toRail === 'negative') return TERMINAL_COLORS.negative;
     return null;
 };
 
@@ -183,20 +167,29 @@ const DEFAULT_TRANSFORM: ComponentTransform = { rotation: 0, flipX: false };
 export default function SimulationView() {
     const { id: routeId } = useParams();
     const navigate = useNavigate();
+    const containerRef = useRef<HTMLDivElement>(null);
 
-    // FIX 1: Safely initialize theme to avoid React cascading render crashes
+    // Global Theme State
     const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-        if (typeof document !== 'undefined') {
-            return document.documentElement.classList.contains('dark');
-        }
+        if (typeof document !== 'undefined') return document.documentElement.classList.contains('dark');
         return true;
     });
 
+    // Window Measurements
     const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
-    const [components, setComponents] = useState<Record<string, ShapePos>>(INITIAL_COMPONENTS);
-    const [isDeviceSidebarCollapsed, setIsDeviceSidebarCollapsed] = useState(true);
-    const [isControlsPanelCollapsed, setIsControlsPanelCollapsed] = useState(false);
 
+    // === NEW OVERLAY STATES ===
+    const [isControlsPinned, setIsControlsPinned] = useState(true);
+    const [isControlsHovered, setIsControlsHovered] = useState(false);
+    const [isDevicePinned, setIsDevicePinned] = useState(true);
+    const [isDeviceHovered, setIsDeviceHovered] = useState(false);
+
+    const showControls = isControlsPinned || isControlsHovered;
+    const showDevice = isDevicePinned || isDeviceHovered;
+    // ==========================
+
+    // Core Simulation States
+    const [components, setComponents] = useState<Record<string, ShapePos>>(INITIAL_COMPONENTS);
     const [wires, setWires] = useState<Connection[]>([]);
     const [wireColor, setWireColor] = useState<string>('#27ae60');
     const [activePin, setActivePin] = useState<string | null>(null);
@@ -219,10 +212,7 @@ export default function SimulationView() {
     const [instructionImageFailures, setInstructionImageFailures] = useState<Record<string, boolean>>({});
     const isApplyingHistoryRef = useRef(false);
     const previousSnapshotRef = useRef<CircuitSnapshot>({
-        components: INITIAL_COMPONENTS,
-        wires: [],
-        componentTransforms: INITIAL_COMPONENT_TRANSFORMS,
-        switchStates: {},
+        components: INITIAL_COMPONENTS, wires: [], componentTransforms: INITIAL_COMPONENT_TRANSFORMS, switchStates: {},
     });
 
     // Layout Measurements
@@ -230,15 +220,10 @@ export default function SimulationView() {
     const deviceSidebarWidth = sidebarWidth;
     const controlsPanelWidth = Math.max(280, Math.min(360, Math.round(viewport.width * 0.28)));
     const stageWidth = Math.max(320, viewport.width);
-    const stageHeight = Math.max(260, viewport.height - NAVBAR_HEIGHT);
-    const controlsToggleLeft = isControlsPanelCollapsed ? 12 : controlsPanelWidth + 20;
-    const deviceListToggleRight = isDeviceSidebarCollapsed ? 12 : deviceSidebarWidth + 20;
+    const stageHeight = Math.max(260, viewport.height);
 
-    // --- FIX 2: Replaced ResizeObserver with window resize to prevent infinite loop crashes ---
     useEffect(() => {
-        const handleResize = () => {
-            setViewport({ width: window.innerWidth, height: window.innerHeight });
-        };
+        const handleResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, []);
@@ -246,11 +231,7 @@ export default function SimulationView() {
     const toggleTheme = () => {
         const newMode = !isDarkMode;
         setIsDarkMode(newMode);
-        if (newMode) {
-            document.documentElement.classList.add('dark');
-        } else {
-            document.documentElement.classList.remove('dark');
-        }
+        document.documentElement.classList.toggle('dark', newMode);
     };
 
     const createComponentId = (prefix: string) => {
@@ -269,12 +250,7 @@ export default function SimulationView() {
             ...prev,
             [id]: { rotation: 0, flipX: false },
         }));
-        if (type === 'switch') {
-            setSwitchStates((prev) => ({
-                ...prev,
-                [id]: false,
-            }));
-        }
+        if (type === 'switch') setSwitchStates((prev) => ({ ...prev, [id]: false }));
         return id;
     };
 
@@ -293,21 +269,13 @@ export default function SimulationView() {
         event.dataTransfer.effectAllowed = 'copy';
     };
 
-    const handleDeviceCanvasDrop = (
-        event: React.DragEvent<HTMLDivElement>,
-        target: 'input' | 'output',
-    ) => {
+    const handleDeviceCanvasDrop = (event: React.DragEvent<HTMLDivElement>, target: 'input' | 'output') => {
         event.preventDefault();
         const droppedType = event.dataTransfer.getData('application/x-device-type') as PaletteComponentType;
-        if (!COMPONENT_PALETTE.some((item) => item.type === droppedType)) {
-            return;
-        }
+        if (!COMPONENT_PALETTE.some((item) => item.type === droppedType)) return;
 
-        if (target === 'input') {
-            setInputDeviceTypes((prev) => [...prev, droppedType]);
-        } else {
-            setOutputDeviceTypes((prev) => [...prev, droppedType]);
-        }
+        if (target === 'input') setInputDeviceTypes((prev) => [...prev, droppedType]);
+        else setOutputDeviceTypes((prev) => [...prev, droppedType]);
     };
 
     const allowDeviceCanvasDrop = (event: React.DragEvent<HTMLDivElement>) => {
@@ -324,38 +292,17 @@ export default function SimulationView() {
     };
 
     const getCurrentSnapshot = useCallback(
-        (): CircuitSnapshot => ({
-            components,
-            wires,
-            componentTransforms,
-            switchStates,
-        }),
+        (): CircuitSnapshot => ({ components, wires, componentTransforms, switchStates }),
         [components, wires, componentTransforms, switchStates],
     );
 
     const activeActivity = SIMULATION_ACTIVITIES[activeActivityIndex];
-    const shouldShowInstructionImage = Boolean(activeActivity.instructionImageSrc)
-        && !instructionImageFailures[activeActivity.id];
+    const shouldShowInstructionImage = Boolean(activeActivity.instructionImageSrc) && !instructionImageFailures[activeActivity.id];
 
-    const componentTypeCounts = useMemo(
-        () => countCanvasComponentTypes(Object.keys(components)),
-        [components],
-    );
-
-    const inputTypeCounts = useMemo(
-        () => countPaletteTypes(inputDeviceTypes),
-        [inputDeviceTypes],
-    );
-
-    const outputTypeCounts = useMemo(
-        () => countPaletteTypes(outputDeviceTypes),
-        [outputDeviceTypes],
-    );
-
-    const switchOnCount = useMemo(
-        () => Object.entries(switchStates).filter(([id, isOn]) => id.startsWith('switch') && Boolean(isOn)).length,
-        [switchStates],
-    );
+    const componentTypeCounts = useMemo(() => countCanvasComponentTypes(Object.keys(components)), [components]);
+    const inputTypeCounts = useMemo(() => countPaletteTypes(inputDeviceTypes), [inputDeviceTypes]);
+    const outputTypeCounts = useMemo(() => countPaletteTypes(outputDeviceTypes), [outputDeviceTypes]);
+    const switchOnCount = useMemo(() => Object.entries(switchStates).filter(([id, isOn]) => id.startsWith('switch') && Boolean(isOn)).length, [switchStates]);
 
     const runActivityValidation = () => {
         const result = evaluateActivity(activeActivity, {
@@ -366,17 +313,9 @@ export default function SimulationView() {
             switchOnCount,
             litLedCount: 0,
         });
-
         setActivityFeedback(result.passed ? '100%' : '0%');
         setIsActivityPassed(result.passed);
-
-        if (result.passed) {
-            setCompletedActivityIds((prev) => (
-                prev.includes(activeActivity.id)
-                    ? prev
-                    : [...prev, activeActivity.id]
-            ));
-        }
+        if (result.passed) setCompletedActivityIds((prev) => (prev.includes(activeActivity.id) ? prev : [...prev, activeActivity.id]));
     };
 
     const applySnapshot = (snapshot: CircuitSnapshot) => {
@@ -394,26 +333,17 @@ export default function SimulationView() {
 
     const getComponentNodeConfig = useCallback((componentId: string) => {
         const inferredType = inferPaletteTypeFromComponentId(componentId);
-        if (inferredType) {
-            const asset = GENERAL_TERMINAL_STRIP_ASSET;
-            return { width: asset.width, height: asset.height, pins: asset.pins };
-        }
+        if (inferredType) return { width: GENERAL_TERMINAL_STRIP_ASSET.width, height: GENERAL_TERMINAL_STRIP_ASSET.height, pins: GENERAL_TERMINAL_STRIP_ASSET.pins };
         return { width: 80, height: 120, pins: DEFAULT_PIN_OFFSETS };
     }, []);
 
     const getPinWireColor = (pinId: string): string | undefined => {
         if (selectedWireId) {
             const selected = wires.find((w) => w.id === selectedWireId);
-            if (selected && (selected.fromPin === pinId || selected.toPin === pinId)) {
-                return selected.color;
-            }
+            if (selected && (selected.fromPin === pinId || selected.toPin === pinId)) return selected.color;
         }
-
         const connected = wires.filter((w) => w.fromPin === pinId || w.toPin === pinId);
-        if (connected.length > 0) {
-            return connected[connected.length - 1].color;
-        }
-
+        if (connected.length > 0) return connected[connected.length - 1].color;
         return undefined;
     };
 
@@ -422,49 +352,29 @@ export default function SimulationView() {
         const side = parts.pop() as string;
         const compId = parts.join('-');
         const pos = components[compId];
-
-        if (!pos) {
-            return { x: 0, y: 0 };
-        }
-
+        if (!pos) return { x: 0, y: 0 };
         const config = getComponentNodeConfig(compId);
         const pinMap = config.pins as Record<string, { x: number; y: number }>;
         const localPin = pinMap[side] ?? { x: 0, y: 0 };
         const transform = componentTransforms[compId] ?? DEFAULT_TRANSFORM;
         const rotatedDegrees = ((transform.rotation % 360) + 360) % 360;
         const theta = (rotatedDegrees * Math.PI) / 180;
-
         const flippedX = transform.flipX ? config.width - localPin.x : localPin.x;
         const centerX = config.width / 2;
         const centerY = config.height / 2;
         const dx = flippedX - centerX;
         const dy = localPin.y - centerY;
-
         const transformedX = centerX + (dx * Math.cos(theta) - dy * Math.sin(theta));
         const transformedY = centerY + (dx * Math.sin(theta) + dy * Math.cos(theta));
-
-        return {
-            x: pos.x + transformedX,
-            y: pos.y + transformedY,
-        };
+        return { x: pos.x + transformedX, y: pos.y + transformedY };
     }, [components, componentTransforms, getComponentNodeConfig]);
 
     const getWireDuctIntermediatePoints = useCallback((fromPin: string, toPin: string) => (
         computeWireDuctIntermediatePoints({
-            fromPin,
-            toPin,
-            getPinPos,
-            stageWidth,
-            stageHeight,
-            wires,
-            getPinMeta,
-            getComponentNodeConfig,
-            componentTransforms,
-            defaultTransform: DEFAULT_TRANSFORM,
-            inferPaletteTypeFromComponentId,
-            terminalStripPlacements: TERMINAL_STRIP_PLACEMENTS,
-            topRowPins: TOP_ROW_PINS,
-            bottomRowPins: BOTTOM_ROW_PINS,
+            fromPin, toPin, getPinPos, stageWidth, stageHeight, wires, getPinMeta,
+            getComponentNodeConfig, componentTransforms, defaultTransform: DEFAULT_TRANSFORM,
+            inferPaletteTypeFromComponentId, terminalStripPlacements: TERMINAL_STRIP_PLACEMENTS,
+            topRowPins: TOP_ROW_PINS, bottomRowPins: BOTTOM_ROW_PINS,
         })
     ), [getPinPos, stageWidth, stageHeight, wires, getComponentNodeConfig, componentTransforms]);
 
@@ -472,13 +382,7 @@ export default function SimulationView() {
         if (!selectedComponentId) return;
         setComponentTransforms((prev) => {
             const current = prev[selectedComponentId] ?? DEFAULT_TRANSFORM;
-            return {
-                ...prev,
-                [selectedComponentId]: {
-                    ...current,
-                    rotation: (current.rotation + 90) % 360,
-                },
-            };
+            return { ...prev, [selectedComponentId]: { ...current, rotation: (current.rotation + 90) % 360 } };
         });
     };
 
@@ -486,48 +390,26 @@ export default function SimulationView() {
         if (!selectedComponentId) return;
         setComponentTransforms((prev) => {
             const current = prev[selectedComponentId] ?? DEFAULT_TRANSFORM;
-            return {
-                ...prev,
-                [selectedComponentId]: {
-                    ...current,
-                    flipX: !current.flipX,
-                },
-            };
+            return { ...prev, [selectedComponentId]: { ...current, flipX: !current.flipX } };
         });
     };
 
-    const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
-        if (activePin) {
-            const pos = e.target.getStage()?.getPointerPosition();
-            if (pos) setMousePos(pos);
-        }
-    };
+    const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => { if (activePin) { const pos = e.target.getStage()?.getPointerPosition(); if (pos) setMousePos(pos); } };
 
     const handleStageMouseUp = (e: KonvaEventObject<MouseEvent>) => {
         if (activePin) {
             const targetPin = (e.target as { attrs?: { pinId?: string } }).attrs?.pinId;
             if (targetPin && targetPin !== activePin) {
-                const isDuplicate = wires.some((wire) =>
-                    (wire.fromPin === activePin && wire.toPin === targetPin)
-                    || (wire.fromPin === targetPin && wire.toPin === activePin)
-                );
-
+                const isDuplicate = wires.some((wire) => (wire.fromPin === activePin && wire.toPin === targetPin) || (wire.fromPin === targetPin && wire.toPin === activePin));
                 if (!isDuplicate) {
                     const ductIntermediatePoints = getWireDuctIntermediatePoints(activePin, targetPin);
                     const enforcedColor = getEnforcedWireColor(activePin, targetPin);
                     setWires(prev => [...prev, {
-                        id: crypto.randomUUID(),
-                        fromPin: activePin,
-                        toPin: targetPin,
-                        color: enforcedColor ?? wireColor,
-                        intermediatePoints: ductIntermediatePoints,
+                        id: crypto.randomUUID(), fromPin: activePin, toPin: targetPin, color: enforcedColor ?? wireColor, intermediatePoints: ductIntermediatePoints,
                     }]);
                 }
             }
-            setActivePin(null);
-            setMousePos(null);
-            setSelectedWireId(null);
-            setSelectedIntermediatePoint(null);
+            setActivePin(null); setMousePos(null); setSelectedWireId(null); setSelectedIntermediatePoint(null);
         }
     };
 
@@ -538,41 +420,25 @@ export default function SimulationView() {
             if (selectedWire && (selectedWire.fromPin === pinId || selectedWire.toPin === pinId)) {
                 setWires(prev => prev.filter((wire) => wire.id !== selectedWireId));
             }
-            setSelectedWireId(null);
-            setSelectedIntermediatePoint(null);
-            setActivePin(null);
-            setMousePos(null);
+            setSelectedWireId(null); setSelectedIntermediatePoint(null); setActivePin(null); setMousePos(null);
             return;
         }
-
-        setActivePin(pinId);
-        setSelectedIntermediatePoint(null);
-        setSelectedComponentId(null);
-        setMousePos(getPinPos(pinId));
+        setActivePin(pinId); setSelectedIntermediatePoint(null); setSelectedComponentId(null); setMousePos(getPinPos(pinId));
     };
 
-    const handleShowPinTooltip = useCallback((text: string, pos: ShapePos) => {
-        setPinTooltip({ text, pos });
-    }, []);
-
-    const handleHidePinTooltip = useCallback(() => {
-        setPinTooltip(null);
-    }, []);
+    const handleShowPinTooltip = useCallback((text: string, pos: ShapePos) => setPinTooltip({ text, pos }), []);
+    const handleHidePinTooltip = useCallback(() => setPinTooltip(null), []);
 
     const handleWireColorChange = (color: string) => {
         setWireColor(color);
         if (selectedWireId) {
-            setWires((prev) => prev.map((wire) => (
-                wire.id === selectedWireId ? { ...wire, color } : wire
-            )));
+            setWires((prev) => prev.map((wire) => (wire.id === selectedWireId ? { ...wire, color } : wire)));
         }
         if (selectedComponentId) {
             setWires((prev) => prev.map((wire) => {
                 const fromComp = wire.fromPin.split('-').slice(0, -1).join('-');
                 const toComp = wire.toPin.split('-').slice(0, -1).join('-');
-                if (fromComp === selectedComponentId || toComp === selectedComponentId) {
-                    return { ...wire, color };
-                }
+                if (fromComp === selectedComponentId || toComp === selectedComponentId) return { ...wire, color };
                 return wire;
             }));
         }
@@ -581,50 +447,27 @@ export default function SimulationView() {
     const deleteSelected = useCallback(() => {
         if (selectedIntermediatePoint) {
             setWires((prev) => prev.map((wire) => {
-                if (wire.id !== selectedIntermediatePoint.wireId) {
-                    return wire;
-                }
-                return {
-                    ...wire,
-                    intermediatePoints: (wire.intermediatePoints ?? []).filter((_, index) => index !== selectedIntermediatePoint.index),
-                };
+                if (wire.id !== selectedIntermediatePoint.wireId) return wire;
+                return { ...wire, intermediatePoints: (wire.intermediatePoints ?? []).filter((_, index) => index !== selectedIntermediatePoint.index) };
             }));
             setSelectedIntermediatePoint(null);
             return;
         }
-
         if (selectedWireId) {
             setWires((prev) => prev.filter((wire) => wire.id !== selectedWireId));
-            setSelectedWireId(null);
-            setSelectedIntermediatePoint(null);
+            setSelectedWireId(null); setSelectedIntermediatePoint(null);
             return;
         }
-
         if (selectedComponentId) {
-            setComponents((prev) => {
-                const next = { ...prev };
-                delete next[selectedComponentId];
-                return next;
-            });
-            setComponentTransforms((prev) => {
-                const next = { ...prev };
-                delete next[selectedComponentId];
-                return next;
-            });
-            setSwitchStates((prev) => {
-                const next = { ...prev };
-                delete next[selectedComponentId];
-                return next;
-            });
+            setComponents((prev) => { const next = { ...prev }; delete next[selectedComponentId]; return next; });
+            setComponentTransforms((prev) => { const next = { ...prev }; delete next[selectedComponentId]; return next; });
+            setSwitchStates((prev) => { const next = { ...prev }; delete next[selectedComponentId]; return next; });
             setWires((prev) => prev.filter((wire) => {
                 const fromComponent = wire.fromPin.split('-').slice(0, -1).join('-');
                 const toComponent = wire.toPin.split('-').slice(0, -1).join('-');
                 return fromComponent !== selectedComponentId && toComponent !== selectedComponentId;
             }));
-            if (activePin?.startsWith(`${selectedComponentId}-`)) {
-                setActivePin(null);
-                setMousePos(null);
-            }
+            if (activePin?.startsWith(`${selectedComponentId}-`)) { setActivePin(null); setMousePos(null); }
             setSelectedComponentId(null);
         }
     }, [activePin, selectedComponentId, selectedWireId, selectedIntermediatePoint]);
@@ -638,55 +481,36 @@ export default function SimulationView() {
                     try {
                         const newPoints = getWireDuctIntermediatePoints(wire.fromPin, wire.toPin);
                         const oldPoints = wire.intermediatePoints ?? [];
-                        const a = JSON.stringify(oldPoints);
-                        const b = JSON.stringify(newPoints);
-                        if (a === b) return wire;
+                        if (JSON.stringify(oldPoints) === JSON.stringify(newPoints)) return wire;
                         changed = true;
                         return { ...wire, intermediatePoints: newPoints };
-                    } catch {
-                        return wire;
-                    }
+                    } catch { return wire; }
                 });
-
                 return changed ? next : prev;
             });
         });
-
-        return () => {
-            if (raf) cancelAnimationFrame(raf);
-        };
+        return () => { if (raf) cancelAnimationFrame(raf); };
     }, [componentTransforms, components, stageWidth, stageHeight, getWireDuctIntermediatePoints]);
 
     const handleCopy = () => {
         if (!selectedComponentId) return;
         const selectedPos = components[selectedComponentId];
         if (!selectedPos) return;
-
-        const selectedTransform = componentTransforms[selectedComponentId] ?? DEFAULT_TRANSFORM;
         setClipboardComponent({
             type: inferComponentType(selectedComponentId),
             sourcePosition: selectedPos,
-            transform: selectedTransform,
+            transform: componentTransforms[selectedComponentId] ?? DEFAULT_TRANSFORM,
             switchOn: switchStates[selectedComponentId],
         });
     };
 
     const handlePaste = () => {
         if (!clipboardComponent) return;
-
         const newId = createComponentId(clipboardComponent.type);
-        const pastedPos = {
-            x: clipboardComponent.sourcePosition.x + 28,
-            y: clipboardComponent.sourcePosition.y + 28,
-        };
-
+        const pastedPos = { x: clipboardComponent.sourcePosition.x + 28, y: clipboardComponent.sourcePosition.y + 28 };
         setComponents((prev) => ({ ...prev, [newId]: pastedPos }));
         setComponentTransforms((prev) => ({ ...prev, [newId]: clipboardComponent.transform }));
-
-        if (clipboardComponent.type === 'switch') {
-            setSwitchStates((prev) => ({ ...prev, [newId]: Boolean(clipboardComponent.switchOn) }));
-        }
-
+        if (clipboardComponent.type === 'switch') setSwitchStates((prev) => ({ ...prev, [newId]: Boolean(clipboardComponent.switchOn) }));
         setSelectedComponentId(newId);
         setSelectedWireId(null);
     };
@@ -694,65 +518,48 @@ export default function SimulationView() {
     const handleUndo = () => {
         if (!historyPast.length) return;
         const previous = historyPast[historyPast.length - 1];
-        const current = getCurrentSnapshot();
         setHistoryPast((prev) => prev.slice(0, -1));
-        setHistoryFuture((prev) => [current, ...prev].slice(0, 50));
+        setHistoryFuture((prev) => [getCurrentSnapshot(), ...prev].slice(0, 50));
         applySnapshot(previous);
     };
 
     const handleRedo = () => {
         if (!historyFuture.length) return;
         const next = historyFuture[0];
-        const current = getCurrentSnapshot();
         setHistoryFuture((prev) => prev.slice(1));
-        setHistoryPast((prev) => [...prev, current].slice(-50));
+        setHistoryPast((prev) => [...prev, getCurrentSnapshot()].slice(-50));
         applySnapshot(next);
     };
 
     const handleResetBoard = () => {
-        const current = getCurrentSnapshot();
-        setHistoryPast(prev => [...prev, current].slice(-50));
+        setHistoryPast(prev => [...prev, getCurrentSnapshot()].slice(-50));
         setHistoryFuture([]);
-
         setComponents(INITIAL_COMPONENTS);
         setComponentTransforms(INITIAL_COMPONENT_TRANSFORMS);
         setWires([]);
         setSwitchStates({});
-
-        setSelectedComponentId(null);
-        setSelectedWireId(null);
-        setSelectedIntermediatePoint(null);
-        setActivePin(null);
-        setMousePos(null);
+        setSelectedComponentId(null); setSelectedWireId(null); setSelectedIntermediatePoint(null); setActivePin(null); setMousePos(null);
     };
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Delete' || e.key === 'Backspace') {
-                if (selectedWireId || selectedComponentId || selectedIntermediatePoint) {
-                    e.preventDefault();
-                    deleteSelected();
-                }
+                if (selectedWireId || selectedComponentId || selectedIntermediatePoint) { e.preventDefault(); deleteSelected(); }
             }
         };
-
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [selectedWireId, selectedComponentId, selectedIntermediatePoint, deleteSelected]);
 
     useEffect(() => {
         const currentSnapshot = getCurrentSnapshot();
-        const previousSnapshot = previousSnapshotRef.current;
-
         if (isApplyingHistoryRef.current) {
             previousSnapshotRef.current = currentSnapshot;
             isApplyingHistoryRef.current = false;
             return;
         }
-
-        const hasChanged = JSON.stringify(previousSnapshot) !== JSON.stringify(currentSnapshot);
-        if (hasChanged) {
-            setHistoryPast((prev) => [...prev, previousSnapshot].slice(-50));
+        if (JSON.stringify(previousSnapshotRef.current) !== JSON.stringify(currentSnapshot)) {
+            setHistoryPast((prev) => [...prev, previousSnapshotRef.current].slice(-50));
             setHistoryFuture([]);
             previousSnapshotRef.current = currentSnapshot;
         }
@@ -763,33 +570,22 @@ export default function SimulationView() {
             <div className={`flex flex-col h-screen w-screen text-slate-800 dark:text-slate-200 font-sans overflow-hidden select-none transition-colors duration-300 ${isDarkMode ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
 
                 {/* ========================================= */}
-                {/* HEADER: High-Visibility Taskbar           */}
+                {/* HEADER: Taskbar                           */}
                 {/* ========================================= */}
-                <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-[#0B1120] border-b border-slate-200 dark:border-cyan-900/50 z-50 shadow-md">
-
-                    {/* Left: Branding & Back Button */}
+                <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-[#0B1120] border-b border-slate-200 dark:border-cyan-900/50 z-[60] shadow-md relative">
                     <div className="flex items-center gap-4">
-                        <button
-                            onClick={() => navigate('/dashboard')}
-                            className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm"
-                            title="Abort Sequence"
-                        >
+                        <button onClick={() => navigate('/dashboard')} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence">
                             <ArrowLeft size={20} />
                         </button>
                         <div>
                             <h1 className="font-black text-lg text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2">
                                 <Play size={16} className="text-cyan-600 dark:text-cyan-500" /> Simulation Environment
                             </h1>
-                            <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">
-                                Active Sequence: {routeId || 'UNKNOWN'}
-                            </p>
+                            <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Active Sequence: {routeId || 'UNKNOWN'}</p>
                         </div>
                     </div>
 
-                    {/* Right: Simulation Toolbar & Status */}
                     <div className="flex items-center gap-3">
-
-                        {/* Toolbar: Enhanced Contrast Boxed Buttons */}
                         <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 p-1.5 rounded-xl border border-slate-300 dark:border-slate-800 shadow-inner">
                             <button type="button" onClick={handleCopy} disabled={!selectedComponentId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-cyan-600 dark:hover:text-cyan-400 disabled:opacity-30 rounded-lg transition-colors" title="Copy"><Copy size={16} strokeWidth={2.5} /></button>
                             <button type="button" onClick={handlePaste} disabled={!clipboardComponent} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-cyan-600 dark:hover:text-cyan-400 disabled:opacity-30 rounded-lg transition-colors" title="Paste"><ClipboardPaste size={16} strokeWidth={2.5} /></button>
@@ -809,33 +605,19 @@ export default function SimulationView() {
 
                             <div className="px-2">
                                 <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1" title="Wire Color">
-                                    {WIRE_COLOR_OPTIONS.map((option) => (
-                                        <option key={option.value} value={option.value} className="bg-white dark:bg-slate-900">{option.label}</option>
-                                    ))}
+                                    {WIRE_COLOR_OPTIONS.map((option) => (<option key={option.value} value={option.value} className="bg-white dark:bg-slate-900">{option.label}</option>))}
                                 </select>
                             </div>
                         </div>
 
-                        {/* Reset Board Button */}
-                        <button
-                            type="button"
-                            onClick={handleResetBoard}
-                            className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm"
-                        >
+                        <button type="button" onClick={handleResetBoard} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm">
                             <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden xl:inline">Reset</span>
                         </button>
 
-                        {/* Theme Toggle */}
-                        <button
-                            type="button"
-                            onClick={toggleTheme}
-                            className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm"
-                            title="Toggle Theme"
-                        >
+                        <button type="button" onClick={toggleTheme} className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm" title="Toggle Theme">
                             {isDarkMode ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
                         </button>
 
-                        {/* Status Indicator */}
                         <div className="flex items-center gap-2 pl-3 border-l border-slate-300 dark:border-slate-700 h-8">
                             <span className="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse" />
                             <span className="text-[10px] text-slate-500 dark:text-slate-400 font-black tracking-widest uppercase">Sys.Online</span>
@@ -844,28 +626,19 @@ export default function SimulationView() {
                 </header>
 
                 {/* ========================================= */}
-                {/* MAIN SIMULATION CANVAS AREA               */}
+                {/* MAIN CANVAS & OVERLAYS                    */}
                 {/* ========================================= */}
-                <main className="flex-1 relative w-full h-full min-h-0 overflow-hidden">
-                    <div className="app-layout" style={{ position: 'absolute', inset: 0 }}>
+                <main className="flex-1 relative w-full h-full min-h-0 overflow-hidden bg-slate-200 dark:bg-[#0F172A]" ref={containerRef}>
 
+                    {/* Invisible Hover Triggers for Auto-Hide */}
+                    <div className="absolute left-0 top-0 bottom-0 w-8 z-40" onMouseEnter={() => setIsControlsHovered(true)} />
+                    <div className="absolute right-0 top-0 bottom-0 w-8 z-40" onMouseEnter={() => setIsDeviceHovered(true)} />
+
+                    {/* CANVAS LAYER */}
+                    <div className="absolute inset-0 z-0">
                         <div className="simulation-canvas-frame" style={{ width: stageWidth, height: stageHeight }}>
-                            <Stage
-                                width={stageWidth}
-                                height={stageHeight}
-                                onMouseMove={handleMouseMove}
-                                onMouseUp={handleStageMouseUp}
-                                onMouseDown={() => {
-                                    setPinTooltip(null);
-                                    if (!activePin) {
-                                        setSelectedWireId(null);
-                                        setSelectedIntermediatePoint(null);
-                                        setSelectedComponentId(null);
-                                    }
-                                }}
-                            >
+                            <Stage width={stageWidth} height={stageHeight} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseDown={() => { setPinTooltip(null); if (!activePin) { setSelectedWireId(null); setSelectedIntermediatePoint(null); setSelectedComponentId(null); } }}>
                                 <Layer>
-                                    {/* Render Established Wires from the Netlist */}
                                     {wires.map((wire) => {
                                         const start = getPinPos(wire.fromPin);
                                         const end = getPinPos(wire.toPin);
@@ -875,144 +648,57 @@ export default function SimulationView() {
                                         const isSelected = selectedWireId === wire.id;
                                         return (
                                             <Line
-                                                key={wire.id}
-                                                points={flattenedPoints}
-                                                stroke={wire.color}
-                                                strokeWidth={isSelected ? 6 : 4}
-                                                hitStrokeWidth={14}
-                                                lineCap="round"
-                                                lineJoin="round"
-                                                tension={0}
-                                                shadowColor={isSelected ? '#f39c12' : undefined}
-                                                shadowBlur={isSelected ? 12 : 0}
-                                                onMouseDown={(e) => {
-                                                    e.cancelBubble = true;
-                                                    setSelectedWireId(wire.id);
-                                                    setSelectedIntermediatePoint(null);
-                                                    setSelectedComponentId(null);
-                                                    setActivePin(null);
-                                                    setMousePos(null);
-                                                }}
+                                                key={wire.id} points={flattenedPoints} stroke={wire.color} strokeWidth={isSelected ? 6 : 4} hitStrokeWidth={14} lineCap="round" lineJoin="round" tension={0}
+                                                shadowColor={isSelected ? '#f39c12' : undefined} shadowBlur={isSelected ? 12 : 0}
+                                                onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); setSelectedIntermediatePoint(null); setSelectedComponentId(null); setActivePin(null); setMousePos(null); }}
                                                 onDblClick={(e) => {
-                                                    e.cancelBubble = true;
-                                                    const stagePointer = e.target.getStage()?.getPointerPosition();
-                                                    if (!stagePointer) {
-                                                        return;
-                                                    }
-
-                                                    let nearestSegmentIndex = 0;
-                                                    let nearestDistanceSquared = Number.POSITIVE_INFINITY;
-
+                                                    e.cancelBubble = true; const stagePointer = e.target.getStage()?.getPointerPosition(); if (!stagePointer) return;
+                                                    let nearestSegmentIndex = 0; let nearestDistanceSquared = Number.POSITIVE_INFINITY;
                                                     for (let i = 0; i < polylinePoints.length - 1; i += 1) {
-                                                        const distanceSquared = getDistanceSquaredToSegment(
-                                                            stagePointer,
-                                                            polylinePoints[i],
-                                                            polylinePoints[i + 1],
-                                                        );
-
-                                                        if (distanceSquared < nearestDistanceSquared) {
-                                                            nearestDistanceSquared = distanceSquared;
-                                                            nearestSegmentIndex = i;
-                                                        }
+                                                        const distanceSquared = getDistanceSquaredToSegment(stagePointer, polylinePoints[i], polylinePoints[i + 1]);
+                                                        if (distanceSquared < nearestDistanceSquared) { nearestDistanceSquared = distanceSquared; nearestSegmentIndex = i; }
                                                     }
-
                                                     setWires((prev) => prev.map((currentWire) => {
-                                                        if (currentWire.id !== wire.id) {
-                                                            return currentWire;
-                                                        }
-
+                                                        if (currentWire.id !== wire.id) return currentWire;
                                                         const nextIntermediatePoints = [...(currentWire.intermediatePoints ?? [])];
-                                                        const elbow = getOrthogonalElbow(
-                                                            stagePointer,
-                                                            polylinePoints[nearestSegmentIndex],
-                                                            polylinePoints[nearestSegmentIndex + 1],
-                                                        );
+                                                        const elbow = getOrthogonalElbow(stagePointer, polylinePoints[nearestSegmentIndex], polylinePoints[nearestSegmentIndex + 1]);
                                                         nextIntermediatePoints.splice(nearestSegmentIndex, 0, elbow);
-
-                                                        return {
-                                                            ...currentWire,
-                                                            intermediatePoints: nextIntermediatePoints,
-                                                        };
+                                                        return { ...currentWire, intermediatePoints: nextIntermediatePoints };
                                                     }));
-                                                    setSelectedWireId(wire.id);
-                                                    setSelectedIntermediatePoint({ wireId: wire.id, index: nearestSegmentIndex });
-                                                    setSelectedComponentId(null);
-                                                    setActivePin(null);
-                                                    setMousePos(null);
+                                                    setSelectedWireId(wire.id); setSelectedIntermediatePoint({ wireId: wire.id, index: nearestSegmentIndex }); setSelectedComponentId(null); setActivePin(null); setMousePos(null);
                                                 }}
                                             />
                                         );
                                     })}
 
                                     {wires.flatMap((wire) => {
-                                        if (selectedWireId !== wire.id) {
-                                            return [];
-                                        }
-
+                                        if (selectedWireId !== wire.id) return [];
                                         const points = wire.intermediatePoints ?? [];
                                         return points.map((point, index) => {
-                                            const isPointSelected =
-                                                selectedIntermediatePoint?.wireId === wire.id
-                                                && selectedIntermediatePoint.index === index
-                                                && selectedWireId === wire.id;
-
+                                            const isPointSelected = selectedIntermediatePoint?.wireId === wire.id && selectedIntermediatePoint.index === index && selectedWireId === wire.id;
                                             return (
                                                 <Circle
-                                                    key={`${wire.id}-point-${index}`}
-                                                    x={point.x}
-                                                    y={point.y}
-                                                    radius={isPointSelected ? 7 : 6}
-                                                    fill={isPointSelected ? '#f39c12' : '#ffffff'}
-                                                    stroke="#2c3e50"
-                                                    strokeWidth={2}
-                                                    draggable={!activePin}
-                                                    onMouseDown={(e) => {
-                                                        e.cancelBubble = true;
-                                                        setSelectedWireId(wire.id);
-                                                        setSelectedIntermediatePoint({ wireId: wire.id, index });
-                                                        setSelectedComponentId(null);
-                                                        setActivePin(null);
-                                                        setMousePos(null);
-                                                    }}
+                                                    key={`${wire.id}-point-${index}`} x={point.x} y={point.y} radius={isPointSelected ? 7 : 6} fill={isPointSelected ? '#f39c12' : '#ffffff'} stroke="#2c3e50" strokeWidth={2} draggable={!activePin}
+                                                    onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); setSelectedIntermediatePoint({ wireId: wire.id, index }); setSelectedComponentId(null); setActivePin(null); setMousePos(null); }}
                                                     onDragMove={(e) => {
-                                                        const wireStart = getPinPos(wire.fromPin);
-                                                        const wireEnd = getPinPos(wire.toPin);
+                                                        const wireStart = getPinPos(wire.fromPin); const wireEnd = getPinPos(wire.toPin);
                                                         const pointer = { x: e.target.x(), y: e.target.y() };
-                                                        const previousPoint = index === 0
-                                                            ? wireStart
-                                                            : points[index - 1];
-                                                        const nextPoint = index === points.length - 1
-                                                            ? wireEnd
-                                                            : points[index + 1];
+                                                        const previousPoint = index === 0 ? wireStart : points[index - 1];
+                                                        const nextPoint = index === points.length - 1 ? wireEnd : points[index + 1];
                                                         const snappedPoint = getSnappedIntermediatePoint(pointer, previousPoint, nextPoint);
-
-                                                        e.target.x(snappedPoint.x);
-                                                        e.target.y(snappedPoint.y);
-
+                                                        e.target.x(snappedPoint.x); e.target.y(snappedPoint.y);
                                                         setWires((prev) => prev.map((currentWire) => {
-                                                            if (currentWire.id !== wire.id) {
-                                                                return currentWire;
-                                                            }
-
+                                                            if (currentWire.id !== wire.id) return currentWire;
                                                             const nextIntermediatePoints = [...(currentWire.intermediatePoints ?? [])];
                                                             nextIntermediatePoints[index] = snappedPoint;
-                                                            return {
-                                                                ...currentWire,
-                                                                intermediatePoints: nextIntermediatePoints,
-                                                            };
+                                                            return { ...currentWire, intermediatePoints: nextIntermediatePoints };
                                                         }));
                                                     }}
                                                     onDblClick={(e) => {
                                                         e.cancelBubble = true;
                                                         setWires((prev) => prev.map((currentWire) => {
-                                                            if (currentWire.id !== wire.id) {
-                                                                return currentWire;
-                                                            }
-
-                                                            return {
-                                                                ...currentWire,
-                                                                intermediatePoints: (currentWire.intermediatePoints ?? []).filter((_, pointIndex) => pointIndex !== index),
-                                                            };
+                                                            if (currentWire.id !== wire.id) return currentWire;
+                                                            return { ...currentWire, intermediatePoints: (currentWire.intermediatePoints ?? []).filter((_, pointIndex) => pointIndex !== index) };
                                                         }));
                                                         setSelectedIntermediatePoint(null);
                                                     }}
@@ -1021,278 +707,193 @@ export default function SimulationView() {
                                         });
                                     })}
 
-                                    {/* Live Ghost Wire during dragging */}
                                     {activePin && mousePos && (
-                                        <Line
-                                            points={[getPinPos(activePin).x, getPinPos(activePin).y, mousePos.x, mousePos.y]}
-                                            stroke="#e67e22"
-                                            strokeWidth={2}
-                                            dash={[10, 5]}
-                                        />
+                                        <Line points={[getPinPos(activePin).x, getPinPos(activePin).y, mousePos.x, mousePos.y]} stroke="#e67e22" strokeWidth={2} dash={[10, 5]} />
                                     )}
 
-                                    {/* Component Instances */}
                                     {Object.entries(components).map(([id, pos]) => {
                                         const componentType = inferPaletteTypeFromComponentId(id);
-
                                         return componentType ? (
                                             (() => {
                                                 const asset = GENERAL_TERMINAL_STRIP_ASSET;
-                                                const pinKeys = Object.keys(asset.pins)
-                                                    .filter((key) => /^pin_\d+$/.test(key))
-                                                    .sort((a, b) => Number(a.replace('pin_', '')) - Number(b.replace('pin_', '')));
-                                                const pinAKey = pinKeys[0] ?? 'in';
-                                                const pinBKey = pinKeys[1] ?? 'out';
+                                                const pinKeys = Object.keys(asset.pins).filter((key) => /^pin_\d+$/.test(key)).sort((a, b) => Number(a.replace('pin_', '')) - Number(b.replace('pin_', '')));
+                                                const pinAKey = pinKeys[0] ?? 'in'; const pinBKey = pinKeys[1] ?? 'out';
                                                 const pinAOffset = asset.pins[pinAKey] ?? { x: 8, y: asset.height / 2 };
                                                 const pinBOffset = asset.pins[pinBKey] ?? { x: asset.width - 8, y: asset.height / 2 };
-                                                const pinOffsets = Object.fromEntries(
-                                                    pinKeys.map((key) => [key, asset.pins[key]]),
-                                                );
-
+                                                const pinOffsets = Object.fromEntries(pinKeys.map((key) => [key, asset.pins[key]]));
                                                 return (
                                                     <AssetComponent
-                                                        key={id}
-                                                        id={id}
-                                                        x={pos.x}
-                                                        y={pos.y}
-                                                        rotation={componentTransforms[id]?.rotation ?? 0}
-                                                        flipX={componentTransforms[id]?.flipX ?? false}
-                                                        isWiring={Boolean(activePin)}
-                                                        isSelected={selectedComponentId === id}
-                                                        imageSrc={asset.imageSrc}
-                                                        width={asset.width}
-                                                        height={asset.height}
-                                                        nodeSize={NODE_SIZE}
-                                                        isLocked={!COMPONENTS_MOVABLE}
-                                                        pinAId={pinAKey}
-                                                        pinBId={pinBKey}
-                                                        pinAOffset={pinAOffset}
-                                                        pinBOffset={pinBOffset}
-                                                        pinOffsets={pinOffsets}
-                                                        onPinMouseDown={handlePinMouseDown}
-                                                        pinWireColorForPin={getPinWireColor}
-                                                        pinTooltipForPin={getPinTooltipText}
-                                                        onShowPinTooltip={handleShowPinTooltip}
-                                                        onHidePinTooltip={handleHidePinTooltip}
-                                                        onSelect={(componentId) => {
-                                                            setSelectedComponentId(componentId);
-                                                            setSelectedWireId(null);
-                                                            setActivePin(null);
-                                                            setMousePos(null);
-                                                        }}
+                                                        key={id} id={id} x={pos.x} y={pos.y} rotation={componentTransforms[id]?.rotation ?? 0} flipX={componentTransforms[id]?.flipX ?? false}
+                                                        isWiring={Boolean(activePin)} isSelected={selectedComponentId === id} imageSrc={asset.imageSrc} width={asset.width} height={asset.height} nodeSize={NODE_SIZE} isLocked={!COMPONENTS_MOVABLE}
+                                                        pinAId={pinAKey} pinBId={pinBKey} pinAOffset={pinAOffset} pinBOffset={pinBOffset} pinOffsets={pinOffsets}
+                                                        onPinMouseDown={handlePinMouseDown} pinWireColorForPin={getPinWireColor} pinTooltipForPin={getPinTooltipText} onShowPinTooltip={handleShowPinTooltip} onHidePinTooltip={handleHidePinTooltip}
+                                                        onSelect={(componentId) => { setSelectedComponentId(componentId); setSelectedWireId(null); setActivePin(null); setMousePos(null); }}
                                                         onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
                                                     />
                                                 );
                                             })()
                                         ) : (
                                             <CircuitComponent
-                                                key={id}
-                                                id={id}
-                                                x={pos.x}
-                                                y={pos.y}
-                                                rotation={componentTransforms[id]?.rotation ?? 0}
-                                                flipX={componentTransforms[id]?.flipX ?? false}
-                                                label={id.toUpperCase()}
-                                                color="#e74c3c"
-                                                nodeSize={NODE_SIZE}
-                                                isWiring={Boolean(activePin)}
-                                                isLocked={!COMPONENTS_MOVABLE}
-                                                isSelected={selectedComponentId === id}
-                                                onPinMouseDown={handlePinMouseDown}
-                                                pinWireColorForPin={getPinWireColor}
-                                                onShowPinTooltip={handleShowPinTooltip}
-                                                onHidePinTooltip={handleHidePinTooltip}
-                                                onSelect={(componentId) => {
-                                                    setSelectedComponentId(componentId);
-                                                    setSelectedWireId(null);
-                                                    setActivePin(null);
-                                                    setMousePos(null);
-                                                }}
+                                                key={id} id={id} x={pos.x} y={pos.y} rotation={componentTransforms[id]?.rotation ?? 0} flipX={componentTransforms[id]?.flipX ?? false} label={id.toUpperCase()} color="#e74c3c" nodeSize={NODE_SIZE}
+                                                isWiring={Boolean(activePin)} isLocked={!COMPONENTS_MOVABLE} isSelected={selectedComponentId === id}
+                                                onPinMouseDown={handlePinMouseDown} pinWireColorForPin={getPinWireColor} onShowPinTooltip={handleShowPinTooltip} onHidePinTooltip={handleHidePinTooltip}
+                                                onSelect={(componentId) => { setSelectedComponentId(componentId); setSelectedWireId(null); setActivePin(null); setMousePos(null); }}
                                                 onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
                                             />
-                                        )
-
+                                        );
                                     })}
                                 </Layer>
                             </Stage>
                             {pinTooltip && (
-                                <div
-                                    className="pin-tooltip-popup"
-                                    style={{
-                                        left: pinTooltip.pos.x + 12,
-                                        top: pinTooltip.pos.y - 10,
-                                    }}
-                                >
-                                    {pinTooltip.text}
-                                </div>
+                                <div className="pin-tooltip-popup" style={{ left: pinTooltip.pos.x + 12, top: pinTooltip.pos.y - 10 }}>{pinTooltip.text}</div>
                             )}
                         </div>
-
-                        <button
-                            type="button"
-                            className="controls-container-toggle"
-                            style={{ left: controlsToggleLeft }}
-                            aria-label={isControlsPanelCollapsed ? 'Show controls panel' : 'Hide controls panel'}
-                            title={isControlsPanelCollapsed ? 'Show controls' : 'Hide controls'}
-                            onClick={() => setIsControlsPanelCollapsed((prev) => !prev)}
-                        >
-                            {isControlsPanelCollapsed ? '⟩' : '⟨'}
-                        </button>
-
-                        <button
-                            type="button"
-                            className="controls-container-toggle"
-                            style={{ right: deviceListToggleRight }}
-                            aria-label={isDeviceSidebarCollapsed ? 'Expand device list' : 'Collapse device list'}
-                            title={isDeviceSidebarCollapsed ? 'Expand' : 'Collapse'}
-                            onClick={() => setIsDeviceSidebarCollapsed((prev) => !prev)}
-                        >
-                            {isDeviceSidebarCollapsed ? '⟨' : '⟩'}
-                        </button>
-
-                        {!isControlsPanelCollapsed && (
-                            <aside className="ladder-sidebar" style={{ width: controlsPanelWidth }}>
-                                <h3 className="ladder-sidebar-title">Controls</h3>
-                                <div className="ladder-sidebar-section ladder-sidebar-section-devices">
-                                    <h3 className="ladder-sidebar-title">List of Devices to Use</h3>
-                                    <div className="device-canvas-grid">
-                                        <div
-                                            className="device-drop-canvas"
-                                            onDragOver={allowDeviceCanvasDrop}
-                                            onDrop={(event) => handleDeviceCanvasDrop(event, 'input')}
-                                        >
-                                            <h4 className="device-canvas-title">Input Device</h4>
-                                            <div className="device-chip-list">
-                                                {inputDeviceTypes.length === 0 && <p className="device-empty-text">Drag devices here</p>}
-                                                {inputDeviceTypes.map((type, index) => {
-                                                    const item = getPaletteItem(type);
-                                                    if (!item) return null;
-                                                    return (
-                                                        <div key={`input-${type}-${index}`} className="device-chip">
-                                                            <img src={item.imageSrc} alt={item.name} className="device-chip-image" />
-                                                            <span className="device-chip-name">{item.name}</span>
-                                                            <button
-                                                                type="button"
-                                                                className="device-chip-remove"
-                                                                aria-label={`Remove ${item.name} from input`}
-                                                                title="Remove"
-                                                                onClick={() => removeInputDevice(index)}
-                                                            >
-                                                                ×
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-
-                                        <div
-                                            className="device-drop-canvas"
-                                            onDragOver={allowDeviceCanvasDrop}
-                                            onDrop={(event) => handleDeviceCanvasDrop(event, 'output')}
-                                        >
-                                            <h4 className="device-canvas-title">Output/Control Device</h4>
-                                            <div className="device-chip-list">
-                                                {outputDeviceTypes.length === 0 && <p className="device-empty-text">Drag devices here</p>}
-                                                {outputDeviceTypes.map((type, index) => {
-                                                    const item = getPaletteItem(type);
-                                                    if (!item) return null;
-                                                    return (
-                                                        <div key={`output-${type}-${index}`} className="device-chip">
-                                                            <img src={item.imageSrc} alt={item.name} className="device-chip-image" />
-                                                            <span className="device-chip-name">{item.name}</span>
-                                                            <button
-                                                                type="button"
-                                                                className="device-chip-remove"
-                                                                aria-label={`Remove ${item.name} from output`}
-                                                                title="Remove"
-                                                                onClick={() => removeOutputDevice(index)}
-                                                            >
-                                                                ×
-                                                            </button>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div className="ladder-sidebar-section ladder-sidebar-section-diagram">
-                                    <div className="ladder-diagram-header">
-                                        <h3 className="ladder-sidebar-title">Ladder Diagram</h3>
-                                        <p className={`activity-feedback ${activityFeedback === '100%' ? 'activity-feedback-pass' : 'activity-feedback-fail'}`}>
-                                            {activityFeedback}
-                                        </p>
-                                    </div>
-                                    <div className="activity-panel">
-                                        <h4 className="activity-title">{activeActivity.title}</h4>
-                                        {shouldShowInstructionImage ? (
-                                            <img
-                                                src={activeActivity.instructionImageSrc}
-                                                alt={`${activeActivity.title} instructions`}
-                                                className="activity-instruction-image"
-                                                onError={() => {
-                                                    setInstructionImageFailures((prev) => ({
-                                                        ...prev,
-                                                        [activeActivity.id]: true,
-                                                    }));
-                                                }}
-                                            />
-                                        ) : activeActivity.instructions?.length ? (
-                                            <ul className="activity-instruction-list">
-                                                {activeActivity.instructions.map((instruction, index) => (
-                                                    <li key={`${activeActivity.id}-instruction-${index}`} className="activity-instruction-item">
-                                                        {instruction}
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        ) : null}
-
-                                        <div className="activity-actions">
-                                            <button
-                                                type="button"
-                                                className="activity-button activity-button-primary"
-                                                onClick={runActivityValidation}
-                                            >
-                                                Check Answer
-                                            </button>
-                                        </div>
-
-                                    </div>
-                                </div>
-                            </aside>
-                        )}
-
-                        {!isDeviceSidebarCollapsed && (
-                            <aside className="sidebar" style={{ width: deviceSidebarWidth }}>
-                                <div className="sidebar-header">
-                                    <h3 className="sidebar-title">List of Devices</h3>
-                                </div>
-                                <div className="palette-grid">
-                                    {COMPONENT_PALETTE.map((item) => (
-                                        <button
-                                            key={item.type}
-                                            type="button"
-                                            onClick={() => addComponent(item.type)}
-                                            className="palette-item"
-                                            draggable
-                                            onDragStart={(event) => handlePaletteDragStart(event, item.type)}
-                                        >
-                                            <img
-                                                src={item.imageSrc}
-                                                alt={item.name}
-                                                className="palette-item-image"
-                                            />
-                                            <span className="palette-item-name">{item.name}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </aside>
-                        )}
-
                     </div>
-                </main>
 
+                    {/* LEFT OVERLAY: Controls & Ladder Diagram */}
+                    <motion.aside
+                        className="absolute left-0 top-0 bottom-0 z-50 flex flex-col bg-white dark:bg-[#0B1120] border-r border-slate-200 dark:border-cyan-900/50 shadow-[4px_0_24px_rgba(0,0,0,0.05)] dark:shadow-[4px_0_24px_rgba(6,182,212,0.15)] transition-colors duration-300"
+                        style={{ width: controlsPanelWidth }}
+                        initial={{ x: '-100%' }}
+                        animate={{ x: showControls ? 0 : '-100%' }}
+                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                        onMouseEnter={() => setIsControlsHovered(true)}
+                        onMouseLeave={() => setIsControlsHovered(false)}
+                    >
+                        {/* Header with Pin Button */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                            <h3 className="font-black text-slate-800 dark:text-cyan-400 uppercase tracking-widest text-sm">Controls</h3>
+                            <button
+                                type="button"
+                                onClick={() => setIsControlsPinned(!isControlsPinned)}
+                                className={`p-1.5 rounded-lg transition-colors ${isControlsPinned ? 'bg-cyan-100 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-400' : 'bg-slate-100 text-slate-400 hover:text-cyan-500 dark:bg-slate-800 dark:hover:text-cyan-400'}`}
+                                title={isControlsPinned ? "Unlock Overlay" : "Lock Overlay"}
+                            >
+                                {isControlsPinned ? <Lock size={14} /> : <Unlock size={14} />}
+                            </button>
+                        </div>
+
+                        {/* Scrollable Content with Deep Dark Mode Integration */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+
+                            {/* Devices Section */}
+                            <div className="space-y-3">
+                                <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Devices to Use</h3>
+                                <div className="space-y-3">
+                                    <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700" onDragOver={allowDeviceCanvasDrop} onDrop={(event) => handleDeviceCanvasDrop(event, 'input')}>
+                                        <h4 className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-widest mb-2">Input Device</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {inputDeviceTypes.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-600 font-mono">Drag devices here</p>}
+                                            {inputDeviceTypes.map((type, index) => {
+                                                const item = getPaletteItem(type);
+                                                if (!item) return null;
+                                                return (
+                                                    <div key={`input-${type}-${index}`} className="flex items-center gap-2 bg-white dark:bg-slate-800 px-2 py-1.5 rounded border border-slate-200 dark:border-slate-700 shadow-sm text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                        <img src={item.imageSrc} alt={item.name} className="w-5 h-5 object-contain" />
+                                                        <span>{item.name}</span>
+                                                        <button type="button" className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 ml-1" onClick={() => removeInputDevice(index)}>×</button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+
+                                    <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700" onDragOver={allowDeviceCanvasDrop} onDrop={(event) => handleDeviceCanvasDrop(event, 'output')}>
+                                        <h4 className="text-[10px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-widest mb-2">Output Device</h4>
+                                        <div className="flex flex-wrap gap-2">
+                                            {outputDeviceTypes.length === 0 && <p className="text-xs text-slate-400 dark:text-slate-600 font-mono">Drag devices here</p>}
+                                            {outputDeviceTypes.map((type, index) => {
+                                                const item = getPaletteItem(type);
+                                                if (!item) return null;
+                                                return (
+                                                    <div key={`output-${type}-${index}`} className="flex items-center gap-2 bg-white dark:bg-slate-800 px-2 py-1.5 rounded border border-slate-200 dark:border-slate-700 shadow-sm text-xs font-bold text-slate-700 dark:text-slate-200">
+                                                        <img src={item.imageSrc} alt={item.name} className="w-5 h-5 object-contain" />
+                                                        <span>{item.name}</span>
+                                                        <button type="button" className="text-slate-400 hover:text-red-500 dark:hover:text-red-400 ml-1" onClick={() => removeOutputDevice(index)}>×</button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="w-full h-px bg-slate-200 dark:bg-slate-800" />
+
+                            {/* Ladder Diagram Section */}
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Ladder Diagram</h3>
+                                    <span className={`text-xs font-black px-2 py-0.5 rounded ${activityFeedback === '100%' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400'}`}>
+                                        {activityFeedback}
+                                    </span>
+                                </div>
+
+                                <div className="bg-slate-50 dark:bg-slate-900/30 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                                    <h4 className="text-sm font-bold text-slate-800 dark:text-white mb-3">{activeActivity.title}</h4>
+                                    {shouldShowInstructionImage ? (
+                                        <img src={activeActivity.instructionImageSrc} alt={`${activeActivity.title} instructions`} className="w-full rounded bg-white dark:bg-slate-200 p-2 border border-slate-200 dark:border-slate-700" onError={() => setInstructionImageFailures((prev) => ({ ...prev, [activeActivity.id]: true }))} />
+                                    ) : activeActivity.instructions?.length ? (
+                                        <ul className="text-xs text-slate-600 dark:text-slate-300 space-y-1 list-disc pl-4">
+                                            {activeActivity.instructions.map((instruction, index) => (
+                                                <li key={index}>{instruction}</li>
+                                            ))}
+                                        </ul>
+                                    ) : null}
+
+                                    <button type="button" onClick={runActivityValidation} className="mt-4 w-full bg-cyan-600 hover:bg-cyan-700 text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-colors shadow-md">
+                                        Verify Circuit
+                                    </button>
+                                </div>
+                            </div>
+
+                        </div>
+                    </motion.aside>
+
+                    {/* RIGHT OVERLAY: Device Palette */}
+                    <motion.aside
+                        className="absolute right-0 top-0 bottom-0 z-50 flex flex-col bg-white dark:bg-[#0B1120] border-l border-slate-200 dark:border-cyan-900/50 shadow-[-4px_0_24px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_24px_rgba(6,182,212,0.15)] transition-colors duration-300"
+                        style={{ width: deviceSidebarWidth }}
+                        initial={{ x: '100%' }}
+                        animate={{ x: showDevice ? 0 : '100%' }}
+                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                        onMouseEnter={() => setIsDeviceHovered(true)}
+                        onMouseLeave={() => setIsDeviceHovered(false)}
+                    >
+                        {/* Header with Pin Button */}
+                        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsDevicePinned(!isDevicePinned)}
+                                className={`p-1.5 rounded-lg transition-colors ${isDevicePinned ? 'bg-cyan-100 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-400' : 'bg-slate-100 text-slate-400 hover:text-cyan-500 dark:bg-slate-800 dark:hover:text-cyan-400'}`}
+                                title={isDevicePinned ? "Unlock Overlay" : "Lock Overlay"}
+                            >
+                                {isDevicePinned ? <Lock size={14} /> : <Unlock size={14} />}
+                            </button>
+                            <h3 className="font-black text-slate-800 dark:text-cyan-400 uppercase tracking-widest text-sm">Devices</h3>
+                        </div>
+
+                        {/* Scrollable Grid of Devices */}
+                        <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                            <div className="grid grid-cols-2 gap-3">
+                                {COMPONENT_PALETTE.map((item) => (
+                                    <button
+                                        key={item.type}
+                                        type="button"
+                                        onClick={() => addComponent(item.type)}
+                                        className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-cyan-500 dark:hover:border-cyan-400 hover:shadow-md transition-all group"
+                                        draggable
+                                        onDragStart={(event) => handlePaletteDragStart(event, item.type)}
+                                    >
+                                        <img src={item.imageSrc} alt={item.name} className="h-10 w-10 object-contain mb-2 group-hover:scale-110 transition-transform" />
+                                        <span className="text-[10px] font-bold text-slate-600 dark:text-slate-300 text-center leading-tight">{item.name}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </motion.aside>
+
+                </main>
             </div>
         </CyberTransition>
     );
