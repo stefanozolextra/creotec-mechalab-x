@@ -1294,7 +1294,6 @@ export default function App() {
                 <button
                   key={item.type}
                   type="button"
-                  onClick={() => addComponent(item.type)}
                   className="palette-item"
                   draggable
                   onDragStart={(event) => handlePaletteDragStart(event, item.type)}
