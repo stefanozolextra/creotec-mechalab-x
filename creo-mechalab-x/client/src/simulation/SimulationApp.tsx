@@ -298,27 +298,6 @@ export default function App() {
     return `${prefix}-${nextIndex}`;
   };
 
-  const addComponent = (type: SimulationComponentType) => {
-    const id = createComponentId(type);
-    const index = Object.keys(components).length;
-    setComponents((prev) => ({
-      ...prev,
-      [id]: { x: 40 + (index % 3) * 140, y: 80 + (index % 4) * 90 },
-    }));
-    setComponentTransforms((prev) => ({
-      ...prev,
-      [id]: { rotation: 0, flipX: false },
-    }));
-    if (type === 'switch') {
-      setSwitchStates((prev) => ({
-        ...prev,
-        [id]: false,
-      }));
-    }
-
-    return id;
-  };
-
   const inferComponentType = (componentId: string): ClipboardComponent['type'] => (
     inferPaletteTypeFromComponentId(componentId) ?? 'button'
   );

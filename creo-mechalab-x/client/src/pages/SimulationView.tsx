@@ -880,7 +880,6 @@ export default function SimulationView() {
                                     <button
                                         key={item.type}
                                         type="button"
-                                        onClick={() => addComponent(item.type)}
                                         className="flex flex-col items-center justify-center p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl hover:border-cyan-500 dark:hover:border-cyan-400 hover:shadow-md transition-all group"
                                         draggable
                                         onDragStart={(event) => handlePaletteDragStart(event, item.type)}
