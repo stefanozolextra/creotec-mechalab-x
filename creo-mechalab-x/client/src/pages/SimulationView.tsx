@@ -175,8 +175,12 @@ export default function SimulationView() {
         return true;
     });
 
-    // Window Measurements
+    // Window / container Measurements (will be set by ResizeObserver)
     const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
+
+    // Base canvas design size — components positions are expressed in these design coordinates
+    const BASE_CANVAS_WIDTH = 1280;
+    const BASE_CANVAS_HEIGHT = 720;
 
     // === NEW OVERLAY STATES ===
     const [isControlsPinned, setIsControlsPinned] = useState(true);
@@ -222,11 +226,20 @@ export default function SimulationView() {
     const stageWidth = Math.max(320, viewport.width);
     const stageHeight = Math.max(260, viewport.height);
 
+    const canvasScale = Math.min(viewport.width / BASE_CANVAS_WIDTH, viewport.height / BASE_CANVAS_HEIGHT);
+
     useEffect(() => {
-        const handleResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+        if (!containerRef.current) return undefined;
+        const el = containerRef.current;
+        const update = () => setViewport({ width: el.clientWidth, height: el.clientHeight });
+
+        // initialize
+        update();
+
+        const observer = new ResizeObserver(() => update());
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [containerRef]);
 
     const toggleTheme = () => {
         const newMode = !isDarkMode;
@@ -237,21 +250,6 @@ export default function SimulationView() {
     const createComponentId = (prefix: string) => {
         const nextIndex = Object.keys(components).filter((id) => id.startsWith(`${prefix}-`)).length + 1;
         return `${prefix}-${nextIndex}`;
-    };
-
-    const addComponent = (type: SimulationComponentType) => {
-        const id = createComponentId(type);
-        const index = Object.keys(components).length;
-        setComponents((prev) => ({
-            ...prev,
-            [id]: { x: 40 + (index % 3) * 140, y: 80 + (index % 4) * 90 },
-        }));
-        setComponentTransforms((prev) => ({
-            ...prev,
-            [id]: { rotation: 0, flipX: false },
-        }));
-        if (type === 'switch') setSwitchStates((prev) => ({ ...prev, [id]: false }));
-        return id;
     };
 
     const inferComponentType = (componentId: string): ClipboardComponent['type'] => (
@@ -366,8 +364,11 @@ export default function SimulationView() {
         const dy = localPin.y - centerY;
         const transformedX = centerX + (dx * Math.cos(theta) - dy * Math.sin(theta));
         const transformedY = centerY + (dx * Math.sin(theta) + dy * Math.cos(theta));
-        return { x: pos.x + transformedX, y: pos.y + transformedY };
-    }, [components, componentTransforms, getComponentNodeConfig]);
+
+        // scale coordinates to the current viewport so the canvas is responsive
+        const scale = Math.min(viewport.width / BASE_CANVAS_WIDTH, viewport.height / BASE_CANVAS_HEIGHT);
+        return { x: (pos.x + transformedX) * scale, y: (pos.y + transformedY) * scale };
+    }, [components, componentTransforms, getComponentNodeConfig, viewport]);
 
     const getWireDuctIntermediatePoints = useCallback((fromPin: string, toPin: string) => (
         computeWireDuctIntermediatePoints({
@@ -723,22 +724,54 @@ export default function SimulationView() {
                                                 const pinOffsets = Object.fromEntries(pinKeys.map((key) => [key, asset.pins[key]]));
                                                 return (
                                                     <AssetComponent
-                                                        key={id} id={id} x={pos.x} y={pos.y} rotation={componentTransforms[id]?.rotation ?? 0} flipX={componentTransforms[id]?.flipX ?? false}
-                                                        isWiring={Boolean(activePin)} isSelected={selectedComponentId === id} imageSrc={asset.imageSrc} width={asset.width} height={asset.height} nodeSize={NODE_SIZE} isLocked={!COMPONENTS_MOVABLE}
-                                                        pinAId={pinAKey} pinBId={pinBKey} pinAOffset={pinAOffset} pinBOffset={pinBOffset} pinOffsets={pinOffsets}
-                                                        onPinMouseDown={handlePinMouseDown} pinWireColorForPin={getPinWireColor} pinTooltipForPin={getPinTooltipText} onShowPinTooltip={handleShowPinTooltip} onHidePinTooltip={handleHidePinTooltip}
+                                                        key={id}
+                                                        id={id}
+                                                        x={pos.x * canvasScale}
+                                                        y={pos.y * canvasScale}
+                                                        rotation={componentTransforms[id]?.rotation ?? 0}
+                                                        flipX={componentTransforms[id]?.flipX ?? false}
+                                                        isWiring={Boolean(activePin)}
+                                                        isSelected={selectedComponentId === id}
+                                                        imageSrc={asset.imageSrc}
+                                                        width={asset.width * canvasScale}
+                                                        height={asset.height * canvasScale}
+                                                        nodeSize={Math.max(1, NODE_SIZE * canvasScale)}
+                                                        isLocked={!COMPONENTS_MOVABLE}
+                                                        pinAId={pinAKey}
+                                                        pinBId={pinBKey}
+                                                        pinAOffset={{ x: (pinAOffset.x ?? 0) * canvasScale, y: (pinAOffset.y ?? 0) * canvasScale }}
+                                                        pinBOffset={{ x: (pinBOffset.x ?? 0) * canvasScale, y: (pinBOffset.y ?? 0) * canvasScale }}
+                                                        pinOffsets={Object.fromEntries(Object.entries(pinOffsets).map(([k, v]) => [k, { x: (v.x ?? 0) * canvasScale, y: (v.y ?? 0) * canvasScale }]))}
+                                                        onPinMouseDown={handlePinMouseDown}
+                                                        pinWireColorForPin={getPinWireColor}
+                                                        pinTooltipForPin={getPinTooltipText}
+                                                        onShowPinTooltip={handleShowPinTooltip}
+                                                        onHidePinTooltip={handleHidePinTooltip}
                                                         onSelect={(componentId) => { setSelectedComponentId(componentId); setSelectedWireId(null); setActivePin(null); setMousePos(null); }}
-                                                        onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
+                                                        onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x: x / canvasScale, y: y / canvasScale } }))}
                                                     />
                                                 );
                                             })()
                                         ) : (
                                             <CircuitComponent
-                                                key={id} id={id} x={pos.x} y={pos.y} rotation={componentTransforms[id]?.rotation ?? 0} flipX={componentTransforms[id]?.flipX ?? false} label={id.toUpperCase()} color="#e74c3c" nodeSize={NODE_SIZE}
-                                                isWiring={Boolean(activePin)} isLocked={!COMPONENTS_MOVABLE} isSelected={selectedComponentId === id}
-                                                onPinMouseDown={handlePinMouseDown} pinWireColorForPin={getPinWireColor} onShowPinTooltip={handleShowPinTooltip} onHidePinTooltip={handleHidePinTooltip}
+                                                key={id}
+                                                id={id}
+                                                x={pos.x * canvasScale}
+                                                y={pos.y * canvasScale}
+                                                rotation={componentTransforms[id]?.rotation ?? 0}
+                                                flipX={componentTransforms[id]?.flipX ?? false}
+                                                label={id.toUpperCase()}
+                                                color="#e74c3c"
+                                                nodeSize={Math.max(1, NODE_SIZE * canvasScale)}
+                                                isWiring={Boolean(activePin)}
+                                                isLocked={!COMPONENTS_MOVABLE}
+                                                isSelected={selectedComponentId === id}
+                                                onPinMouseDown={handlePinMouseDown}
+                                                pinWireColorForPin={getPinWireColor}
+                                                onShowPinTooltip={handleShowPinTooltip}
+                                                onHidePinTooltip={handleHidePinTooltip}
                                                 onSelect={(componentId) => { setSelectedComponentId(componentId); setSelectedWireId(null); setActivePin(null); setMousePos(null); }}
-                                                onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
+                                                onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x: x / canvasScale, y: y / canvasScale } }))}
                                             />
                                         );
                                     })}

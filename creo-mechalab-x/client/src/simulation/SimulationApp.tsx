@@ -293,6 +293,13 @@ export default function App() {
   const controlsToggleLeft = isControlsPanelCollapsed ? 12 : controlsPanelWidth + 20;
   const deviceListToggleRight = isDeviceSidebarCollapsed ? 12 : deviceSidebarWidth + 20;
 
+  // Responsive canvas base size and scale
+  const BASE_CANVAS_WIDTH = 1280;
+  const BASE_CANVAS_HEIGHT = 720;
+  const canvasScale = Math.min(viewport.width / BASE_CANVAS_WIDTH, viewport.height / BASE_CANVAS_HEIGHT);
+  // wire-duct thickness matches CSS clamp(24px, 3.2vw, 80px)
+  const wireDuctSize = Math.min(80, Math.max(24, 0.032 * viewport.width));
+
   const createComponentId = (prefix: string) => {
     const nextIndex = Object.keys(components).filter((id) => id.startsWith(`${prefix}-`)).length + 1;
     return `${prefix}-${nextIndex}`;
@@ -463,11 +470,17 @@ export default function App() {
     const transformedX = centerX + (dx * Math.cos(theta) - dy * Math.sin(theta));
     const transformedY = centerY + (dx * Math.sin(theta) + dy * Math.cos(theta));
 
+    // scale coordinates to the current viewport so the canvas is responsive
+    const scale = Math.min(viewport.width / BASE_CANVAS_WIDTH, viewport.height / BASE_CANVAS_HEIGHT);
+
+    // account for wire-duct offset (original design assumed a 40px duct)
+    const ductOffsetDesign = wireDuctSize;
+
     return {
-      x: pos.x + transformedX,
-      y: pos.y + transformedY,
+      x: (pos.x + transformedX + ductOffsetDesign) * scale,
+      y: (pos.y + transformedY + ductOffsetDesign) * scale,
     };
-  }, [components, componentTransforms, getComponentNodeConfig]);
+  }, [components, componentTransforms, getComponentNodeConfig, wireDuctSize, viewport]);
 
   const getWireDuctIntermediatePoints = useCallback((fromPin: string, toPin: string) => (
     computeWireDuctIntermediatePoints({
@@ -1053,22 +1066,22 @@ export default function App() {
                       <AssetComponent
                         key={id}
                         id={id}
-                        x={pos.x}
-                        y={pos.y}
+                        x={(pos.x + wireDuctSize) * canvasScale}
+                        y={(pos.y + wireDuctSize) * canvasScale}
                         rotation={componentTransforms[id]?.rotation ?? 0}
                         flipX={componentTransforms[id]?.flipX ?? false}
                         isWiring={Boolean(activePin)}
                         isSelected={selectedComponentId === id}
                         imageSrc={asset.imageSrc}
-                        width={asset.width}
-                        height={asset.height}
-                        nodeSize={NODE_SIZE}
+                        width={asset.width * canvasScale}
+                        height={asset.height * canvasScale}
+                        nodeSize={Math.max(1, NODE_SIZE * canvasScale)}
                         isLocked={!COMPONENTS_MOVABLE}
                         pinAId={pinAKey}
                         pinBId={pinBKey}
-                        pinAOffset={pinAOffset}
-                        pinBOffset={pinBOffset}
-                        pinOffsets={pinOffsets}
+                        pinAOffset={{ x: (pinAOffset.x ?? 0) * canvasScale, y: (pinAOffset.y ?? 0) * canvasScale }}
+                        pinBOffset={{ x: (pinBOffset.x ?? 0) * canvasScale, y: (pinBOffset.y ?? 0) * canvasScale }}
+                        pinOffsets={Object.fromEntries(Object.entries(pinOffsets).map(([k, v]) => [k, { x: (v.x ?? 0) * canvasScale, y: (v.y ?? 0) * canvasScale }]))}
                         onPinMouseDown={handlePinMouseDown}
                         pinWireColorForPin={getPinWireColor}
                         pinTooltipForPin={getPinTooltipText}
@@ -1080,7 +1093,7 @@ export default function App() {
                           setActivePin(null);
                           setMousePos(null);
                         }}
-                        onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
+                        onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x: x / canvasScale - wireDuctSize, y: y / canvasScale - wireDuctSize } }))}
                       />
                     );
                   })()
@@ -1088,13 +1101,13 @@ export default function App() {
                   <CircuitComponent
                     key={id}
                     id={id}
-                    x={pos.x}
-                    y={pos.y}
+                    x={(pos.x + wireDuctSize) * canvasScale}
+                    y={(pos.y + wireDuctSize) * canvasScale}
                     rotation={componentTransforms[id]?.rotation ?? 0}
                     flipX={componentTransforms[id]?.flipX ?? false}
                     label={id.toUpperCase()}
                     color="#e74c3c"
-                    nodeSize={NODE_SIZE}
+                    nodeSize={Math.max(1, NODE_SIZE * canvasScale)}
                     isWiring={Boolean(activePin)}
                     isLocked={!COMPONENTS_MOVABLE}
                     isSelected={selectedComponentId === id}
@@ -1108,7 +1121,7 @@ export default function App() {
                       setActivePin(null);
                       setMousePos(null);
                     }}
-                    onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
+                    onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x: x / canvasScale - wireDuctSize, y: y / canvasScale - wireDuctSize } }))}
                   />
                 )
 

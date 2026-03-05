@@ -14,10 +14,10 @@ body,
   --panel-top-offset: 12px;
   --panel-bottom-offset: 12px;
 
-    /* List of Devices container height control (content-based):
+  /* List of Devices container height control (content-based):
       Sidebar grows with inner content and is capped by this max height. */
   --device-panel-top-offset: 12px;
-    --device-panel-max-height: calc(100vh - 56px - 24px);
+  --device-panel-max-height: calc(100vh - 56px - 24px);
 }
 
 .app-layout {
@@ -123,12 +123,14 @@ body,
   inset: 0;
   box-sizing: border-box;
   background: #ffffff;
-  box-shadow: inset 0 0 0 40px #808080;
+  /* responsive wire-duct thickness (min 24px, responsive via vw, max 80px) */
+  --wire-duct-size: clamp(24px, 3.2vw, 40px);
+  box-shadow: inset 0 0 0 var(--wire-duct-size) #808080;
   overflow: hidden;
   z-index: 0;
 }
 
-.simulation-canvas-frame > div:first-child {
+.simulation-canvas-frame>div:first-child {
   position: relative;
   z-index: 1;
 }
@@ -153,8 +155,11 @@ body,
   top: 0;
   bottom: 0;
   left: 50%;
-  border-left: 40px solid #808080;
-  transform: translateX(-15px);
+  border-left-style: solid;
+  border-left-color: #808080;
+  border-left-width: var(--wire-duct-size);
+  /* center the vertical duct at 50% */
+  transform: translateX(-50%);
   pointer-events: none;
   z-index: 0;
 }
@@ -165,8 +170,11 @@ body,
   left: 0;
   right: 50%;
   top: 50%;
-  border-top: 40px solid #808080;
-  transform: translateY(-15px);
+  border-top-style: solid;
+  border-top-color: #808080;
+  border-top-width: var(--wire-duct-size);
+  /* center the horizontal duct along the vertical midpoint */
+  transform: translateY(-50%);
   pointer-events: none;
   z-index: 0;
 }
