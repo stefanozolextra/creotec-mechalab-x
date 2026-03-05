@@ -40,12 +40,12 @@ void BATTERY_NODE;
 const GENERAL_TERMINAL_STRIP_ASSET = CUSTOM_NODE_ASSETS.terminalStrip;
 
 type SimulationComponentType =
-    | 'battery' | 'switch' | 'button' | 'buzzer' | 'counter' | 'lightIndicator'
+    | 'battery' | 'switch' | 'button' | 'buzzer' | 'counter' | 'timer' | 'lightIndicator'
     | 'magneticMotorContactor' | 'relayModule' | 'rollerLever' | 'solenoidValve';
-type PaletteComponentType = Exclude<SimulationComponentType, 'battery' | 'switch'>;
+type PaletteComponentType = Exclude<SimulationComponentType, 'battery' | 'switch' | 'timer'>;
 
 const SIMULATION_COMPONENT_TYPES: SimulationComponentType[] = [
-    'battery', 'switch', 'button', 'buzzer', 'counter', 'lightIndicator',
+    'battery', 'switch', 'button', 'buzzer', 'counter', 'timer', 'lightIndicator',
     'magneticMotorContactor', 'relayModule', 'rollerLever', 'solenoidValve',
 ];
 
@@ -85,6 +85,7 @@ const TERMINAL_STRIP_PLACEMENTS: Partial<Record<SimulationComponentType, ShapePo
 
 const INITIAL_COMPONENTS: Record<string, ShapePos> = {
     'battery-1': TERMINAL_STRIP_PLACEMENTS.battery!,
+    'battery-2': { x: (TERMINAL_STRIP_PLACEMENTS.battery?.x ?? 120) + 240, y: (TERMINAL_STRIP_PLACEMENTS.battery?.y ?? 280) },
     'lightIndicator-1': TERMINAL_STRIP_PLACEMENTS.lightIndicator!,
     'relayModule-1': { x: 124, y: 420 },
     'relayModule-2': { x: 309, y: 420 },
@@ -100,6 +101,7 @@ const INITIAL_COMPONENTS: Record<string, ShapePos> = {
 
 const INITIAL_COMPONENT_TRANSFORMS: Record<string, { rotation: number; flipX: boolean }> = {
     'battery-1': { rotation: 180, flipX: false },
+    'battery-2': { rotation: 180, flipX: false },
     'lightIndicator-1': { rotation: 90, flipX: false },
     'relayModule-1': { rotation: 0, flipX: false },
     'relayModule-2': { rotation: 0, flipX: false },
@@ -120,7 +122,7 @@ const WIRE_COLOR_OPTIONS = [
 ];
 
 const createEmptyTypeCount = () => ({
-    battery: 0, switch: 0, button: 0, buzzer: 0, counter: 0, led: 0,
+    battery: 0, switch: 0, button: 0, buzzer: 0, counter: 0, timer: 0, led: 0,
     resistor: 0, lightIndicator: 0, magneticMotorContactor: 0, relayModule: 0,
     rollerLever: 0, solenoidValve: 0,
 });
@@ -259,7 +261,9 @@ export default function SimulationView() {
     const getPaletteItem = (type: PaletteComponentType) => COMPONENT_PALETTE.find((item) => item.type === type);
 
     const getPinTooltipText = useCallback((fullPinId: string): string | undefined => {
-        return resolveTerminalStripTooltip(fullPinId, inferPaletteTypeFromComponentId);
+        const resolved = resolveTerminalStripTooltip(fullPinId, inferPaletteTypeFromComponentId);
+        console.debug('[getPinTooltipText:view]', fullPinId, '=>', resolved);
+        return resolved;
     }, []);
 
     const handlePaletteDragStart = (event: React.DragEvent<HTMLButtonElement>, type: PaletteComponentType) => {

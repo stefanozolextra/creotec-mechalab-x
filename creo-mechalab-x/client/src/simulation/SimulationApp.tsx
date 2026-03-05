@@ -35,17 +35,19 @@ type SimulationComponentType =
   | 'buzzer'
   | 'counter'
   | 'lightIndicator'
+  | 'timer'
   | 'magneticMotorContactor'
   | 'relayModule'
   | 'rollerLever'
   | 'solenoidValve';
-type PaletteComponentType = Exclude<SimulationComponentType, 'battery' | 'switch'>;
+type PaletteComponentType = Exclude<SimulationComponentType, 'battery' | 'switch' | 'timer'>;
 const SIMULATION_COMPONENT_TYPES: SimulationComponentType[] = [
   'battery',
   'switch',
   'button',
   'buzzer',
   'counter',
+  'timer',
   'lightIndicator',
   'magneticMotorContactor',
   'relayModule',
@@ -89,6 +91,7 @@ const TERMINAL_STRIP_PLACEMENTS: Partial<Record<SimulationComponentType, ShapePo
   button: { x: 400, y: 420 },
   buzzer: { x: 370, y: 640 },
   counter: { x: 185, y: 640 },
+  timer: { x: 309, y: 640 },
   lightIndicator: { x: 440, y: 130 },
   magneticMotorContactor: { x: 558, y: 335 },
   relayModule: { x: 558, y: 150 },
@@ -99,13 +102,17 @@ const TERMINAL_STRIP_PLACEMENTS: Partial<Record<SimulationComponentType, ShapePo
 // Retain only selected terminal strips on initial canvas load.
 
 const INITIAL_COMPONENTS: Record<string, ShapePos> = {
-  'battery-1': TERMINAL_STRIP_PLACEMENTS.battery!,
-  'lightIndicator-1': TERMINAL_STRIP_PLACEMENTS.lightIndicator!,
+  'battery-1': TERMINAL_STRIP_PLACEMENTS.battery ?? { x: 120, y: 280 },
+  'battery-2': {
+    x: (TERMINAL_STRIP_PLACEMENTS.battery?.x ?? 120) + 160,
+    y: (TERMINAL_STRIP_PLACEMENTS.battery?.y ?? 280),
+  },
+  'lightIndicator-1': TERMINAL_STRIP_PLACEMENTS.lightIndicator ?? { x: 320, y: 130 },
   'relayModule-1': { x: 124, y: 420 },
   'relayModule-2': { x: 309, y: 420 },
-  'relayModule-3': { x: 500, y: 420 },
-  'counter-1': { x: 309, y: 640 },
-  'counter-2': { x: 500, y: 640 },
+  'relayModule-3': { x: 450, y: 420 },
+  'counter-1': TERMINAL_STRIP_PLACEMENTS.counter ?? { x: 309, y: 640 },
+  'timer-1': TERMINAL_STRIP_PLACEMENTS.timer ?? { x: 450, y: 640 },
   'magneticMotor-1': { x: 800, y: 515 },
   'rollerLever-1': { x: 800, y: 335 },
   'solenoidValve-1': { x: 800, y: 150 },
@@ -116,12 +123,13 @@ const INITIAL_COMPONENTS: Record<string, ShapePos> = {
 // Initial terminal-strip transforms (customize per strip if needed).
 const INITIAL_COMPONENT_TRANSFORMS: Record<string, { rotation: number; flipX: boolean }> = {
   'battery-1': { rotation: 180, flipX: false },
+  'battery-2': { rotation: 180, flipX: false },
   'lightIndicator-1': { rotation: 90, flipX: false },
   'relayModule-1': { rotation: 0, flipX: false },
   'relayModule-2': { rotation: 0, flipX: false },
   'relayModule-3': { rotation: 0, flipX: false },
   'counter-1': { rotation: 180, flipX: false },
-  'counter-2': { rotation: 180, flipX: false },
+  'timer-1': { rotation: 180, flipX: false },
   'magneticMotor-1': { rotation: 270, flipX: false },
   'rollerLever-1': { rotation: 270, flipX: false },
   'solenoidValve-1': { rotation: 270, flipX: false },
@@ -144,6 +152,7 @@ const createEmptyTypeCount = () => ({
   button: 0,
   buzzer: 0,
   counter: 0,
+  timer: 0,
   led: 0,
   resistor: 0,
   lightIndicator: 0,
@@ -312,7 +321,10 @@ export default function App() {
   const getPaletteItem = (type: PaletteComponentType) => COMPONENT_PALETTE.find((item) => item.type === type);
 
   const getPinTooltipText = useCallback((fullPinId: string): string | undefined => {
-    return resolveTerminalStripTooltip(fullPinId, inferPaletteTypeFromComponentId);
+    const resolved = resolveTerminalStripTooltip(fullPinId, inferPaletteTypeFromComponentId);
+    // Debug: log resolved tooltip for troubleshooting missing popups
+    console.debug('[getPinTooltipText]', fullPinId, '=>', resolved);
+    return resolved;
   }, []);
 
   const handlePaletteDragStart = (event: React.DragEvent<HTMLButtonElement>, type: PaletteComponentType) => {

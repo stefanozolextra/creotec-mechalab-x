@@ -39,7 +39,8 @@ const Pin: React.FC<PinProps> = ({
   void tooltipFlip;
 
   const offset = tooltipOffset ?? { x: 8, y: -18 };
-  const tooltipLabel = tooltipText && tooltipText.trim().length > 0 ? tooltipText : id;
+  const hasTooltip = Boolean(tooltipText && tooltipText.trim().length > 0);
+  const tooltipLabel = hasTooltip ? tooltipText as string : undefined;
 
   return (
     <Circle
@@ -65,7 +66,7 @@ const Pin: React.FC<PinProps> = ({
         const abs = (e.target as KonvaCircle).getAbsolutePosition();
         const stageX = abs.x + (offset.x ?? 8);
         const stageY = abs.y + (offset.y ?? -18);
-        if (onShowPinTooltip) onShowPinTooltip(tooltipLabel, { x: stageX, y: stageY });
+        if (onShowPinTooltip && hasTooltip && tooltipLabel) onShowPinTooltip(tooltipLabel, { x: stageX, y: stageY });
       }}
       onMouseLeave={(e: KonvaEventObject<MouseEvent>) => {
         const circle = e.target as KonvaCircle;
