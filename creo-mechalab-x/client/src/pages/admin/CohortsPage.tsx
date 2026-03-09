@@ -4,6 +4,8 @@ import { useNavigate } from "react-router-dom";
 import { listAdminBatches } from "../../api/adminBatches";
 import { API_BASE_URL, ApiError } from "../../api/http";
 import FinalizeBatchWizardModal from "../../components/admin/FinalizeBatchWizardModal";
+import AdminTableScroll from "../../components/admin/ui/AdminTableScroll";
+import RowActionsMenu from "../../components/admin/ui/RowActionsMenu";
 import type { AdminBatchItem } from "../../types/adminBatch";
 import type { BatchFilter } from "../../types/adminTrainee";
 import { getAuthToken } from "../../utils/auth";
@@ -265,11 +267,11 @@ export default function CohortsPage() {
 
       {/* SECTION: DATA TABLE */}
       <div className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden transition-colors duration-500 relative z-0 border border-slate-100 dark:border-slate-800/50">
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-          <table className="w-full text-sm whitespace-nowrap border-collapse">
+        <AdminTableScroll className="flex-1 min-h-0 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+          <table className="min-w-[980px] w-full text-sm whitespace-nowrap border-collapse">
             <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 transition-colors duration-500 after:content-[''] after:absolute after:bottom-0 after:left-4 after:right-4 after:border-b-2 after:border-slate-100 dark:after:border-slate-700/50">
               <tr className="text-[13px] uppercase font-extrabold text-[#0B1B3D] dark:text-slate-200 tracking-wider transition-colors duration-500">
-                <th className="px-8 py-6 text-left">Batch Code</th>
+                <th className="px-8 py-6 text-left sticky left-0 z-20 bg-white dark:bg-[#1E293B]">Batch Code</th>
                 <th className="px-6 py-6 text-center">Status</th>
                 <th className="px-6 py-6 text-center">Trainees Enrolled</th>
                 <th className="px-6 py-6 text-center">Last Export</th>
@@ -283,6 +285,9 @@ export default function CohortsPage() {
                 const status = toCohortStatus(item);
                 const isSelected = selectedBatchCode === item.batch_code;
                 const isFinalizeLocked = finalizeModalOpen && finalizeBatchCode === item.batch_code;
+                const stickyBatchCellClass = isSelected
+                  ? "bg-blue-50/60 dark:bg-blue-500/10"
+                  : "bg-white dark:bg-[#1E293B] group-hover:bg-slate-50 dark:group-hover:bg-white/[0.02]";
                 return (
                   <tr
                     key={item.batch_code}
@@ -293,7 +298,7 @@ export default function CohortsPage() {
                         : "hover:bg-slate-50 dark:hover:bg-white/[0.02]"
                     }`}
                   >
-                    <td className="px-8 py-5 text-left font-bold text-[#0B1B3D] dark:text-slate-200 transition-colors duration-500">
+                    <td className={`px-8 py-5 text-left font-bold text-[#0B1B3D] dark:text-slate-200 transition-colors duration-500 sticky left-0 z-[5] ${stickyBatchCellClass}`}>
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-blue-50 dark:bg-[#3B82F6]/10 text-[#3B82F6] rounded-xl transition-colors duration-500">
                           <Layers size={18} />
@@ -318,7 +323,25 @@ export default function CohortsPage() {
                       {formatLifecycleTimestamp(item.last_reset_at)}
                     </td>
                     <td className="px-8 py-5">
-                      <div className="flex items-center justify-center gap-2">
+                      <RowActionsMenu
+                        actions={[
+                          {
+                            label: "View Trainees",
+                            onClick: () => handleViewTrainees(item.batch_code),
+                          },
+                          {
+                            label: isExporting ? "Exporting..." : "Export CSV",
+                            onClick: () => { void handleExportBatch(item.batch_code); },
+                            disabled: Boolean(exportingBatchCode),
+                          },
+                          {
+                            label: isFinalizeLocked && finalizeBusy ? "Finalizing..." : "Finalize",
+                            onClick: () => openFinalizeModal(item.batch_code),
+                            disabled: finalizeBusy || isFinalizeLocked,
+                          },
+                        ]}
+                      />
+                      <div className="hidden sm:flex items-center justify-center gap-2">
                         <button
                           type="button"
                           onClick={() => handleViewTrainees(item.batch_code)}
@@ -373,7 +396,7 @@ export default function CohortsPage() {
               ) : null}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
       </div>
 
       {/* MODAL */}

@@ -240,6 +240,26 @@ const Dashboard = () => {
         return getNextSimulationByModuleId(simulations, simulationProgressById);
     }, [dashboardState.data, simulationProgressById]);
 
+    const pdfUrlByModuleId = useMemo(() => {
+        const map = new Map<number, string>();
+        const resources = dashboardState.data?.moduleContent.resources ?? [];
+
+        for (const resource of resources) {
+            if (String(resource.type).toUpperCase() !== 'PDF') continue;
+            const moduleId = toNumber(resource.module_id);
+            if (moduleId < 1 || map.has(moduleId)) continue;
+
+            const resolvedUrl = typeof resource.resolved_url === 'string' ? resource.resolved_url.trim() : '';
+            const fallbackUrl = typeof resource.url === 'string' ? resource.url.trim() : '';
+            const pdfUrl = resolvedUrl || fallbackUrl;
+            if (!pdfUrl) continue;
+
+            map.set(moduleId, pdfUrl);
+        }
+
+        return map;
+    }, [dashboardState.data]);
+
     const selectedLevelData = useMemo(
         () => levels.find((level) => level.id === selectedLevel) ?? null,
         [levels, selectedLevel]
@@ -247,6 +267,7 @@ const Dashboard = () => {
 
     const selectedSimulationId =
         selectedLevel !== null ? nextSimulationByModuleId.get(selectedLevel) ?? null : null;
+    const selectedModulePdfUrl = selectedLevel !== null ? pdfUrlByModuleId.get(selectedLevel) ?? null : null;
 
     const trainee = dashboardState.data?.trainee ?? null;
 
@@ -261,8 +282,10 @@ const Dashboard = () => {
     };
 
     const handleViewModule = () => {
-        if (!selectedLevelData) return;
-        navigate(`/module/${selectedLevelData.id}`);
+        if (!selectedLevelData || !selectedModulePdfUrl) return;
+        navigate(`/module/${selectedLevelData.id}`, {
+            state: { pdfUrl: selectedModulePdfUrl },
+        });
     };
 
     return (
@@ -469,9 +492,11 @@ const Dashboard = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={handleViewModule}
-                                                                className="w-full bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 py-2.5 text-[10px] sm:text-xs uppercase tracking-widest font-bold flex items-center justify-center gap-2 transition-all"
+                                                                disabled={!selectedModulePdfUrl}
+                                                                className="w-full bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 py-2.5 text-[10px] sm:text-xs uppercase tracking-widest font-bold flex items-center justify-center gap-2 transition-all"
                                                             >
-                                                                <BookOpen size={12} /> Intel / Manual
+                                                                <BookOpen size={12} />
+                                                                {selectedModulePdfUrl ? 'Access Intel Manual' : 'PDF Not Available'}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -544,9 +569,11 @@ const Dashboard = () => {
                                             <button
                                                 type="button"
                                                 onClick={handleViewModule}
-                                                className="w-full bg-slate-800 hover:bg-slate-900 dark:bg-slate-800 dark:hover:bg-slate-700 text-white dark:text-slate-200 py-3 uppercase tracking-widest font-bold text-[10px] lg:text-xs flex items-center justify-center gap-2 transition-colors border border-transparent dark:border-slate-700"
+                                                disabled={!selectedModulePdfUrl}
+                                                className="w-full bg-slate-800 hover:bg-slate-900 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-slate-800 dark:hover:bg-slate-700 text-white dark:text-slate-200 py-3 uppercase tracking-widest font-bold text-[10px] lg:text-xs flex items-center justify-center gap-2 transition-colors border border-transparent dark:border-slate-700"
                                             >
-                                                <BookOpen size={14} className="lg:w-4 lg:h-4" /> Access Intel Manual
+                                                <BookOpen size={14} className="lg:w-4 lg:h-4" />
+                                                {selectedModulePdfUrl ? 'Access Intel Manual' : 'PDF Not Available'}
                                             </button>
                                         </div>
                                     </div>

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getAdminActivityLogs } from '../../api/adminActivityLogs';
 import { listAdminBatches } from '../../api/adminBatches';
 import { ApiError } from '../../api/http';
+import AdminTableScroll from '../../components/admin/ui/AdminTableScroll';
 import type { AdminActivityLogItem } from '../../types/adminActivityLogs';
 import type { AdminBatchItem } from '../../types/adminBatch';
 import { formatAdminFeedTime, toAdminFeedTypeLabel } from '../../utils/adminFeed';
@@ -101,8 +102,9 @@ export default function ActivityLogsPage() {
         setError(toErrorMessage(loadError));
         setLastErrorAction('initial');
       } finally {
-        if (!isMountedRef.current || controller.signal.aborted) return;
-        setLoading(false);
+        if (isMountedRef.current && !controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
 
@@ -163,8 +165,9 @@ export default function ActivityLogsPage() {
       setError(toErrorMessage(loadError));
       setLastErrorAction('load_more');
     } finally {
-      if (!isMountedRef.current || controller.signal.aborted) return;
-      setLoadingMore(false);
+      if (isMountedRef.current && !controller.signal.aborted) {
+        setLoadingMore(false);
+      }
     }
   };
 
@@ -180,14 +183,21 @@ export default function ActivityLogsPage() {
 
   return (
     <div className="flex-1 flex flex-col gap-4 min-h-0 relative">
-      <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-3 shadow-sm border border-slate-100 dark:border-slate-800/50 shrink-0 z-20 flex flex-col xl:flex-row xl:items-center justify-between gap-4 transition-colors duration-500">
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="relative z-0">
+      <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-3 shadow-sm border border-slate-100 dark:border-slate-800/50 shrink-0 z-20 flex flex-col gap-3 transition-colors duration-500">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-bold text-slate-500 dark:text-slate-400">Activity Logs</p>
+          <div className="px-4 py-2 rounded-xl bg-[#1E293B] dark:bg-slate-700 text-white text-xs sm:text-sm font-bold">
+            {appliedBatchCode ? `Scope: ${appliedBatchCode}` : 'Scope: All batches'}
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2.5">
+          <div className="relative z-0 w-full sm:w-[240px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
             <select
               value={batchFilter}
               onChange={(event) => setBatchFilter(event.target.value)}
-              className="pl-9 pr-4 py-2 w-[200px] rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-semibold text-sm outline-none focus:ring-2 focus:ring-[#3B82F6]"
+              className="pl-9 pr-4 py-2 w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-semibold text-sm outline-none focus:ring-2 focus:ring-[#3B82F6]"
             >
               <option value="">All batches</option>
               {batchOptions.map((batch) => (
@@ -198,10 +208,10 @@ export default function ActivityLogsPage() {
             </select>
           </div>
 
-          <div className="flex items-center gap-2 ml-1">
+          <div className="flex items-center gap-2">
             <button
               onClick={handleApply}
-              className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-md shadow-blue-500/20 transition-all hover:scale-105"
+              className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-md shadow-blue-500/20 transition-colors"
             >
               Apply
             </button>
@@ -213,10 +223,6 @@ export default function ActivityLogsPage() {
               <RotateCcw size={16} />
             </button>
           </div>
-        </div>
-
-        <div className="px-5 py-2 rounded-xl bg-[#1E293B] dark:bg-slate-700 text-white text-sm font-bold">
-          {appliedBatchCode ? `Scope: ${appliedBatchCode}` : 'Scope: All batches'}
         </div>
       </div>
 
@@ -234,11 +240,11 @@ export default function ActivityLogsPage() {
       )}
 
       <div className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden transition-colors duration-500 border border-slate-100 dark:border-slate-800/50 z-10 relative">
-        <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
-          <table className="w-full text-sm whitespace-nowrap border-collapse">
+        <AdminTableScroll className="flex-1 min-h-0 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
+          <table className="min-w-[900px] w-full text-sm whitespace-nowrap border-collapse">
             <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 transition-colors duration-500 after:content-[''] after:absolute after:bottom-0 after:left-4 after:right-4 after:border-b-2 after:border-slate-100 dark:after:border-slate-700/50">
               <tr className="text-[11px] uppercase font-extrabold text-[#0B1B3D] dark:text-slate-200 tracking-wider transition-colors duration-500">
-                <th className="px-8 py-5 text-left">Timestamp</th>
+                <th className="px-8 py-5 text-left sticky left-0 z-20 bg-white dark:bg-[#1E293B]">Timestamp</th>
                 <th className="px-6 py-5 text-left">Type</th>
                 <th className="px-6 py-5 text-left">Actor</th>
                 <th className="px-6 py-5 text-left">Batch</th>
@@ -268,7 +274,7 @@ export default function ActivityLogsPage() {
 
               {rows.map((row, idx) => (
                 <tr key={`${itemKey(row)}-${idx}`} className="group hover:bg-slate-50 dark:hover:bg-white/[0.02] transition-colors duration-300">
-                  <td className="px-8 py-4 text-slate-500 dark:text-slate-400 font-medium text-xs transition-colors duration-500">
+                  <td className="px-8 py-4 text-slate-500 dark:text-slate-400 font-medium text-xs transition-colors duration-500 sticky left-0 z-[5] bg-white dark:bg-[#1E293B] group-hover:bg-slate-50 dark:group-hover:bg-white/[0.02]">
                     {formatAdminFeedTime(row.occurred_at)}
                   </td>
                   <td className="px-6 py-4">
@@ -292,12 +298,14 @@ export default function ActivityLogsPage() {
                       <span className="text-slate-400 dark:text-slate-500 text-xs">-</span>
                     )}
                   </td>
-                  <td className="px-8 py-4 text-slate-500 dark:text-slate-400 text-xs transition-colors duration-500">{row.message}</td>
+                  <td className="px-8 py-4 text-slate-500 dark:text-slate-400 text-xs transition-colors duration-500 whitespace-normal break-words min-w-[280px] max-w-[560px]">
+                    {row.message}
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </AdminTableScroll>
 
         <div className="px-8 py-4 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/20 shrink-0 flex items-center justify-between transition-colors duration-500">
           <div className="text-xs font-medium text-slate-500 dark:text-slate-400">

@@ -4,6 +4,10 @@ const cors = require("cors");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const multer = require("multer");
+const fs = require("fs");
+const fsPromises = require("fs/promises");
+const path = require("path");
+const crypto = require("crypto");
 const { parse } = require("csv-parse/sync");
 const pool = require("./db");
 const { generateStrongPassword } = require("./utils/passwords");
@@ -40,6 +44,13 @@ function parsePositiveIntEnv(name, fallback) {
 const DASHBOARD_CACHE_TTL_MS = parsePositiveIntEnv("DASHBOARD_CACHE_TTL_MS", 10_000);
 const ACTIVITYLOGS_CACHE_TTL_MS = parsePositiveIntEnv("ACTIVITYLOGS_CACHE_TTL_MS", 10_000);
 const MAX_CACHE_ENTRIES = parsePositiveIntEnv("MAX_CACHE_ENTRIES", 100);
+const MODULE_TITLE_MAX_LENGTH = 150;
+const LESSON_PDF_MAX_FILE_SIZE_BYTES = parsePositiveIntEnv("LESSON_PDF_MAX_FILE_SIZE_BYTES", 10 * 1024 * 1024);
+const LESSON_UPLOADS_DIR = path.resolve(
+    __dirname,
+    process.env.LESSON_UPLOADS_DIR?.trim() || path.join("uploads", "module-pdfs")
+);
+const PDF_ALLOWED_MIME_TYPES = new Set(["application/pdf", "application/x-pdf"]);
 
 const adminDashboardCache = new Map();
 const adminActivityLogsCache = new Map();
@@ -877,6 +888,166 @@ function toSafeFileToken(value) {
         .replace(/^_+|_+$/g, "");
 }
 
+function buildModuleResourcePdfViewPath(resourceId) {
+    return `/api/resources/${resourceId}/pdf`;
+}
+
+function sanitizePdfOriginalFilename(value, fallback = "module.pdf") {
+    const candidate = path.basename(String(value || "").trim()) || fallback;
+    const withoutControlChars = candidate.replace(/[\u0000-\u001f\u007f]/g, "");
+    const sanitized = withoutControlChars
+        .replace(/[^A-Za-z0-9._-]+/g, "_")
+        .replace(/^_+|_+$/g, "");
+    if (!sanitized) return fallback;
+    return path.extname(sanitized).toLowerCase() === ".pdf" ? sanitized : `${sanitized}.pdf`;
+}
+
+function isPdfExtensionFileName(value) {
+    return path.extname(String(value || "").trim()).toLowerCase() === ".pdf";
+}
+
+function isAllowedPdfMimeType(value) {
+    const mimeType = String(value || "")
+        .trim()
+        .toLowerCase();
+    return PDF_ALLOWED_MIME_TYPES.has(mimeType);
+}
+
+function hasPdfMagicBytes(buffer) {
+    return Buffer.isBuffer(buffer) && buffer.length >= 5 && buffer.subarray(0, 5).toString("utf8") === "%PDF-";
+}
+
+function createLessonPdfStorageKey(moduleId) {
+    const timestamp = formatTimestampForFileName();
+    const randomToken = crypto.randomBytes(12).toString("hex");
+    return `module_${moduleId}_${timestamp}_${randomToken}.pdf`;
+}
+
+function resolveLessonPdfStoragePath(storageKey) {
+    const normalizedKey = String(storageKey || "").trim();
+    if (!/^[A-Za-z0-9._-]+$/.test(normalizedKey)) {
+        throw new Error("Invalid storage key");
+    }
+
+    const resolved = path.resolve(LESSON_UPLOADS_DIR, normalizedKey);
+    const safePrefix = LESSON_UPLOADS_DIR.endsWith(path.sep) ? LESSON_UPLOADS_DIR : `${LESSON_UPLOADS_DIR}${path.sep}`;
+    if (resolved !== LESSON_UPLOADS_DIR && !resolved.startsWith(safePrefix)) {
+        throw new Error("Invalid storage path");
+    }
+    return resolved;
+}
+
+async function ensureLessonUploadsDirectory() {
+    await fsPromises.mkdir(LESSON_UPLOADS_DIR, { recursive: true });
+}
+
+async function removeStoredLessonPdf(storageKey) {
+    try {
+        const filePath = resolveLessonPdfStoragePath(storageKey);
+        await fsPromises.unlink(filePath);
+    } catch (error) {
+        if (error?.code === "ENOENT") return;
+        console.error("Failed to remove stored lesson PDF:", error);
+    }
+}
+
+function extractFileNameFromUrl(urlValue) {
+    if (!urlValue) return null;
+    try {
+        const parsed = new URL(String(urlValue), "http://local.invalid");
+        const baseName = path.basename(parsed.pathname || "");
+        if (!baseName) return null;
+        return sanitizePdfOriginalFilename(baseName);
+    } catch {
+        return null;
+    }
+}
+
+function getModuleResourcesWithFilesSql() {
+    return `SELECT
+              mr.resource_id::INT AS resource_id,
+              mr.module_id::INT AS module_id,
+              mr.type,
+              mr.title,
+              COALESCE(
+                CASE WHEN mrf.file_id IS NOT NULL THEN '/api/resources/' || mr.resource_id::TEXT || '/pdf' END,
+                mr.url
+              ) AS url,
+              mr.order_no::INT AS order_no,
+              mrf.file_id::INT AS file_id,
+              mrf.original_filename,
+              mrf.mime_type,
+              mrf.file_size,
+              (mrf.file_id IS NOT NULL) AS has_uploaded_file,
+              CASE
+                WHEN mrf.file_id IS NOT NULL THEN '/api/resources/' || mr.resource_id::TEXT || '/pdf'
+                ELSE mr.url
+              END AS resolved_url
+            FROM module_resources mr
+            LEFT JOIN module_resource_files mrf ON mrf.resource_id = mr.resource_id
+            ORDER BY mr.module_id, mr.order_no, mr.resource_id`;
+}
+
+async function getAdminLessonItems(moduleId = null) {
+    const result = await pool.query(
+        `SELECT
+           m.module_id::INT AS module_id,
+           m.module_code,
+           m.title AS module_title,
+           m.description,
+           m.order_no::INT AS order_no,
+           m.is_active,
+           pdf.resource_id::INT AS pdf_resource_id,
+           pdf.title AS pdf_title,
+           pdf.url AS pdf_url,
+           mrf.file_id::INT AS file_id,
+           mrf.original_filename,
+           mrf.mime_type,
+           mrf.file_size,
+           COALESCE(mrf.updated_at, mrf.created_at) AS uploaded_at
+         FROM modules m
+         LEFT JOIN LATERAL (
+           SELECT mr.resource_id, mr.title, mr.url
+           FROM module_resources mr
+           WHERE mr.module_id = m.module_id
+             AND mr.type = 'PDF'
+           ORDER BY mr.order_no, mr.resource_id
+           LIMIT 1
+         ) pdf ON TRUE
+         LEFT JOIN module_resource_files mrf ON mrf.resource_id = pdf.resource_id
+         WHERE ($1::BIGINT IS NULL OR m.module_id = $1)
+         ORDER BY COALESCE(m.order_no, 2147483647), m.module_id`,
+        [moduleId]
+    );
+
+    return result.rows.map((row) => {
+        const resourceId = row.pdf_resource_id == null ? null : Number(row.pdf_resource_id);
+        const hasUploadedFile = row.file_id != null;
+        const viewUrl = hasUploadedFile && resourceId ? buildModuleResourcePdfViewPath(resourceId) : row.pdf_url || null;
+        const derivedFileName = row.original_filename || extractFileNameFromUrl(row.pdf_url);
+
+        return {
+            module_id: Number(row.module_id) || 0,
+            module_code: row.module_code || "",
+            module_title: row.module_title || "",
+            description: row.description || null,
+            order_no: Number(row.order_no) || 0,
+            is_active: row.is_active === true,
+            pdf: {
+                resource_id: resourceId,
+                has_pdf: resourceId !== null,
+                has_uploaded_file: hasUploadedFile,
+                file_id: row.file_id == null ? null : Number(row.file_id),
+                file_name: derivedFileName || null,
+                mime_type: row.mime_type || null,
+                file_size: row.file_size == null ? null : Number(row.file_size),
+                uploaded_at: row.uploaded_at ? new Date(row.uploaded_at).toISOString() : null,
+                view_url: viewUrl,
+            },
+        };
+    });
+}
+
 async function getModuleStatusRowsForTrainee(traineeId) {
     const result = await pool.query(
         `SELECT module_id, module_code, module_title, required_sims, completed_required_sims, module_status
@@ -909,7 +1080,7 @@ async function getDashboardPayloadForTrainee(traineeId) {
             [traineeId]
         ),
         pool.query("SELECT * FROM modules ORDER BY order_no"),
-        pool.query("SELECT * FROM module_resources ORDER BY module_id, order_no"),
+        pool.query(getModuleResourcesWithFilesSql()),
         pool.query("SELECT * FROM simulations ORDER BY module_id, order_no"),
         pool.query(
             `SELECT
@@ -1052,6 +1223,359 @@ app.get("/api/admin/auth-check", (req, res) => {
         account_id: req.auth.account_id,
         trainee_id: req.auth.trainee_id ?? null,
     });
+});
+
+app.get("/api/admin/lessons", async (req, res) => {
+    try {
+        const items = await getAdminLessonItems();
+        return res.json({ items });
+    } catch (error) {
+        console.error("Admin lessons listing endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+app.patch("/api/admin/lessons/:moduleId", async (req, res) => {
+    const moduleId = parsePositiveIntParam(req.params.moduleId);
+    if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
+
+    const rawTitle = req.body?.title;
+    if (typeof rawTitle !== "string") {
+        return res.status(400).json({ error: "Title is required" });
+    }
+
+    const title = rawTitle.trim();
+    if (!title) {
+        return res.status(400).json({ error: "Title cannot be empty" });
+    }
+    if (title.length > MODULE_TITLE_MAX_LENGTH) {
+        return res.status(400).json({ error: `Title must be at most ${MODULE_TITLE_MAX_LENGTH} characters` });
+    }
+
+    try {
+        const updateResult = await pool.query(
+            `UPDATE modules
+             SET title = $2
+             WHERE module_id = $1
+             RETURNING module_id`,
+            [moduleId, title]
+        );
+
+        if (updateResult.rowCount === 0) {
+            return res.status(404).json({ error: "Module not found" });
+        }
+
+        invalidateAdminCaches();
+        const [item] = await getAdminLessonItems(moduleId);
+        if (!item) {
+            return res.status(500).json({ error: "Failed to load lesson after update" });
+        }
+
+        return res.json({ item });
+    } catch (error) {
+        console.error("Admin lesson title update endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+app.post("/api/admin/lessons/:moduleId/pdf", (req, res) => {
+    upload.single("file")(req, res, async (uploadError) => {
+        if (uploadError) {
+            if (uploadError.code === "LIMIT_FILE_SIZE") {
+                return res
+                    .status(400)
+                    .json({ error: `PDF exceeds ${Math.floor(LESSON_PDF_MAX_FILE_SIZE_BYTES / (1024 * 1024))}MB limit` });
+            }
+            return res.status(400).json({ error: "Invalid PDF upload" });
+        }
+
+        const moduleId = parsePositiveIntParam(req.params.moduleId);
+        if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
+        if (!req.file?.buffer) return res.status(400).json({ error: "PDF file is required" });
+
+        const rawOriginalFilename = String(req.file.originalname || "").trim();
+        const originalFilename = sanitizePdfOriginalFilename(rawOriginalFilename || `module-${moduleId}.pdf`);
+        const mimeType = String(req.file.mimetype || "")
+            .trim()
+            .toLowerCase();
+        const fileSize = Number(req.file.size) || req.file.buffer.length;
+
+        if (!isPdfExtensionFileName(rawOriginalFilename || originalFilename)) {
+            return res.status(400).json({ error: "Only .pdf files are allowed" });
+        }
+        if (!isAllowedPdfMimeType(mimeType)) {
+            return res.status(400).json({ error: "Invalid PDF MIME type" });
+        }
+        if (!hasPdfMagicBytes(req.file.buffer)) {
+            return res.status(400).json({ error: "Invalid PDF file signature" });
+        }
+        if (!Number.isInteger(fileSize) || fileSize < 1 || fileSize > LESSON_PDF_MAX_FILE_SIZE_BYTES) {
+            return res
+                .status(400)
+                .json({ error: `PDF size must be between 1 byte and ${LESSON_PDF_MAX_FILE_SIZE_BYTES} bytes` });
+        }
+
+        const client = await pool.connect();
+        const staleStorageKeys = new Set();
+        let newStorageKey = null;
+        let newStoragePath = null;
+        let committed = false;
+
+        try {
+            await client.query("BEGIN");
+
+            const moduleResult = await client.query(
+                `SELECT module_id, module_code, title
+                 FROM modules
+                 WHERE module_id = $1
+                 FOR UPDATE`,
+                [moduleId]
+            );
+
+            if (moduleResult.rowCount === 0) {
+                await client.query("ROLLBACK");
+                return res.status(404).json({ error: "Module not found" });
+            }
+
+            const moduleRow = moduleResult.rows[0];
+            const pdfResourceResult = await client.query(
+                `SELECT
+                   resource_id::INT AS resource_id,
+                   module_id::INT AS module_id,
+                   type,
+                   title,
+                   url,
+                   order_no::INT AS order_no
+                 FROM module_resources
+                 WHERE module_id = $1
+                   AND type = 'PDF'
+                 ORDER BY order_no ASC, resource_id ASC
+                 LIMIT 1
+                 FOR UPDATE`,
+                [moduleId]
+            );
+
+            let resourceId = null;
+            if (pdfResourceResult.rowCount === 0) {
+                const nextOrderResult = await client.query(
+                    `SELECT COALESCE(MAX(order_no), 0)::INT + 1 AS next_order
+                     FROM module_resources
+                     WHERE module_id = $1`,
+                    [moduleId]
+                );
+                const nextOrder = Number(nextOrderResult.rows[0]?.next_order) || 1;
+                const resourceTitle = `${moduleRow.module_code} PDF Manual`;
+                const insertResourceResult = await client.query(
+                    `INSERT INTO module_resources (module_id, type, title, url, order_no)
+                     VALUES ($1, 'PDF', $2, $3, $4)
+                     RETURNING resource_id`,
+                    [moduleId, resourceTitle, "", nextOrder]
+                );
+                resourceId = Number(insertResourceResult.rows[0]?.resource_id) || null;
+            } else {
+                resourceId = Number(pdfResourceResult.rows[0]?.resource_id) || null;
+
+                if (resourceId) {
+                    const existingFileResult = await client.query(
+                        `SELECT
+                           file_id::INT AS file_id,
+                           resource_id::INT AS resource_id,
+                           storage_key,
+                           original_filename,
+                           mime_type,
+                           file_size,
+                           sha256
+                         FROM module_resource_files
+                         WHERE resource_id = $1
+                         FOR UPDATE`,
+                        [resourceId]
+                    );
+                    for (const row of existingFileResult.rows) {
+                        if (row.storage_key) staleStorageKeys.add(row.storage_key);
+                    }
+                }
+
+                const duplicateResourcesResult = await client.query(
+                    `SELECT resource_id::INT AS resource_id
+                     FROM module_resources
+                     WHERE module_id = $1
+                       AND type = 'PDF'
+                       AND resource_id <> $2
+                     ORDER BY order_no ASC, resource_id ASC
+                     FOR UPDATE`,
+                    [moduleId, resourceId]
+                );
+
+                const extraResourceIds = duplicateResourcesResult.rows
+                    .map((row) => Number(row.resource_id))
+                    .filter((value) => Number.isInteger(value) && value > 0);
+
+                if (extraResourceIds.length > 0) {
+                    const extraFileRowsResult = await client.query(
+                        `SELECT storage_key
+                         FROM module_resource_files
+                         WHERE resource_id = ANY($1::BIGINT[])
+                         FOR UPDATE`,
+                        [extraResourceIds]
+                    );
+                    for (const row of extraFileRowsResult.rows) {
+                        if (row.storage_key) staleStorageKeys.add(row.storage_key);
+                    }
+
+                    await client.query(`DELETE FROM module_resources WHERE resource_id = ANY($1::BIGINT[])`, [extraResourceIds]);
+                }
+            }
+
+            if (!resourceId) {
+                await client.query("ROLLBACK");
+                return res.status(500).json({ error: "Failed to resolve PDF resource" });
+            }
+
+            const resourceViewPath = buildModuleResourcePdfViewPath(resourceId);
+            await client.query(`UPDATE module_resources SET url = $2 WHERE resource_id = $1`, [resourceId, resourceViewPath]);
+
+            const checksum = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
+            newStorageKey = createLessonPdfStorageKey(moduleId);
+            newStoragePath = resolveLessonPdfStoragePath(newStorageKey);
+            await ensureLessonUploadsDirectory();
+            await fsPromises.writeFile(newStoragePath, req.file.buffer, { flag: "wx" });
+
+            try {
+                await client.query(
+                    `INSERT INTO module_resource_files
+                      (resource_id, storage_key, original_filename, mime_type, file_size, sha256)
+                     VALUES ($1, $2, $3, $4, $5, $6)
+                     ON CONFLICT (resource_id)
+                     DO UPDATE SET
+                       storage_key = EXCLUDED.storage_key,
+                       original_filename = EXCLUDED.original_filename,
+                       mime_type = EXCLUDED.mime_type,
+                       file_size = EXCLUDED.file_size,
+                       sha256 = EXCLUDED.sha256,
+                       updated_at = NOW()`,
+                    [resourceId, newStorageKey, originalFilename, mimeType || "application/pdf", fileSize, checksum]
+                );
+            } catch (dbUpsertError) {
+                await removeStoredLessonPdf(newStorageKey);
+                throw dbUpsertError;
+            }
+
+            await client.query("COMMIT");
+            committed = true;
+            invalidateAdminCaches();
+        } catch (error) {
+            if (!committed) {
+                try {
+                    await client.query("ROLLBACK");
+                } catch (rollbackError) {
+                    console.error("Rollback failed during admin lesson PDF upload:", rollbackError);
+                }
+            }
+            if (newStorageKey && !committed) {
+                await removeStoredLessonPdf(newStorageKey);
+            }
+            console.error("Admin lesson PDF upload endpoint failed:", error);
+            return res.status(500).json({ error: "Failed to upload lesson PDF" });
+        } finally {
+            client.release();
+        }
+
+        for (const key of staleStorageKeys.values()) {
+            if (newStorageKey && key === newStorageKey) continue;
+            await removeStoredLessonPdf(key);
+        }
+
+        try {
+            const [item] = await getAdminLessonItems(moduleId);
+            return res.status(200).json({ item: item || null });
+        } catch (listError) {
+            console.error("Admin lesson PDF upload follow-up listing failed:", listError);
+            return res.status(200).json({ item: null });
+        }
+    });
+});
+
+app.delete("/api/admin/lessons/:moduleId/pdf", async (req, res) => {
+    const moduleId = parsePositiveIntParam(req.params.moduleId);
+    if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
+
+    const client = await pool.connect();
+    const staleStorageKeys = new Set();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+
+        const moduleResult = await client.query(
+            `SELECT module_id
+             FROM modules
+             WHERE module_id = $1
+             FOR UPDATE`,
+            [moduleId]
+        );
+        if (moduleResult.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ error: "Module not found" });
+        }
+
+        const pdfResourcesResult = await client.query(
+            `SELECT resource_id::INT AS resource_id
+             FROM module_resources
+             WHERE module_id = $1
+               AND type = 'PDF'
+             ORDER BY order_no ASC, resource_id ASC
+             FOR UPDATE`,
+            [moduleId]
+        );
+
+        if (pdfResourcesResult.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ error: "No PDF resource found for module" });
+        }
+
+        const resourceIds = pdfResourcesResult.rows
+            .map((row) => Number(row.resource_id))
+            .filter((value) => Number.isInteger(value) && value > 0);
+        const pdfFileRowsResult = await client.query(
+            `SELECT storage_key
+             FROM module_resource_files
+             WHERE resource_id = ANY($1::BIGINT[])
+             FOR UPDATE`,
+            [resourceIds]
+        );
+        for (const row of pdfFileRowsResult.rows) {
+            if (row.storage_key) staleStorageKeys.add(row.storage_key);
+        }
+
+        await client.query(`DELETE FROM module_resources WHERE resource_id = ANY($1::BIGINT[])`, [resourceIds]);
+        await client.query("COMMIT");
+        committed = true;
+        invalidateAdminCaches();
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin lesson PDF delete:", rollbackError);
+            }
+        }
+        console.error("Admin lesson PDF delete endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to remove lesson PDF" });
+    } finally {
+        client.release();
+    }
+
+    for (const key of staleStorageKeys.values()) {
+        await removeStoredLessonPdf(key);
+    }
+
+    try {
+        const [item] = await getAdminLessonItems(moduleId);
+        return res.json({ item: item || null, removed: true });
+    } catch (listError) {
+        console.error("Admin lesson PDF delete follow-up listing failed:", listError);
+        return res.json({ item: null, removed: true });
+    }
 });
 
 /*
@@ -2573,11 +3097,77 @@ app.post("/api/admin/trainees/:id/reset-pin", async (req, res) => {
     res.status(501).json({ error: "PIN reset is not enabled in this deployment." });
 });
 
+app.get("/api/resources/:resourceId/pdf", requireAuth, async (req, res) => {
+    const resourceId = parsePositiveIntParam(req.params.resourceId);
+    if (!resourceId) return res.status(400).json({ error: "Invalid resource id" });
+
+    try {
+        const result = await pool.query(
+            `SELECT
+               mr.resource_id::INT AS resource_id,
+               mr.type,
+               mrf.storage_key,
+               mrf.original_filename,
+               mrf.mime_type,
+               mrf.file_size
+             FROM module_resources mr
+             JOIN modules m ON m.module_id = mr.module_id
+             JOIN module_resource_files mrf ON mrf.resource_id = mr.resource_id
+             WHERE mr.resource_id = $1
+               AND mr.type = 'PDF'
+               AND m.is_active = TRUE
+             LIMIT 1`,
+            [resourceId]
+        );
+
+        if (result.rowCount === 0) {
+            return res.status(404).json({ error: "PDF resource not found" });
+        }
+
+        const row = result.rows[0];
+        const storagePath = resolveLessonPdfStoragePath(row.storage_key);
+        let stats;
+        try {
+            stats = await fsPromises.stat(storagePath);
+        } catch (error) {
+            if (error?.code === "ENOENT") return res.status(404).json({ error: "PDF file not found" });
+            throw error;
+        }
+
+        if (!stats.isFile()) {
+            return res.status(404).json({ error: "PDF file not found" });
+        }
+
+        const downloadName = sanitizePdfOriginalFilename(row.original_filename || `module-${resourceId}.pdf`);
+        const contentLength = Number(row.file_size) > 0 ? Number(row.file_size) : stats.size;
+
+        res.setHeader("Content-Type", row.mime_type || "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename=\"${downloadName}\"`);
+        res.setHeader("Content-Length", String(contentLength));
+        res.setHeader("X-Content-Type-Options", "nosniff");
+
+        const stream = fs.createReadStream(storagePath);
+        stream.on("error", (streamError) => {
+            console.error("PDF stream failed:", streamError);
+            if (!res.headersSent) {
+                res.status(500).json({ error: "Failed to stream PDF" });
+                return;
+            }
+            res.destroy(streamError);
+        });
+
+        return stream.pipe(res);
+    } catch (error) {
+        console.error("PDF read endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 // Modules + resources + simulations
 app.get("/api/modules", requireAuth, async (req, res) => {
     try {
         const modules = await pool.query("SELECT * FROM modules ORDER BY order_no;");
-        const resources = await pool.query("SELECT * FROM module_resources ORDER BY module_id, order_no;");
+        const resources = await pool.query(getModuleResourcesWithFilesSql());
         const sims = await pool.query("SELECT * FROM simulations ORDER BY module_id, order_no;");
         res.json({ modules: modules.rows, resources: resources.rows, simulations: sims.rows });
     } catch (e) {

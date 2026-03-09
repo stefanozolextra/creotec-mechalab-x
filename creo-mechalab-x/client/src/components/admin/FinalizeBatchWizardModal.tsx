@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { CheckCircle2, Download, Loader2, RotateCcw, X, AlertTriangle } from "lucide-react";
+import { CheckCircle2, Download, Loader2, RotateCcw, AlertTriangle } from "lucide-react";
 import { API_BASE_URL, ApiError, requestJson } from "../../api/http";
 import type { BatchFilter } from "../../types/adminTrainee";
 import { getAuthToken } from "../../utils/auth";
+import AdminModalShell from "./ui/AdminModalShell";
 
 type ResetResponse = {
   ok: boolean;
@@ -60,7 +61,6 @@ export default function FinalizeBatchWizardModal({
   onClose,
   onResetCompleted,
 }: FinalizeBatchWizardModalProps) {
-  // --- Data & Form States ---
   const [batchCode, setBatchCode] = useState("");
   const [confirmText, setConfirmText] = useState("");
   const [exportedAt, setExportedAt] = useState<string | null>(null);
@@ -69,40 +69,20 @@ export default function FinalizeBatchWizardModal({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ResetResponse | null>(null);
 
-  // --- Animation States ---
-  const [shouldRender, setShouldRender] = useState(false);
-  const [isVisible, setIsVisible] = useState(false);
-
   const effectiveBatchCode = useMemo(() => lockedBatchCode || batchCode, [lockedBatchCode, batchCode]);
   const expectedConfirmText = useMemo(() => `RESET ${effectiveBatchCode}`, [effectiveBatchCode]);
   const canReset = Boolean(effectiveBatchCode) && Boolean(exportedAt) && confirmText === expectedConfirmText && !exporting && !resetting;
 
-  // Handles Mount/Unmount Animation & Resetting values when opened
   useEffect(() => {
-    let showTimer: number;
-    let unmountTimer: number;
-
-    if (open) {
-      setShouldRender(true);
-      showTimer = window.setTimeout(() => setIsVisible(true), 10);
-
-      const fallbackBatch = lockedBatchCode || initialBatchCode || batches[0]?.batch_code || "";
-      setBatchCode(fallbackBatch);
-      setConfirmText("");
-      setExportedAt(null);
-      setExporting(false);
-      setResetting(false);
-      setError(null);
-      setResult(null);
-    } else {
-      setIsVisible(false);
-      unmountTimer = window.setTimeout(() => setShouldRender(false), 300);
-    }
-
-    return () => {
-      window.clearTimeout(showTimer);
-      window.clearTimeout(unmountTimer);
-    };
+    if (!open) return;
+    const fallbackBatch = lockedBatchCode || initialBatchCode || batches[0]?.batch_code || "";
+    setBatchCode(fallbackBatch);
+    setConfirmText("");
+    setExportedAt(null);
+    setExporting(false);
+    setResetting(false);
+    setError(null);
+    setResult(null);
   }, [open, initialBatchCode, batches, lockedBatchCode]);
 
   useEffect(() => {
@@ -112,8 +92,6 @@ export default function FinalizeBatchWizardModal({
       onBusyChange(false);
     };
   }, [open, exporting, resetting, onBusyChange]);
-
-  if (!shouldRender) return null;
 
   const handleBatchCodeChange = (value: string) => {
     if (lockedBatchCode) return;
@@ -207,161 +185,132 @@ export default function FinalizeBatchWizardModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      {/* Animated Backdrop */}
-      <div
-        className={`absolute inset-0 bg-[#0B1B3D]/40 dark:bg-[#0F172A]/80 backdrop-blur-sm transition-opacity duration-300 ease-out ${isVisible ? 'opacity-100' : 'opacity-0'}`}
-        onClick={(!exporting && !resetting) ? onClose : undefined}
-      />
-
-      {/* Animated Modal Container with Compact Max Height */}
-      <div className={`relative w-full max-w-2xl rounded-3xl bg-white dark:bg-[#1E293B] shadow-2xl flex flex-col max-h-[90vh] overflow-hidden transform transition-all duration-300 ease-out ${isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}>
-
-        {/* Header - Compact Height */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/20 shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-500 rounded-xl">
-                <RotateCcw size={20} />
-              </div>
-              <div>
-                <h2 className="text-lg font-extrabold text-[#0B1B3D] dark:text-slate-100">Finalize Batch</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Export records and permanently reset the cohort.</p>
-              </div>
-            </div>
+    <AdminModalShell
+      open={open}
+      onClose={onClose}
+      title="Finalize Batch"
+      description="Export records and permanently reset the cohort."
+      icon={<RotateCcw size={20} />}
+      maxWidthClass="max-w-2xl"
+      closeDisabled={exporting || resetting}
+      closeOnBackdrop={!exporting && !resetting}
+      bodyClassName="p-6"
+      footer={(
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 rounded-full text-xs font-bold text-slate-500 hover:text-[#0B1B3D] dark:hover:text-slate-200 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 transition-colors duration-500 disabled:opacity-50"
+            disabled={exporting || resetting}
+          >
+            {result ? "Close" : "Cancel"}
+          </button>
+          {!result ? (
             <button
-              type="button"
-              onClick={onClose}
-              className="text-slate-400 hover:text-[#0B1B3D] dark:hover:text-slate-200 transition-colors bg-white dark:bg-[#0F172A] p-1.5 rounded-full border border-slate-200 dark:border-slate-700 shadow-sm disabled:opacity-50"
-              aria-label="Close"
-              disabled={exporting || resetting}
+              type="submit"
+              form="finalize-batch-form"
+              disabled={!canReset || Boolean(result)}
+              className="px-6 py-2 rounded-full text-xs font-bold text-white bg-[#DC2626] hover:bg-[#B91C1C] shadow-lg shadow-red-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              <X size={18} aria-hidden="true" />
+              {resetting ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} aria-hidden="true" />}
+              {resetting ? "Resetting..." : "Reset Batch"}
             </button>
-          </div>
+          ) : null}
+        </div>
+      )}
+    >
+      <form id="finalize-batch-form" onSubmit={handleReset} className="space-y-4">
+        <div className="rounded-xl border border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-1.5 text-sm">
+          <p className="font-bold text-[#0B1B3D] dark:text-slate-200 flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-500" />
+            Finalization Steps
+          </p>
+          <ul className="list-decimal list-inside text-slate-600 dark:text-slate-400 space-y-1 ml-1 font-medium text-xs">
+            <li>Select the batch to finalize.</li>
+            <li>Export the batch CSV (Mandatory step).</li>
+            <li>Type the confirmation phrase to permanently wipe active data.</li>
+          </ul>
         </div>
 
-        {/* Content & Footer wrapped in Form */}
-        <form onSubmit={handleReset} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+        <label className="space-y-1.5 block">
+          <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">Select Batch *</span>
+          <select
+            value={batchCode}
+            onChange={(event) => handleBatchCodeChange(event.target.value)}
+            className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
+            disabled={exporting || resetting || Boolean(result) || Boolean(lockedBatchCode)}
+            required
+          >
+            <option value="" disabled>Select batch</option>
+            {batches.map((batch) => (
+              <option key={batch.batch_id} value={batch.batch_code}>{batch.batch_code}</option>
+            ))}
+          </select>
+          {lockedBatchCode ? (
+            <p className="text-xs text-slate-500 font-medium mt-1.5">Batch is locked to the selected cohort row.</p>
+          ) : null}
+        </label>
 
-          {/* Scrollable Middle Section - Compact Paddings */}
-          <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <button
+            type="button"
+            onClick={() => { void handleExport(); }}
+            disabled={!effectiveBatchCode || exporting || resetting || Boolean(result)}
+            className="px-5 py-2.5 rounded-full text-xs font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50 inline-flex items-center justify-center gap-2"
+          >
+            {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} aria-hidden="true" />}
+            {exporting ? "Exporting..." : "Export Batch CSV"}
+          </button>
+          {exportedAt ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 size={14} /> Exported
+            </span>
+          ) : null}
+        </div>
 
-            <div className="rounded-xl border border-slate-200 dark:border-slate-700/50 bg-slate-50 dark:bg-slate-800/50 p-4 space-y-1.5 text-sm">
-              <p className="font-bold text-[#0B1B3D] dark:text-slate-200 flex items-center gap-2">
-                <AlertTriangle size={16} className="text-amber-500" />
-                Finalization Steps
-              </p>
-              <ul className="list-decimal list-inside text-slate-600 dark:text-slate-400 space-y-1 ml-1 font-medium text-xs">
-                <li>Select the batch to finalize.</li>
-                <li>Export the batch CSV (Mandatory step).</li>
-                <li>Type the confirmation phrase to permanently wipe active data.</li>
-              </ul>
-            </div>
+        <div className={`transition-all duration-500 ${exportedAt ? "opacity-100" : "opacity-40 grayscale pointer-events-none"}`}>
+          <label className="space-y-1.5 block">
+            <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">Confirmation Phrase *</span>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(event) => setConfirmText(event.target.value)}
+              placeholder={expectedConfirmText}
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-300"
+              disabled={!exportedAt || resetting || Boolean(result)}
+              required
+            />
+            <p className="text-xs text-slate-500 font-medium mt-1.5">
+              Type exactly: <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-red-500">{expectedConfirmText}</span>
+            </p>
+          </label>
+        </div>
 
-            <label className="space-y-1.5 block">
-              <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">Select Batch *</span>
-              <select
-                value={batchCode}
-                onChange={(event) => handleBatchCodeChange(event.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
-                disabled={exporting || resetting || Boolean(result) || Boolean(lockedBatchCode)}
-                required
-              >
-                <option value="" disabled>Select batch</option>
-                {batches.map((batch) => (
-                  <option key={batch.batch_id} value={batch.batch_code}>{batch.batch_code}</option>
-                ))}
-              </select>
-              {lockedBatchCode ? (
-                <p className="text-xs text-slate-500 font-medium mt-1.5">Batch is locked to the selected cohort row.</p>
-              ) : null}
-            </label>
-
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => { void handleExport(); }}
-                disabled={!effectiveBatchCode || exporting || resetting || Boolean(result)}
-                className="px-5 py-2.5 rounded-full text-xs font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-lg shadow-blue-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 inline-flex items-center gap-2"
-              >
-                {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} aria-hidden="true" />}
-                {exporting ? "Exporting..." : "Export Batch CSV"}
-              </button>
-              {exportedAt ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-700 dark:text-emerald-400 animate-in zoom-in">
-                  <CheckCircle2 size={14} /> Exported
-                </span>
-              ) : null}
-            </div>
-
-            <div className={`transition-all duration-500 ${exportedAt ? "opacity-100" : "opacity-40 grayscale pointer-events-none"}`}>
-              <label className="space-y-1.5 block">
-                <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">Confirmation Phrase *</span>
-                <input
-                  type="text"
-                  value={confirmText}
-                  onChange={(event) => setConfirmText(event.target.value)}
-                  placeholder={expectedConfirmText}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-red-500 transition-colors duration-300"
-                  disabled={!exportedAt || resetting || Boolean(result)}
-                  required
-                />
-                <p className="text-xs text-slate-500 font-medium mt-1.5">
-                  Type exactly: <span className="font-mono bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-red-500">{expectedConfirmText}</span>
-                </p>
-              </label>
-            </div>
-
-            {error ? (
-              <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-2.5 text-xs font-semibold text-red-600 dark:text-red-400 animate-in slide-in-from-top-2">
-                {error}
-              </div>
-            ) : null}
-
-            {result ? (
-              <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-4 space-y-2 text-xs text-emerald-800 dark:text-emerald-300 animate-in slide-in-from-bottom-4">
-                <h3 className="font-extrabold text-sm text-emerald-900 dark:text-emerald-400 flex items-center gap-2">
-                  <CheckCircle2 size={16} />
-                  Reset Successful
-                </h3>
-                <div className="grid grid-cols-2 gap-1.5 font-medium">
-                  <p>Batch:</p> <p className="text-right">{result.batch_code}</p>
-                  <p>Deleted Progress:</p> <p className="text-right">{result.deleted.progress_rows}</p>
-                  <p>Deleted Accounts:</p> <p className="text-right">{result.deleted.trainee_accounts}</p>
-                  <p>Deleted Trainees:</p> <p className="text-right">{result.deleted.trainees}</p>
-                  <p>Deleted Batches:</p> <p className="text-right">{result.deleted.batches}</p>
-                </div>
-                <div className="pt-2 mt-2 border-t border-emerald-200/50 dark:border-emerald-500/20 opacity-80">
-                  Reset at: {new Date(result.reset_at).toLocaleString()}
-                </div>
-              </div>
-            ) : null}
+        {error ? (
+          <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-2.5 text-xs font-semibold text-red-600 dark:text-red-400">
+            {error}
           </div>
+        ) : null}
 
-          {/* Footer Actions - Compact Padding */}
-          <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-700/50 bg-slate-50/50 dark:bg-slate-800/20 shrink-0 flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-5 py-2 rounded-full text-xs font-bold text-slate-500 hover:text-[#0B1B3D] dark:hover:text-slate-200 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 transition-colors duration-500 disabled:opacity-50"
-              disabled={exporting || resetting}
-            >
-              {result ? "Close" : "Cancel"}
-            </button>
-            {!result && (
-              <button
-                type="submit"
-                disabled={!canReset || Boolean(result)}
-                className="px-6 py-2 rounded-full text-xs font-bold text-white bg-[#DC2626] hover:bg-[#B91C1C] shadow-lg shadow-red-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 flex items-center gap-2"
-              >
-                {resetting ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} aria-hidden="true" />}
-                {resetting ? "Resetting..." : "Reset Batch"}
-              </button>
-            )}
+        {result ? (
+          <div className="rounded-xl border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10 p-4 space-y-2 text-xs text-emerald-800 dark:text-emerald-300">
+            <h3 className="font-extrabold text-sm text-emerald-900 dark:text-emerald-400 flex items-center gap-2">
+              <CheckCircle2 size={16} />
+              Reset Successful
+            </h3>
+            <div className="grid grid-cols-2 gap-1.5 font-medium">
+              <p>Batch:</p> <p className="text-right">{result.batch_code}</p>
+              <p>Deleted Progress:</p> <p className="text-right">{result.deleted.progress_rows}</p>
+              <p>Deleted Accounts:</p> <p className="text-right">{result.deleted.trainee_accounts}</p>
+              <p>Deleted Trainees:</p> <p className="text-right">{result.deleted.trainees}</p>
+              <p>Deleted Batches:</p> <p className="text-right">{result.deleted.batches}</p>
+            </div>
+            <div className="pt-2 mt-2 border-t border-emerald-200/50 dark:border-emerald-500/20 opacity-80">
+              Reset at: {new Date(result.reset_at).toLocaleString()}
+            </div>
           </div>
-        </form>
-      </div>
-    </div>
+        ) : null}
+      </form>
+    </AdminModalShell>
   );
 }

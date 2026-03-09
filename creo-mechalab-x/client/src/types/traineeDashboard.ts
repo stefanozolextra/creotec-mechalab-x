@@ -40,6 +40,12 @@ export interface ModuleResourceApi {
     title: string;
     url: string;
     order_no: number;
+    file_id?: PgNumeric | null;
+    original_filename?: string | null;
+    mime_type?: string | null;
+    file_size?: PgNumeric | null;
+    has_uploaded_file?: boolean;
+    resolved_url?: string | null;
 }
 
 export interface SimulationApi {

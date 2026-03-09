@@ -6,6 +6,10 @@
 node_modules/
 **/node_modules/
 
+# Runtime upload artifacts
+creo-mechalab-x/server/uploads/
+creo-mechalab-x/server/uploads/**
+
 # Real environment files (never commit)
 .env
 **/.env
