@@ -988,6 +988,44 @@ function getModuleResourcesWithFilesSql() {
             ORDER BY mr.module_id, mr.order_no, mr.resource_id`;
 }
 
+function getModuleResourcesLegacySql() {
+    return `SELECT
+              mr.resource_id::INT AS resource_id,
+              mr.module_id::INT AS module_id,
+              mr.type,
+              mr.title,
+              mr.url,
+              mr.order_no::INT AS order_no,
+              NULL::INT AS file_id,
+              NULL::TEXT AS original_filename,
+              NULL::TEXT AS mime_type,
+              NULL::BIGINT AS file_size,
+              FALSE AS has_uploaded_file,
+              mr.url AS resolved_url
+            FROM module_resources mr
+            ORDER BY mr.module_id, mr.order_no, mr.resource_id`;
+}
+
+function isUndefinedTableError(error, tableName) {
+    return error?.code === "42P01" && String(error?.message || "").toLowerCase().includes(tableName.toLowerCase());
+}
+
+async function getModuleResourcesRowsSafe() {
+    try {
+        const result = await pool.query(getModuleResourcesWithFilesSql());
+        return result.rows;
+    } catch (error) {
+        if (!isUndefinedTableError(error, "module_resource_files")) {
+            throw error;
+        }
+
+        // Backward-compatible fallback for databases that have not applied module_resource_files migration yet.
+        console.error("Dashboard resources query fallback: module_resource_files is missing", error);
+        const legacyResult = await pool.query(getModuleResourcesLegacySql());
+        return legacyResult.rows;
+    }
+}
+
 async function getAdminLessonItems(moduleId = null) {
     const result = await pool.query(
         `SELECT
@@ -1080,7 +1118,7 @@ async function getDashboardPayloadForTrainee(traineeId) {
             [traineeId]
         ),
         pool.query("SELECT * FROM modules ORDER BY order_no"),
-        pool.query(getModuleResourcesWithFilesSql()),
+        getModuleResourcesRowsSafe(),
         pool.query("SELECT * FROM simulations ORDER BY module_id, order_no"),
         pool.query(
             `SELECT
@@ -1102,7 +1140,7 @@ async function getDashboardPayloadForTrainee(traineeId) {
         moduleStatus: moduleStatus.rows,
         moduleContent: {
             modules: modules.rows,
-            resources: resources.rows,
+            resources,
             simulations: simulations.rows,
         },
         simulationProgress: simulationProgress.rows,
