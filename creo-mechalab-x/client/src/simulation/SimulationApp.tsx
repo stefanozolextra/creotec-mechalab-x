@@ -30,7 +30,7 @@ import { getPinMeta as getPinMetaHelper, inferPaletteTypeFromComponentId as infe
 import { resolveTerminalStripTooltip } from './constants/pinTooltips';
 
 const NODE_SIZE = 3;
-const NAVBAR_HEIGHT = 64; // Adjusted slightly for the new taskbar
+const NAVBAR_HEIGHT = 64; // Adjusted for the new top header
 const COMPONENTS_MOVABLE = false;
 const BATTERY_NODE = CUSTOM_NODE_ASSETS.terminalStrip;
 void BATTERY_NODE;
@@ -82,14 +82,14 @@ const TERMINAL_STRIP_PLACEMENTS: Partial<Record<SimulationComponentType, ShapePo
 };
 
 const INITIAL_COMPONENTS: Record<string, ShapePos> = {
-  'battery-1': { x: 120, y: 280 },
-  'battery-2': { x: 300, y: 280 },
-  'lightIndicator-1': { x: 640, y: 130 },
-  'relayModule-1': { x: 120, y: 420 },
-  'relayModule-2': { x: 300, y: 420 },
-  'relayModule-3': { x: 480, y: 420 },
-  'counter-1': { x: 309, y: 640 },
-  'timer-1': { x: 490, y: 640 },
+  'battery-1': TERMINAL_STRIP_PLACEMENTS.battery ?? { x: 120, y: 280 },
+  'battery-2': { x: (TERMINAL_STRIP_PLACEMENTS.battery?.x ?? 120) + 160, y: (TERMINAL_STRIP_PLACEMENTS.battery?.y ?? 280) },
+  'lightIndicator-1': TERMINAL_STRIP_PLACEMENTS.lightIndicator ?? { x: 320, y: 130 },
+  'relayModule-1': { x: 124, y: 420 },
+  'relayModule-2': { x: 309, y: 420 },
+  'relayModule-3': { x: 450, y: 420 },
+  'counter-1': TERMINAL_STRIP_PLACEMENTS.counter ?? { x: 309, y: 640 },
+  'timer-1': TERMINAL_STRIP_PLACEMENTS.timer ?? { x: 450, y: 640 },
   'magneticMotor-1': { x: 800, y: 515 },
   'rollerLever-1': { x: 800, y: 335 },
   'solenoidValve-1': { x: 800, y: 150 },
@@ -269,6 +269,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     event.preventDefault();
     const droppedType = event.dataTransfer.getData('application/x-device-type') as PaletteComponentType;
     if (!COMPONENT_PALETTE.some((item) => item.type === droppedType)) return;
+
     if (target === 'input') setInputDeviceTypes((prev) => [...prev, droppedType]);
     else setOutputDeviceTypes((prev) => [...prev, droppedType]);
   };
@@ -561,7 +562,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     <div className={`flex flex-col h-screen w-screen text-slate-800 dark:text-slate-200 font-sans overflow-hidden select-none transition-colors duration-300 ${isDarkMode ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
 
       {/* HEADER */}
-      <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-[#0B1120] border-b border-slate-200 dark:border-cyan-900/50 z-50 shadow-md relative">
+      <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-[#0B1120] border-b border-slate-200 dark:border-cyan-900/50 z-[60] shadow-md relative">
         <div className="flex items-center gap-4">
           <button onClick={onNavigateBack} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence">
             <ArrowLeft size={20} />
@@ -615,7 +616,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
       </header>
 
       {/* MAIN CANVAS & OVERLAYS */}
-      <main className="flex-1 relative w-full h-full min-h-0 overflow-hidden bg-slate-200 dark:bg-[#0F172A]" ref={containerRef}>
+      <main className="flex-1 relative w-full h-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-900" ref={containerRef}>
 
         {/* ========================================= */}
         {/* GLOWING THEMED HOVER INDICATORS           */}
@@ -626,8 +627,8 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
           className={`absolute left-0 top-0 bottom-0 w-16 z-40 flex items-center justify-start group transition-opacity duration-300 ${showControls ? 'opacity-0 pointer-events-none' : 'opacity-100 cursor-e-resize'}`}
           onMouseEnter={() => setIsControlsHovered(true)}
         >
-          <div className="h-48 w-1.5 bg-gradient-to-b from-transparent via-cyan-500/30 dark:via-cyan-400/20 to-transparent border-r border-cyan-500/20 group-hover:border-cyan-400 group-hover:via-cyan-500/80 transition-all duration-300 flex items-center justify-center relative shadow-[2px_0_10px_rgba(6,182,212,0)] group-hover:shadow-[2px_0_20px_rgba(6,182,212,0.6)]">
-            <ChevronRight className="absolute left-1 text-cyan-600/40 dark:text-cyan-400/30 group-hover:text-cyan-500 dark:group-hover:text-cyan-300 group-hover:translate-x-1 group-hover:scale-125 transition-all duration-300 animate-[pulse_2s_ease-in-out_infinite]" size={24} strokeWidth={3} />
+          <div className="h-32 w-2 bg-slate-400/20 dark:bg-cyan-500/20 group-hover:w-4 group-hover:bg-cyan-500/50 backdrop-blur-sm border-y border-r border-slate-400/30 dark:border-cyan-400/30 rounded-r-lg flex items-center justify-center relative transition-all duration-300 shadow-[2px_0_10px_rgba(0,0,0,0.1)] dark:shadow-[2px_0_15px_rgba(6,182,212,0.2)] group-hover:shadow-[4px_0_20px_rgba(6,182,212,0.6)]">
+            <ChevronRight className="absolute left-0.5 text-slate-500 dark:text-cyan-400/50 group-hover:text-white dark:group-hover:text-cyan-200 group-hover:translate-x-1 group-hover:scale-125 transition-all duration-300" size={20} strokeWidth={2.5} />
           </div>
         </div>
 
@@ -636,13 +637,13 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
           className={`absolute right-0 top-0 bottom-0 w-16 z-40 flex items-center justify-end group transition-opacity duration-300 ${showDevice ? 'opacity-0 pointer-events-none' : 'opacity-100 cursor-w-resize'}`}
           onMouseEnter={() => setIsDeviceHovered(true)}
         >
-          <div className="h-48 w-1.5 bg-gradient-to-b from-transparent via-cyan-500/30 dark:via-cyan-400/20 to-transparent border-l border-cyan-500/20 group-hover:border-cyan-400 group-hover:via-cyan-500/80 transition-all duration-300 flex items-center justify-center relative shadow-[-2px_0_10px_rgba(6,182,212,0)] group-hover:shadow-[-2px_0_20px_rgba(6,182,212,0.6)]">
-            <ChevronLeft className="absolute right-1 text-cyan-600/40 dark:text-cyan-400/30 group-hover:text-cyan-500 dark:group-hover:text-cyan-300 group-hover:-translate-x-1 group-hover:scale-125 transition-all duration-300 animate-[pulse_2s_ease-in-out_infinite]" size={24} strokeWidth={3} />
+          <div className="h-32 w-2 bg-slate-400/20 dark:bg-cyan-500/20 group-hover:w-4 group-hover:bg-cyan-500/50 backdrop-blur-sm border-y border-l border-slate-400/30 dark:border-cyan-400/30 rounded-l-lg flex items-center justify-center relative transition-all duration-300 shadow-[-2px_0_10px_rgba(0,0,0,0.1)] dark:shadow-[-2px_0_15px_rgba(6,182,212,0.2)] group-hover:shadow-[-4px_0_20px_rgba(6,182,212,0.6)]">
+            <ChevronLeft className="absolute right-0.5 text-slate-500 dark:text-cyan-400/50 group-hover:text-white dark:group-hover:text-cyan-200 group-hover:-translate-x-1 group-hover:scale-125 transition-all duration-300" size={20} strokeWidth={2.5} />
           </div>
         </div>
 
         {/* ========================================= */}
-        {/* ORIGINAL 100% SCALE KONVA STAGE           */}
+        {/* 100% SCALE KONVA STAGE                    */}
         {/* ========================================= */}
         <div className="app-layout" style={{ position: 'absolute', inset: 0 }}>
           <div className="simulation-canvas-frame" style={{ width: stageWidth, height: stageHeight }}>
