@@ -9,8 +9,8 @@ import { AnimatePresence } from 'framer-motion';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ModuleView from './pages/ModuleView';
-// import SimulationView from './pages/SimulationView';
-import PLCSimulationApp from './simulation/PLCSimulationApp';
+import SimulationView from './pages/SimulationView';
+// import PLCSimulationApp from './simulation/PLCSimulationApp';
 import NotFound from './pages/NotFound';
 
 // Admin Components
@@ -107,7 +107,7 @@ const AnimatedRoutes = () => {
           path="/simulation/:id"
           element={
             <RequireAuth role="trainee">
-              <PLCSimulationApp />
+              <SimulationView />
             </RequireAuth>
           }
         />
