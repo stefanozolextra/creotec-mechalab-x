@@ -19,44 +19,48 @@ const HW_STYLES = {
     jackBlue: '#3498db',
     jackYellow: '#f1c40f',
     labelYellow: '#f1c40f',
-    ledOff: '#7f8c8d',
+    switchRedOff: '#7f1d1d',
+    switchRedOn: '#ef4444',
+    ledOff: '#475569',
     ledOn: '#22c55e',
     ledRed: '#ef4444',
-    technicalMono: 'Consolas, monaco, monospace'
+    omronBody: '#1e293b',
+    technicalMono: 'Consolas, monaco, monospace',
+    technicalSans: 'Inter, system-ui, sans-serif'
 };
 
 // --- CONFIGURATION: PLC BOARD PORTS (1:1 with Reference Photo) ---
 const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; label: string; desc: string }> = {
-    // === POWER SUPPLY (Bottom Row, Middle) ===
+    // === POWER SUPPLY ===
     '24v_1': { x: 375, y: 560, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
     '24v_2': { x: 415, y: 560, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
     '0v_1': { x: 375, y: 640, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
     '0v_2': { x: 415, y: 640, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
 
-    // === INPUT (00CH) (Middle Row, Left) ===
+    // === INPUT (00CH) ===
     'plc_com_in': { x: 70, y: 410, color: HW_STYLES.jackRed, label: 'COM', desc: 'Input COM' },
     'plc_in_00': { x: 130, y: 410, color: HW_STYLES.jackYellow, label: '00', desc: 'Input 0.00' },
     'plc_in_01': { x: 190, y: 410, color: HW_STYLES.jackYellow, label: '01', desc: 'Input 0.01' },
     'plc_in_02': { x: 250, y: 410, color: HW_STYLES.jackYellow, label: '02', desc: 'Input 0.02' },
     'plc_in_03': { x: 310, y: 410, color: HW_STYLES.jackYellow, label: '03', desc: 'Input 0.03' },
 
-    // === RELAY OUTPUT (10CH) (Bottom Row, Left) ===
+    // === RELAY OUTPUT (10CH) ===
     'plc_com_out_1': { x: 70, y: 640, color: HW_STYLES.jackBlack, label: 'COM1', desc: 'Output COM 1' },
     'plc_out_00': { x: 130, y: 640, color: HW_STYLES.jackBlue, label: '00', desc: 'Output 10.00' },
     'plc_out_01': { x: 190, y: 640, color: HW_STYLES.jackBlue, label: '01', desc: 'Output 10.01' },
     'plc_out_02': { x: 250, y: 640, color: HW_STYLES.jackBlue, label: '02', desc: 'Output 10.02' },
 
-    // === MANUAL INPUTS (Bottom Row, Right) ===
+    // === MANUAL INPUTS ===
     'start_no_in': { x: 660, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) In' },
     'start_no_out': { x: 700, y: 660, color: HW_STYLES.jackBlue, label: 'NO', desc: 'Start (NO) Out' },
     'stop_nc_in': { x: 780, y: 660, color: HW_STYLES.jackYellow, label: 'NC', desc: 'Stop (NC) In' },
     'stop_nc_out': { x: 820, y: 660, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Stop (NC) Out' },
 
-    // === SOLENOID VALVES (Bottom Row, Above Buttons) ===
+    // === SOLENOID VALVES ===
     'sol_a_plus': { x: 550, y: 530, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
     'sol_a_minus': { x: 590, y: 530, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
 
-    // === REED SWITCHES (Middle Row, Center) ===
+    // === REED SWITCHES ===
     'reed_ret': { x: 510, y: 410, color: HW_STYLES.jackYellow, label: 'RET', desc: 'Cyl Retracted' },
     'reed_ext': { x: 570, y: 410, color: HW_STYLES.jackYellow, label: 'EXT', desc: 'Cyl Extended' },
 };
@@ -69,6 +73,10 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
     const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
 
+    // Logic flow control for visual interactivity
+    const [isAcPowerOn, setIsAcPowerOn] = useState<boolean>(false);
+
+    // Wiring States
     const [wires, setWires] = useState<Connection[]>([]);
     const [wireColor, setWireColor] = useState<string>('#e74c3c');
     const [activePin, setActivePin] = useState<string | null>(null);
@@ -76,6 +84,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const [hoveredPin, setHoveredPin] = useState<string | null>(null);
     const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
 
+    // Undo/Redo History
     const [historyPast, setHistoryPast] = useState<Connection[][]>([]);
     const [historyFuture, setHistoryFuture] = useState<Connection[][]>([]);
 
@@ -133,7 +142,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
     const handleUndo = () => { if (!historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
     const handleRedo = () => { if (!historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
-    const handleResetBoard = () => { setHistoryPast(prev => [...prev, wires].slice(-50)); setHistoryFuture([]); setWires([]); setSelectedWireId(null); setActivePin(null); };
+    const handleResetBoard = () => { setHistoryPast(prev => [...prev, wires].slice(-50)); setHistoryFuture([]); setWires([]); setSelectedWireId(null); setActivePin(null); setIsAcPowerOn(false); };
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedWire(); } };
@@ -175,9 +184,9 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
     const renderTechnicalPanel = (id: string, x: number, y: number, width: number, height: number, title: string) => (
         <Group key={`panel-${id}`} x={x} y={y}>
-            <Rect width={width} height={height} fill={HW_STYLES.panelBg} stroke={HW_STYLES.panelBorder} strokeWidth={2} cornerRadius={4} shadowColor="rgba(0,0,0,0.15)" shadowBlur={6} shadowOffsetY={3} />
-            <Rect width={width} height={28} fill="#e2e8f0" stroke={HW_STYLES.panelBorder} strokeWidth={1} cornerRadius={4} />
-            <Text text={title} x={10} y={8} fontSize={13} fontStyle="bold" fill="#1e293b" />
+            <Rect width={width} height={height} fill={HW_STYLES.panelBg} stroke={HW_STYLES.panelBorder} strokeWidth={2} cornerRadius={4} shadowColor="rgba(0,0,0,0.15)" shadowBlur={6} shadowOffsetY={3} listening={false} />
+            <Rect width={width} height={28} fill="#e2e8f0" stroke={HW_STYLES.panelBorder} strokeWidth={1} cornerRadius={4} listening={false} />
+            <Text text={title} x={10} y={8} fontSize={13} fontStyle="bold" fill="#1e293b" listening={false} />
         </Group>
     );
 
@@ -230,14 +239,14 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                     </div>
                     <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
                         <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-                            <h4 className="text-sm font-bold text-slate-800 dark:text-white">Active Task: Basic Connections</h4>
-                            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-mono">Simulate wiring the physical GOTT PLC Trainer.</p>
+                            <h4 className="text-sm font-bold text-slate-800 dark:text-white">Active Task: Powering the System</h4>
+                            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-mono">You must act as the hardware technician to simulate wiring and powering the physical GOTT PLC Trainer.</p>
                             <ul className="text-[11px] text-slate-600 dark:text-slate-300 space-y-2 list-decimal pl-4 leading-relaxed">
-                                <li>Supply power by wiring <strong>24V</strong> to the <strong>START IN</strong> port.</li>
-                                <li>Wire <strong>START OUT</strong> to PLC Input <strong>00</strong>.</li>
-                                <li>Ensure PLC <strong>COM</strong> is grounded to <strong>0V</strong>.</li>
+                                <li>Toggle the physical rocker switch in the **INPUT AC** panel to the ON position. Note the PLC's PWR LED illuminates.</li>
+                                <li>Verify internal power rails by wiring <strong>24V</strong> supply output to PLC Input COM.</li>
+                                <li>Establish safe grounding of the logic rail by wiring PLC Output COM1 to <strong>0V</strong> supply output.</li>
                             </ul>
-                            <button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-colors shadow-md">Verify Circuit</button>
+                            <button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-colors shadow-md">Verify Configuration</button>
                         </div>
                     </div>
                 </aside>
@@ -254,62 +263,144 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
                                 {/* Top Row */}
                                 {renderTechnicalPanel("ac-power", 30, 30, 160, 220, "INPUT AC220V-240V")}
-                                {renderTechnicalPanel("plc", 210, 30, 240, 220, "OMRON SYSMAC CP1E")}
+                                {renderTechnicalPanel("plc", 210, 30, 470, 220, "OMRON SYSMAC CP1E")}
 
                                 {/* Middle Row */}
                                 {renderTechnicalPanel("inputs", 30, 270, 420, 180, "INPUT (00CH)")}
-                                {renderTechnicalPanel("reeds", 470, 270, 200, 180, "REED SWITCH")}
+                                {renderTechnicalPanel("reeds", 470, 270, 210, 180, "REED SWITCH")}
 
                                 {/* Bottom Row */}
                                 {renderTechnicalPanel("relays", 30, 470, 300, 220, "RELAY TYPE OUTPUT (10CH)")}
-                                {renderTechnicalPanel("power", 345, 470, 100, 220, "POWER SUPPLY")}
+                                {renderTechnicalPanel("power", 345, 470, 105, 220, "POWER SUPPLY")}
                                 {renderTechnicalPanel("solenoids", 460, 470, 790, 90, "SOLENOID VALVES")}
                                 {renderTechnicalPanel("buzzer", 460, 575, 140, 115, "BUZZER")}
                                 {renderTechnicalPanel("manual", 615, 575, 635, 115, "MANUAL INPUTS")}
 
-                                {/* 3. HARDWARE DEVICES & DECALS */}
+                                {/* 3. REVISED HARDWARE DEVICES & DECALS */}
 
-                                {/* Power Switch Visual */}
-                                <Rect x={80} y={100} width={60} height={80} fill="#1e293b" cornerRadius={4} />
-                                <Rect x={95} y={120} width={30} height={40} fill="#ef4444" cornerRadius={2} />
+                                {/* --- AC POWER SWITCH MODULE --- */}
+                                <Group x={65} y={70} id="ac-switch-group"
+                                    onClick={() => setIsAcPowerOn(prev => !prev)}
+                                    onTap={() => setIsAcPowerOn(prev => !prev)}
+                                    onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
+                                    onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
+                                >
+                                    {/* Hexagonal/Rect Bezel */}
+                                    <Rect width={90} height={130} fill="#1e293b" cornerRadius={8} shadowColor="rgba(0,0,0,0.4)" shadowBlur={4} shadowOffsetY={2} />
 
-                                {/* Omron CP1E PLC Visual */}
-                                <Rect x={240} y={80} width={180} height={140} fill="#1e293b" cornerRadius={4} shadowColor="rgba(0,0,0,0.5)" shadowBlur={10} shadowOffsetY={5} />
-                                <Rect x={240} y={80} width={180} height={20} fill="#0f172a" cornerRadius={4} />
-                                <Text text="OMRON CP1E" x={250} y={85} fill="#38bdf8" fontSize={12} fontStyle="bold" />
-                                <Circle x={400} y={150} radius={4} fill={HW_STYLES.ledOn} shadowColor="rgba(34, 197, 94, 0.8)" shadowBlur={5} />
+                                    {/* AC Receptacle */}
+                                    <Rect width={50} height={35} x={20} y={15} fill="#0f172a" cornerRadius={4} />
+                                    <Rect width={10} height={4} x={30} y={25} fill="#cbd5e1" />
+                                    <Rect width={10} height={4} x={50} y={25} fill="#cbd5e1" />
+                                    <Rect width={10} height={4} x={40} y={35} fill="#cbd5e1" />
 
-                                {/* Input Toggles Visuals (Black knobs) */}
+                                    {/* Rocker Switch */}
+                                    <Rect width={44} height={54} x={23} y={60} fill="#000000" cornerRadius={4} />
+                                    <Rect width={36} height={23} x={27} y={64}
+                                        fill={isAcPowerOn ? HW_STYLES.switchRedOn : HW_STYLES.switchRedOff}
+                                        cornerRadius={2}
+                                        shadowColor={isAcPowerOn ? HW_STYLES.switchRedOn : 'transparent'} shadowBlur={10}
+                                    />
+                                    <Rect width={36} height={23} x={27} y={87}
+                                        fill={isAcPowerOn ? HW_STYLES.switchRedOff : HW_STYLES.switchRedOn}
+                                        cornerRadius={2}
+                                    />
+                                    <Text text="I" x={42} y={70} fontSize={12} fill="#ffffff" fontStyle="bold" listening={false} />
+                                    <Text text="O" x={40} y={92} fontSize={12} fill="#ffffff" fontStyle="bold" listening={false} />
+
+                                    {/* Power Label */}
+                                    <Text text="POWER" x={25} y={142} fontSize={12} fontStyle="bold" fill="#1e293b" listening={false} />
+                                </Group>
+
+
+                                {/* --- OMRON CP1E PLC FACEPLATE --- */}
+                                <Group x={240} y={80} id="plc-faceplate">
+                                    {/* Main Body */}
+                                    <Rect width={410} height={140} fill={HW_STYLES.omronBody} cornerRadius={4} shadowColor="rgba(0,0,0,0.6)" shadowBlur={12} shadowOffsetY={6} listening={false} />
+
+                                    {/* Branding Column */}
+                                    <Text text="OMRON" x={15} y={15} fill="#ffffff" fontSize={12} fontStyle="bold" fontFamily={HW_STYLES.technicalSans} listening={false} />
+                                    <Text text="SYSMAC" x={15} y={30} fill="#cbd5e1" fontSize={12} fontStyle="bold" fontFamily={HW_STYLES.technicalSans} listening={false} />
+                                    <Text text="CP1E" x={15} y={45} fill="#cbd5e1" fontSize={16} fontStyle="bold" fontFamily={HW_STYLES.technicalSans} listening={false} />
+                                    <Text text="PERIPHERAL" x={15} y={115} fill="#cbd5e1" fontSize={8} fontFamily={HW_STYLES.technicalSans} listening={false} />
+                                    <Rect x={15} y={90} width={40} height={20} fill="#0f172a" cornerRadius={2} listening={false} />
+
+                                    {/* Status LEDs Column */}
+                                    <Group x={110} y={15} id="status-leds">
+                                        <Circle x={10} y={10} radius={4} fill={isAcPowerOn ? HW_STYLES.ledOn : HW_STYLES.ledOff} shadowColor={HW_STYLES.ledOn} shadowBlur={isAcPowerOn ? 5 : 0} listening={false} />
+                                        <Text text="POWER" x={20} y={6} fontSize={8} fill="#cbd5e1" listening={false} />
+
+                                        <Circle x={10} y={25} radius={4} fill={isAcPowerOn ? HW_STYLES.ledOn : HW_STYLES.ledOff} shadowColor={HW_STYLES.ledOn} shadowBlur={isAcPowerOn ? 3 : 0} listening={false} />
+                                        <Text text="RUN" x={20} y={21} fontSize={8} fill="#cbd5e1" listening={false} />
+
+                                        <Circle x={10} y={40} radius={4} fill={HW_STYLES.ledOff} listening={false} />
+                                        <Text text="ERR/ALM" x={20} y={36} fontSize={8} fill="#cbd5e1" listening={false} />
+
+                                        <Circle x={10} y={55} radius={4} fill={HW_STYLES.ledOff} listening={false} />
+                                        <Text text="INH" x={20} y={51} fontSize={8} fill="#cbd5e1" listening={false} />
+
+                                        <Circle x={10} y={70} radius={4} fill={HW_STYLES.ledOff} listening={false} />
+                                        <Text text="PRPHL" x={20} y={66} fontSize={8} fill="#cbd5e1" listening={false} />
+
+                                        <Circle x={10} y={85} radius={4} fill={HW_STYLES.ledOff} listening={false} />
+                                        <Text text="BKUP" x={20} y={81} fontSize={8} fill="#cbd5e1" listening={false} />
+                                    </Group>
+
+                                    {/* Inputs LEDs Area */}
+                                    <Group x={190} y={15} id="input-led-grid">
+                                        <Rect width={205} height={50} fill="#0f172a" cornerRadius={4} opacity={0.3} listening={false} />
+                                        <Text text="IN  CH00" x={5} y={5} fontSize={10} fontStyle="bold" fill="#ffffff" listening={false} />
+                                        {[...Array(12)].map((_, i) => (
+                                            <Group key={`in-led-group-${i}`} x={10 + (i % 6) * 32} y={20 + Math.floor(i / 6) * 18}>
+                                                <Circle radius={3} fill={HW_STYLES.ledOff} listening={false} />
+                                                <Text text={(i).toString().padStart(2, '0')} x={-5} y={6} fontSize={8} fill="#cbd5e1" listening={false} />
+                                            </Group>
+                                        ))}
+                                    </Group>
+
+                                    {/* Outputs LEDs Area */}
+                                    <Group x={190} y={75} id="output-led-grid">
+                                        <Rect width={205} height={50} fill="#0f172a" cornerRadius={4} opacity={0.3} listening={false} />
+                                        <Text text="OUT CH10" x={5} y={5} fontSize={10} fontStyle="bold" fill="#ffffff" listening={false} />
+                                        {[...Array(8)].map((_, i) => (
+                                            <Group key={`out-led-group-${i}`} x={10 + (i % 6) * 32} y={20 + Math.floor(i / 6) * 18}>
+                                                <Circle radius={3} fill={HW_STYLES.ledOff} listening={false} />
+                                                <Text text={(i).toString().padStart(2, '0')} x={-5} y={6} fontSize={8} fill="#cbd5e1" listening={false} />
+                                            </Group>
+                                        ))}
+                                    </Group>
+                                </Group>
+
+                                {/* Middle Row visuals */}
                                 {[...Array(4)].map((_, i) => (
-                                    <Circle key={`knob-${i}`} x={130 + i * 60} y={340} radius={18} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
+                                    <Group key={`knob-${i}`} x={130 + i * 60} y={340}>
+                                        <Circle radius={18} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
+                                        <Circle radius={4} y={-10} fill="#cbd5e1" listening={false} />
+                                    </Group>
                                 ))}
 
-                                {/* Relay Output Visuals (Red Lights) */}
+                                {/* Bottom Row Visuals */}
                                 {[...Array(3)].map((_, i) => (
-                                    <Circle key={`relay-light-${i}`} x={130 + i * 60} y={550} radius={22} fill={HW_STYLES.ledRed} stroke="#cbd5e1" strokeWidth={4} shadowColor="rgba(239, 68, 68, 0.6)" shadowBlur={8} />
+                                    <Circle key={`relay-light-${i}`} x={130 + i * 60} y={550} radius={22} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
                                 ))}
 
-                                {/* Start / Stop Buttons Visuals */}
-                                <Group x={680} y={610}>
+                                <Group x={680} y={610} listening={false}>
                                     <Circle radius={24} fill="#10b981" shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
                                     <Circle radius={18} fill="#34d399" />
                                     <Text text="START" x={-15} y={35} fontSize={11} fontStyle="bold" fill="#1e293b" />
                                 </Group>
-                                <Group x={800} y={610}>
+                                <Group x={800} y={610} listening={false}>
                                     <Circle radius={24} fill="#ef4444" shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
                                     <Circle radius={18} fill="#f87171" />
                                     <Text text="STOP" x={-12} y={35} fontSize={11} fontStyle="bold" fill="#1e293b" />
                                 </Group>
 
-                                {/* Pneumatic Cylinder Diagram */}
-                                <Group x={690} y={30}>
+                                <Group x={690} y={30} listening={false}>
                                     <Rect width={560} height={420} fill="#e2e8f0" cornerRadius={6} />
                                     <Rect width={560} height={24} fill="#cbd5e1" cornerRadius={6} />
                                     <Text text="PNEUMATIC ACTUATORS (HARDWARE MODULE)" x={10} y={8} fill="#475569" fontSize={12} fontStyle="bold" />
-                                    {/* Cyl A */}
                                     <Rect x={50} y={80} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
                                     <Rect x={250} y={90} width={120} height={20} fill="#cbd5e1" cornerRadius={4} />
-                                    {/* Cyl B */}
                                     <Rect x={50} y={200} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
                                     <Rect x={180} y={210} width={190} height={20} fill="#cbd5e1" cornerRadius={4} />
                                 </Group>
@@ -354,12 +445,12 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
                                 {/* LIVE GHOST WIRE */}
                                 {activePin && mousePos && (
-                                    <Line points={[GOTT_TRAINER_PORTS[activePin].x, GOTT_TRAINER_PORTS[activePin].y, mousePos.x, mousePos.y]} stroke={wireColor} strokeWidth={6} dash={[10, 8]} opacity={0.7} tension={0.5} />
+                                    <Line points={[GOTT_TRAINER_PORTS[activePin].x, GOTT_TRAINER_PORTS[activePin].y, mousePos.x, mousePos.y]} stroke={wireColor} strokeWidth={6} dash={[10, 8]} opacity={0.7} tension={0.5} listening={false} />
                                 )}
 
                                 {/* PORT HOVER TOOLTIP */}
                                 {hoveredPin && !activePin && (
-                                    <Group x={GOTT_TRAINER_PORTS[hoveredPin].x + 20} y={GOTT_TRAINER_PORTS[hoveredPin].y - 30}>
+                                    <Group x={GOTT_TRAINER_PORTS[hoveredPin].x + 20} y={GOTT_TRAINER_PORTS[hoveredPin].y - 30} listening={false}>
                                         <Rect height={24} width={140} fill="#1e293b" cornerRadius={4} />
                                         <Text text={GOTT_TRAINER_PORTS[hoveredPin].desc} fill="#ffffff" fontSize={11} fontFamily={HW_STYLES.technicalMono} padding={6} />
                                     </Group>
