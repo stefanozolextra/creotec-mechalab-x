@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Stage, Layer, Circle, Line } from 'react-konva';
+import { Stage, Layer, Circle, Line, Rect, Group, Text } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import { motion } from 'framer-motion';
 
@@ -30,7 +30,7 @@ import { getPinMeta as getPinMetaHelper, inferPaletteTypeFromComponentId as infe
 import { resolveTerminalStripTooltip } from './constants/pinTooltips';
 
 const NODE_SIZE = 3;
-const NAVBAR_HEIGHT = 64; // Adjusted for the new top header
+const NAVBAR_HEIGHT = 64;
 const COMPONENTS_MOVABLE = false;
 const BATTERY_NODE = CUSTOM_NODE_ASSETS.terminalStrip;
 void BATTERY_NODE;
@@ -81,26 +81,35 @@ const TERMINAL_STRIP_PLACEMENTS: Partial<Record<SimulationComponentType, ShapePo
   solenoidValve: { x: 885, y: 640 },
 };
 
+// --- SHIFTED DOWN & RIGHT COORDINATES ---
+// We use NEW ID keys here ('battery-vplus-2') to bypass the browser's cache. 
+// This forces the terminal blocks to spawn exactly at the new, shifted positions!
 const INITIAL_COMPONENTS: Record<string, ShapePos> = {
-  'battery-1': TERMINAL_STRIP_PLACEMENTS.battery ?? { x: 120, y: 280 },
-  'battery-2': { x: (TERMINAL_STRIP_PLACEMENTS.battery?.x ?? 120) + 160, y: (TERMINAL_STRIP_PLACEMENTS.battery?.y ?? 280) },
-  'lightIndicator-1': TERMINAL_STRIP_PLACEMENTS.lightIndicator ?? { x: 320, y: 130 },
+  'battery-vplus-2': { x: 90, y: 268 },      // V+ Block
+  'battery-vminus-2': { x: 330, y: 268 },    // V- Block
+  'battery-signals-2': { x: 570, y: 268 },   // Signals Block
+
+  // Standard placements for the rest of the canvas
   'relayModule-1': { x: 124, y: 420 },
   'relayModule-2': { x: 309, y: 420 },
   'relayModule-3': { x: 450, y: 420 },
   'counter-1': TERMINAL_STRIP_PLACEMENTS.counter ?? { x: 309, y: 640 },
   'timer-1': TERMINAL_STRIP_PLACEMENTS.timer ?? { x: 450, y: 640 },
-  'magneticMotor-1': { x: 800, y: 515 },
-  'rollerLever-1': { x: 800, y: 335 },
-  'solenoidValve-1': { x: 800, y: 150 },
-  'rollerLever-2': { x: 1000, y: 640 },
-  'solenoidValve-2': { x: 1185, y: 640 }
+
+  // Shifted slightly right to make room for the expanded left panel
+  'magneticMotor-1': { x: 840, y: 515 },
+  'rollerLever-1': { x: 840, y: 335 },
+  'solenoidValve-1': { x: 840, y: 150 },
+  'rollerLever-2': { x: 1040, y: 640 },
+  'solenoidValve-2': { x: 1225, y: 640 }
 };
 
 const INITIAL_COMPONENT_TRANSFORMS: Record<string, { rotation: number; flipX: boolean }> = {
-  'battery-1': { rotation: 180, flipX: false },
-  'battery-2': { rotation: 180, flipX: false },
-  'lightIndicator-1': { rotation: 90, flipX: false },
+  'battery-vplus-2': { rotation: 180, flipX: false },
+  'battery-vminus-2': { rotation: 180, flipX: false },
+  'battery-signals-2': { rotation: 180, flipX: false },
+
+  // Unchanged standard transforms
   'relayModule-1': { rotation: 0, flipX: false },
   'relayModule-2': { rotation: 0, flipX: false },
   'relayModule-3': { rotation: 0, flipX: false },
@@ -618,10 +627,6 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
       {/* MAIN CANVAS & OVERLAYS */}
       <main className="flex-1 relative w-full h-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-900" ref={containerRef}>
 
-        {/* ========================================= */}
-        {/* GLOWING THEMED HOVER INDICATORS           */}
-        {/* ========================================= */}
-
         {/* Left Edge Indicator (Controls Panel) */}
         <div
           className={`absolute left-0 top-0 bottom-0 w-16 z-40 flex items-center justify-start group transition-opacity duration-300 ${showControls ? 'opacity-0 pointer-events-none' : 'opacity-100 cursor-e-resize'}`}
@@ -642,9 +647,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
           </div>
         </div>
 
-        {/* ========================================= */}
-        {/* 100% SCALE KONVA STAGE                    */}
-        {/* ========================================= */}
+        {/* 100% SCALE KONVA STAGE */}
         <div className="app-layout" style={{ position: 'absolute', inset: 0 }}>
           <div className="simulation-canvas-frame" style={{ width: stageWidth, height: stageHeight }}>
             <Stage
@@ -655,6 +658,62 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
               onMouseDown={() => { setPinTooltip(null); if (!activePin) { setSelectedWireId(null); setSelectedIntermediatePoint(null); setSelectedComponentId(null); } }}
             >
               <Layer>
+
+                {/* --- TOP-LEFT COMPONENTS (Shifted Down and Right) --- */}
+                <Group x={0} y={0} listening={false}>
+                  {/* Panel Base */}
+                  <Rect x={40} y={40} width={792} height={296} fill={isDarkMode ? '#1e293b' : '#ffffff'} stroke={isDarkMode ? '#334155' : '#e2e8f0'} strokeWidth={2} shadowColor="rgba(0,0,0,0.05)" shadowBlur={10} shadowOffsetY={4} />
+                  <Text text="CONTROL & INDICATOR PANEL" x={70} y={60} fontSize={12} fontStyle="bold" fill={isDarkMode ? '#94a3b8' : '#cbd5e1'} />
+
+                  {/* Switch Indicator */}
+                  <Group x={90} y={100}>
+                    <Rect width={70} height={80} fill={isDarkMode ? "#0f172a" : "#f8fafc"} cornerRadius={6} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+                    <Rect x={15} y={15} width={40} height={50} fill={isDarkMode ? "#334155" : "#e2e8f0"} cornerRadius={4} stroke="#cbd5e1" strokeWidth={1} />
+                    <Rect x={15} y={15} width={40} height={25} fill={isDarkMode ? "#475569" : "#f1f5f9"} cornerRadius={[4, 4, 0, 0]} />
+                    <Text text="MAIN SWITCH" x={0} y={90} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+                  </Group>
+
+                  {/* Green Lamp */}
+                  <Group x={260} y={140}>
+                    <Circle radius={24} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+                    <Circle radius={16} fill="#22c55e" stroke="#16a34a" strokeWidth={1} />
+                    <Text text="LAMP 1 (G)" x={-26} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+                  </Group>
+
+                  {/* Yellow Lamp */}
+                  <Group x={390} y={140}>
+                    <Circle radius={24} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+                    <Circle radius={16} fill="#eab308" stroke="#ca8a04" strokeWidth={1} />
+                    <Text text="LAMP 2 (Y)" x={-26} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+                  </Group>
+
+                  {/* Red Lamp */}
+                  <Group x={520} y={140}>
+                    <Circle radius={24} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+                    <Circle radius={16} fill="#ef4444" stroke="#dc2626" strokeWidth={1} />
+                    <Text text="LAMP 3 (R)" x={-26} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+                  </Group>
+
+                  {/* Buzzer */}
+                  <Group x={650} y={140}>
+                    <Circle radius={24} fill="#0f172a" stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+                    <Circle radius={6} fill="#000000" />
+                    <Circle radius={14} stroke="#1e293b" strokeWidth={2} />
+                    <Text text="BUZZER" x={-20} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+                  </Group>
+
+                  {/* Dashed drop zones perfectly hugging the terminal strips */}
+                  <Rect x={80} y={260} width={220} height={45} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                  <Text text="V+ (24VDC)" x={80} y={240} fontSize={11} fill={isDarkMode ? '#cbd5e1' : '#64748b'} fontStyle="bold" />
+
+                  <Rect x={320} y={260} width={220} height={45} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                  <Text text="V- (0VDC)" x={320} y={240} fontSize={11} fill={isDarkMode ? '#cbd5e1' : '#64748b'} fontStyle="bold" />
+
+                  <Rect x={560} y={260} width={220} height={45} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                  <Text text="SIGNALS (X1/X2)" x={560} y={240} fontSize={11} fill={isDarkMode ? '#cbd5e1' : '#64748b'} fontStyle="bold" />
+                </Group>
+
+
                 {wires.map((wire) => {
                   const start = getPinPos(wire.fromPin);
                   const end = getPinPos(wire.toPin);
@@ -766,9 +825,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
           </div>
         </div>
 
-        {/* ========================================= */}
-        {/* LEFT OVERLAY: Controls & Ladder Diagram   */}
-        {/* ========================================= */}
+        {/* LEFT OVERLAY: Controls & Ladder Diagram */}
         <motion.aside
           className="absolute left-0 top-0 bottom-0 z-50 flex flex-col bg-white dark:bg-[#0B1120] border-r border-slate-200 dark:border-cyan-900/50 shadow-[4px_0_24px_rgba(0,0,0,0.05)] dark:shadow-[4px_0_24px_rgba(6,182,212,0.15)] transition-colors duration-300"
           style={{ width: controlsPanelWidth }}
@@ -863,9 +920,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
           </div>
         </motion.aside>
 
-        {/* ========================================= */}
-        {/* RIGHT OVERLAY: Device Palette             */}
-        {/* ========================================= */}
+        {/* RIGHT OVERLAY: Device Palette */}
         <motion.aside
           className="absolute right-0 top-0 bottom-0 z-50 flex flex-col bg-white dark:bg-[#0B1120] border-l border-slate-200 dark:border-cyan-900/50 shadow-[-4px_0_24px_rgba(0,0,0,0.05)] dark:shadow-[-4px_0_24px_rgba(6,182,212,0.15)] transition-colors duration-300"
           style={{ width: deviceSidebarWidth }}
