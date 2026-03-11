@@ -1,12 +1,31 @@
 import {
-  AlertTriangle, CheckCircle2, Loader2, Pencil, RefreshCw,
-  Search, Trash2, Upload, X, BookOpen, Layers, FileText,
-  Gamepad2, Plus, MousePointerClick
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  Search,
+  Trash2,
+  Upload,
+  X,
+  BookOpen,
+  Layers3,
+  FileText,
+  Gamepad2,
+  Plus,
+  MousePointerClick,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { getAdminLessons, removeAdminLessonPdf, updateAdminLessonTitle, uploadAdminLessonPdf } from "../../api/adminLessons";
+import {
+  createAdminLesson,
+  getAdminLessons,
+  removeAdminLessonPdf,
+  updateAdminLessonTitle,
+  uploadAdminLessonPdf,
+} from "../../api/adminLessons";
 import { ApiError } from "../../api/http";
+import AdminModalShell from "../../components/admin/ui/AdminModalShell";
 import type { AdminLessonItem } from "../../types/adminLesson";
 
 type NoticeState =
@@ -30,6 +49,13 @@ const formatFileSize = (value: number | null): string => {
 
 const MODULE_TITLE_MAX_LENGTH = 150;
 
+const sortAdminLessonItems = (items: AdminLessonItem[]): AdminLessonItem[] => {
+  return [...items].sort((a, b) => {
+    if (a.order_no !== b.order_no) return a.order_no - b.order_no;
+    return a.module_id - b.module_id;
+  });
+};
+
 export default function LessonsPage() {
   const [items, setItems] = useState<AdminLessonItem[]>([]);
   const [query, setQuery] = useState("");
@@ -43,6 +69,10 @@ export default function LessonsPage() {
   const [editingModuleId, setEditingModuleId] = useState<number | null>(null);
   const [titleDraft, setTitleDraft] = useState("");
   const [titleError, setTitleError] = useState<string | null>(null);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [addTitleDraft, setAddTitleDraft] = useState("");
+  const [addSaving, setAddSaving] = useState(false);
+  const [addError, setAddError] = useState<string | null>(null);
   const [refreshSeq, setRefreshSeq] = useState(0);
 
   // Selection State for Master-Detail View (Defaults to null to show the Guide)
@@ -131,6 +161,58 @@ export default function LessonsPage() {
     setItems((previous) =>
       previous.map((entry) => (entry.module_id === fallbackModuleId ? patched : entry)),
     );
+  };
+
+  const openAddModal = () => {
+    if (addSaving) return;
+    setAddError(null);
+    setAddTitleDraft("");
+    setAddModalOpen(true);
+  };
+
+  const closeAddModal = () => {
+    if (addSaving) return;
+    setAddModalOpen(false);
+    setAddTitleDraft("");
+    setAddError(null);
+  };
+
+  const handleCreateModule = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (addSaving) return;
+
+    const trimmedTitle = addTitleDraft.trim();
+    if (!trimmedTitle) {
+      setAddError("Title cannot be empty.");
+      return;
+    }
+    if (trimmedTitle.length > MODULE_TITLE_MAX_LENGTH) {
+      setAddError(`Title must be at most ${MODULE_TITLE_MAX_LENGTH} characters.`);
+      return;
+    }
+
+    setAddSaving(true);
+    setAddError(null);
+    setNotice(null);
+    setError(null);
+
+    try {
+      const response = await createAdminLesson(trimmedTitle);
+      const createdItem = response.item;
+      if (createdItem) {
+        setItems((previous) => sortAdminLessonItems([...previous, createdItem]));
+      } else {
+        setRefreshSeq((value) => value + 1);
+      }
+      setAddModalOpen(false);
+      setAddTitleDraft("");
+      setAddError(null);
+      setNotice({ kind: "success", text: "Module created successfully." });
+    } catch (createError) {
+      setAddError(toErrorMessage(createError, "Failed to create module."));
+    } finally {
+      setAddSaving(false);
+    }
   };
 
   const handleUpload = async (moduleId: number, file: File | null) => {
@@ -225,6 +307,9 @@ export default function LessonsPage() {
 
   const isBusy = (moduleId: number): boolean => busyModuleId === moduleId;
   const isEditing = (moduleId: number): boolean => editingModuleId === moduleId;
+  const trimmedAddTitle = addTitleDraft.trim();
+  const disableCreateModule =
+    addSaving || trimmedAddTitle.length === 0 || trimmedAddTitle.length > MODULE_TITLE_MAX_LENGTH;
 
   return (
     <div className="flex-1 flex flex-col gap-6 min-h-0 relative">
@@ -235,307 +320,405 @@ export default function LessonsPage() {
           {error}
         </div>
       )}
-      {notice && (
+      {notice ? (
         <div className={`keep-selection rounded-2xl px-6 py-4 text-sm font-semibold shadow-sm shrink-0 border ${notice.kind === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-700" :
-            notice.kind === "warning" ? "bg-amber-50 border-amber-200 text-amber-700" :
-              "bg-red-50 border-red-200 text-red-700"
+          notice.kind === "warning" ? "bg-amber-50 border-amber-200 text-amber-700" :
+            "bg-red-50 border-red-200 text-red-700"
           }`}
         >
           {notice.text}
         </div>
-      )}
+      ) : null}
 
-      {/* Top Bar Actions */}
-      <div className="top-bar-actions flex flex-wrap items-center justify-between gap-4 shrink-0">
-        <div className="relative z-10 w-full sm:w-[320px]">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-          <input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search lessons..."
-            className="pl-10 pr-4 py-2.5 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-slate-800 dark:text-slate-200 text-sm font-bold w-full outline-none focus:ring-2 focus:ring-[#3B82F6] shadow-sm transition-all"
-          />
-        </div>
-
-        <div className="flex items-center gap-4">
-          <button
-            type="button"
-            onClick={() => setRefreshSeq((value) => value + 1)}
-            className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-2 transition-colors disabled:opacity-50"
-            disabled={loading}
-            title="Refresh List"
-          >
-            <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
-          </button>
-          <button className="bg-[#3B82F6] hover:bg-blue-600 text-white px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm transition-all">
-            <Plus size={18} strokeWidth={3} /> Add New Module
-          </button>
-        </div>
-      </div>
-
-      {/* Main Split Layout */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 relative">
-
-        {/* LEFT PANE: Master List */}
-        <div className="flex-1 bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/50 flex flex-col overflow-hidden">
-          <div className="flex-1 overflow-y-auto custom-scrollbar">
-            <table className="w-full text-left border-collapse">
-              <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 keep-selection">
-                <tr className="text-[10px] uppercase font-black text-slate-400 tracking-wider border-b border-slate-100 dark:border-slate-800/50">
-                  <th className="px-6 py-5 text-left w-32">Module Code</th>
-                  <th className="px-6 py-5 text-left">Module Title</th>
-                  <th className="px-6 py-5 text-center w-36">Assets</th>
-                  <th className="px-6 py-5 text-left w-32">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
-                {loading ? (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-16 text-center text-slate-500 font-semibold">
-                      <div className="flex justify-center items-center gap-2"><Loader2 size={18} className="animate-spin" /> Loading modules...</div>
-                    </td>
-                  </tr>
-                ) : rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-6 py-16 text-center text-slate-500 font-semibold">
-                      <div className="flex justify-center items-center gap-2"><AlertTriangle size={18} /> No modules found</div>
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map((item) => {
-                    const isSelected = selectedId === item.module_id;
-                    const hasPdf = item.pdf.has_pdf;
-                    const abbrev = item.module_code.substring(0, 2).toUpperCase() || 'M0';
-
-                    return (
-                      <tr
-                        key={item.module_id}
-                        onClick={() => setSelectedId(item.module_id)}
-                        className={`lesson-row cursor-pointer transition-all group ${isSelected
-                            ? 'bg-blue-50/50 dark:bg-blue-900/10'
-                            : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'
-                          }`}
-                      >
-                        <td className="px-6 py-4 relative">
-                          {isSelected && <motion.div layoutId="activeIndicator" className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#3B82F6] rounded-r-md" />}
-
-                          <div className="flex items-center gap-4">
-                            <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 transition-colors ${isSelected ? 'bg-[#3B82F6] text-white shadow-md shadow-blue-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 dark:group-hover:bg-[#2563EB]/20 dark:group-hover:text-[#3B82F6]'
-                              }`}>
-                              {abbrev}
-                            </div>
-                            <span className={`font-extrabold text-[13px] ${isSelected ? 'text-[#0B1B3D] dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
-                              {item.module_code}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <p className={`font-bold text-[13px] truncate max-w-[240px] ${isSelected ? 'text-[#0B1B3D] dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
-                            {item.module_title}
-                          </p>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="flex items-center justify-center gap-2 text-xs font-bold text-slate-500">
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
-                              <FileText size={14} className={hasPdf ? "text-[#3B82F6]" : "text-slate-400"} /> {hasPdf ? '1' : '0'}
-                            </div>
-                            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
-                              <Gamepad2 size={14} className="text-slate-400" /> 0
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <div className="w-full max-w-[100px]">
-                            <div className="flex justify-between items-center text-[10px] font-black mb-1.5 tracking-wider">
-                              <span className="text-slate-400 uppercase">Prog.</span>
-                              <span className="text-emerald-500">
-                                {hasPdf ? "100%" : "0%"}
-                              </span>
-                            </div>
-                            <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                              <div className={`h-full rounded-full transition-all duration-500 ${hasPdf ? "bg-emerald-500 w-full" : "bg-emerald-500 w-0"}`} />
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+      <div className="flex flex-col gap-3 shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm font-bold text-slate-500 dark:text-slate-400">
+            {rows.length} module{rows.length === 1 ? "" : "s"}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="bg-[#3B82F6] text-white px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all duration-300 shadow-sm hover:brightness-110 disabled:opacity-70"
+              disabled={loading || addSaving}
+            >
+              <Plus size={16} aria-hidden="true" /> Add Module
+            </button>
+            <button
+              type="button"
+              onClick={() => setRefreshSeq((value) => value + 1)}
+              className="bg-[#1E293B] dark:bg-slate-700 text-white px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all duration-300 shadow-sm hover:brightness-110 disabled:opacity-70"
+              disabled={loading || addSaving}
+            >
+              <RefreshCw size={16} aria-hidden="true" className={loading ? "animate-spin" : ""} /> Refresh
+            </button>
           </div>
         </div>
 
-        {/* RIGHT PANE: Animated Details & Actions */}
-        <AnimatePresence mode="wait">
-          {selectedItem ? (
-            <motion.div
-              key={`details-${selectedItem.module_id}`}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.2 }}
-              className="details-pane w-full lg:w-[420px] shrink-0 bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/50 flex flex-col overflow-hidden relative"
+        {/* Top Bar Actions */}
+        <div className="top-bar-actions flex flex-wrap items-center justify-between gap-4 shrink-0">
+          <div className="relative z-10 w-full sm:w-[320px]">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search lessons..."
+              className="pl-10 pr-4 py-2.5 rounded-full border border-slate-200 dark:border-slate-700/50 bg-white dark:bg-[#1E293B] text-slate-800 dark:text-slate-200 text-sm font-bold w-full outline-none focus:ring-2 focus:ring-[#3B82F6] shadow-sm transition-all"
+            />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => setRefreshSeq((value) => value + 1)}
+              className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 p-2 transition-colors disabled:opacity-50"
+              disabled={loading}
+              title="Refresh List"
             >
-              {/* Details Header */}
-              <div className="px-6 py-5 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/50">
-                <div className="flex items-center gap-2.5">
-                  <BookOpen size={18} className="text-[#3B82F6]" />
-                  <span className="font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest text-[12px]">Details</span>
-                  <span className="bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-[#3B82F6] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold">
-                    {selectedItem.module_code}
-                  </span>
-                </div>
-                <div className="flex items-center gap-3 text-slate-400">
-                  {!isEditing(selectedItem.module_id) && (
-                    <button onClick={() => startTitleEdit(selectedItem)} className="hover:text-slate-700 dark:hover:text-slate-200 transition-colors" title="Edit Title">
-                      <Pencil size={15} />
-                    </button>
+              <RefreshCw size={18} className={loading ? "animate-spin" : ""} />
+            </button>
+            <button
+              type="button"
+              onClick={openAddModal}
+              disabled={loading || addSaving}
+              className="bg-[#3B82F6] hover:bg-blue-600 text-white px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 shadow-sm transition-all disabled:opacity-70"
+            >
+              <Plus size={18} strokeWidth={3} /> Add New Module
+            </button>
+          </div>
+        </div>
+
+        {/* Main Split Layout */}
+        <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 relative">
+
+          {/* LEFT PANE: Master List */}
+          <div className="flex-1 bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/50 flex flex-col overflow-hidden">
+            <div className="flex-1 overflow-y-auto custom-scrollbar">
+              <table className="w-full text-left border-collapse">
+                <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 keep-selection">
+                  <tr className="text-[10px] uppercase font-black text-slate-400 tracking-wider border-b border-slate-100 dark:border-slate-800/50">
+                    <th className="px-6 py-5 text-left w-32">Module Code</th>
+                    <th className="px-6 py-5 text-left">Module Title</th>
+                    <th className="px-6 py-5 text-center w-36">Assets</th>
+                    <th className="px-6 py-5 text-left w-32">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50 dark:divide-slate-800/50">
+                  {loading ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-16 text-center text-slate-500 font-semibold">
+                        <div className="flex justify-center items-center gap-2"><Loader2 size={18} className="animate-spin" /> Loading modules...</div>
+                      </td>
+                    </tr>
+                  ) : rows.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="px-6 py-16 text-center text-slate-500 font-semibold">
+                        <div className="flex justify-center items-center gap-2"><AlertTriangle size={18} /> No modules found</div>
+                      </td>
+                    </tr>
+                  ) : (
+                    rows.map((item) => {
+                      const isSelected = selectedId === item.module_id;
+                      const hasPdf = item.pdf.has_pdf;
+                      const abbrev = item.module_code.substring(0, 2).toUpperCase() || 'M0';
+
+                      return (
+                        <tr
+                          key={item.module_id}
+                          onClick={() => setSelectedId(item.module_id)}
+                          className={`lesson-row cursor-pointer transition-all group ${isSelected
+                            ? 'bg-blue-50/50 dark:bg-blue-900/10'
+                            : 'hover:bg-slate-50 dark:hover:bg-white/[0.02]'
+                            }`}
+                        >
+                          <td className="px-6 py-4 relative">
+                            {isSelected && <motion.div layoutId="activeIndicator" className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#3B82F6] rounded-r-md" />}
+
+                            <div className="flex items-center gap-4">
+                              <div className={`w-9 h-9 rounded-full flex items-center justify-center text-[11px] font-black shrink-0 transition-colors ${isSelected ? 'bg-[#3B82F6] text-white shadow-md shadow-blue-500/20' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 group-hover:bg-blue-100 group-hover:text-blue-600 dark:group-hover:bg-[#2563EB]/20 dark:group-hover:text-[#3B82F6]'
+                                }`}>
+                                {abbrev}
+                              </div>
+                              <span className={`font-extrabold text-[13px] ${isSelected ? 'text-[#0B1B3D] dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
+                                {item.module_code}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <p className={`font-bold text-[13px] truncate max-w-[240px] ${isSelected ? 'text-[#0B1B3D] dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
+                              {item.module_title}
+                            </p>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex items-center justify-center gap-2 text-xs font-bold text-slate-500">
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
+                                <FileText size={14} className={hasPdf ? "text-[#3B82F6]" : "text-slate-400"} /> {hasPdf ? '1' : '0'}
+                              </div>
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
+                                <Gamepad2 size={14} className="text-slate-400" /> 0
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="w-full max-w-[100px]">
+                              <div className="flex justify-between items-center text-[10px] font-black mb-1.5 tracking-wider">
+                                <span className="text-slate-400 uppercase">Prog.</span>
+                                <span className="text-emerald-500">
+                                  {hasPdf ? "100%" : "0%"}
+                                </span>
+                              </div>
+                              <div className="h-1.5 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full transition-all duration-500 ${hasPdf ? "bg-emerald-500 w-full" : "bg-emerald-500 w-0"}`} />
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
-                  <button className="hover:text-red-500 transition-colors" title="Delete Module">
-                    <Trash2 size={15} />
-                  </button>
-                </div>
-              </div>
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-              {/* Details Body */}
-              <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
-
-                {/* Title Editing Logic */}
-                {isEditing(selectedItem.module_id) ? (
-                  <div className="mb-6">
-                    <input
-                      type="text"
-                      value={titleDraft}
-                      maxLength={MODULE_TITLE_MAX_LENGTH}
-                      onChange={(e) => { setTitleDraft(e.target.value); setTitleError(null); }}
-                      disabled={isBusy(selectedItem.module_id)}
-                      className="w-full text-2xl font-black text-[#0B1B3D] dark:text-white bg-slate-50 dark:bg-slate-900 border-2 border-[#3B82F6] rounded-xl px-4 py-3 outline-none"
-                      autoFocus
-                    />
-                    {titleError && <p className="mt-2 text-xs font-bold text-red-500">{titleError}</p>}
-                    <div className="flex items-center gap-2 mt-3">
-                      <button
-                        onClick={() => void handleSaveTitle(selectedItem.module_id)}
-                        disabled={isBusy(selectedItem.module_id) || !titleDraft.trim()}
-                        className="px-5 py-2 bg-[#3B82F6] hover:bg-blue-600 text-white text-xs font-bold rounded-xl flex items-center gap-2 disabled:opacity-50"
-                      >
-                        {isBusy(selectedItem.module_id) && busyAction === "title" ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Save
-                      </button>
-                      <button
-                        onClick={cancelTitleEdit}
-                        disabled={isBusy(selectedItem.module_id)}
-                        className="px-5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5"
-                      >
-                        <X size={14} /> Cancel
-                      </button>
-                    </div>
+          {/* RIGHT PANE: Animated Details & Actions */}
+          <AnimatePresence mode="wait">
+            {selectedItem ? (
+              <motion.div
+                key={`details-${selectedItem.module_id}`}
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2 }}
+                className="details-pane w-full lg:w-[420px] shrink-0 bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/50 flex flex-col overflow-hidden relative"
+              >
+                {/* Details Header */}
+                <div className="px-6 py-5 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/50">
+                  <div className="flex items-center gap-2.5">
+                    <BookOpen size={18} className="text-[#3B82F6]" />
+                    <span className="font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest text-[12px]">Details</span>
+                    <span className="bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-[#3B82F6] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold">
+                      {selectedItem.module_code}
+                    </span>
                   </div>
-                ) : (
-                  <h2 className="text-2xl font-black text-[#0B1B3D] dark:text-white leading-tight mb-2">
-                    {selectedItem.module_title}
-                  </h2>
-                )}
-
-                <p className="text-xs font-semibold text-slate-500 leading-relaxed mb-6">
-                  {selectedItem.description || "Overview of the system and basics."}
-                </p>
-
-                {/* Attached Materials Panel */}
-                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-8 mb-4 flex items-center gap-2">
-                  <Layers size={14} /> Attached Materials
-                </h3>
-
-                <div className="border border-slate-200 dark:border-slate-700/50 rounded-2xl p-4 flex flex-col gap-4 relative">
-                  {isBusy(selectedItem.module_id) && busyAction !== "title" && (
-                    <div className="absolute inset-0 z-10 bg-white/50 dark:bg-slate-900/50 backdrop-blur-[2px] flex items-center justify-center rounded-2xl">
-                      <Loader2 size={24} className="text-[#3B82F6] animate-spin" />
-                    </div>
-                  )}
-
-                  <div className="flex items-center gap-4">
-                    <div className={`w-12 h-12 rounded-xl shrink-0 flex items-center justify-center ${selectedItem.pdf.has_pdf ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-slate-100 text-slate-400 dark:bg-slate-800'}`}>
-                      <FileText size={20} strokeWidth={2} />
-                    </div>
-                    <div className="flex-1 min-w-0 flex flex-col justify-center">
-                      <p className="font-bold text-[13px] text-slate-800 dark:text-slate-200 truncate">
-                        {selectedItem.pdf.has_pdf ? "Module Handout PDF" : "No Document Attached"}
-                      </p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 truncate">
-                          {selectedItem.pdf.has_pdf ? selectedItem.pdf.file_name : "Upload a PDF to link it here."}
-                        </p>
-                        {selectedItem.pdf.has_pdf && selectedItem.pdf.file_size != null && (
-                          <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider bg-slate-100 dark:bg-slate-800/50 px-1.5 py-0.5 rounded-md">
-                            {formatFileSize(selectedItem.pdf.file_size)}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Card Action Buttons */}
-                  <div className="flex items-center gap-3">
-                    <label
-                      htmlFor={`file-upload-${selectedItem.module_id}`}
-                      className="flex-1 flex justify-center items-center gap-2 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer transition-colors"
-                    >
-                      <input
-                        type="file"
-                        id={`file-upload-${selectedItem.module_id}`}
-                        accept=".pdf,application/pdf"
-                        className="hidden"
-                        disabled={isBusy(selectedItem.module_id)}
-                        onChange={(event) => {
-                          const selected = event.target.files?.[0] ?? null;
-                          void handleUpload(selectedItem.module_id, selected);
-                          event.currentTarget.value = "";
-                        }}
-                      />
-                      <Upload size={14} /> {selectedItem.pdf.has_pdf ? "Replace" : "Upload"}
-                    </label>
-
+                  <div className="flex items-center gap-3 text-slate-400">
+                    {!isEditing(selectedItem.module_id) && (
+                      <button type="button" onClick={() => startTitleEdit(selectedItem)} className="hover:text-slate-700 dark:hover:text-slate-200 transition-colors" title="Edit Title">
+                        <Pencil size={15} />
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => void handleRemove(selectedItem.module_id)}
-                      disabled={!selectedItem.pdf.has_pdf || isBusy(selectedItem.module_id)}
-                      className="flex-1 flex justify-center items-center gap-2 py-2 border border-red-100 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-xs font-bold text-red-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      disabled
+                      className="opacity-40 cursor-not-allowed"
+                      title="Delete module is not available in this screen."
                     >
-                      <Trash2 size={14} /> Remove
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
 
-                {/* Assigned Simulations Panel */}
-                <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-8 mb-4 flex items-center gap-2">
-                  <Gamepad2 size={14} /> Assigned Simulations
-                </h3>
+                {/* Details Body */}
+                <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
 
-                <div className="border border-dashed border-slate-200 dark:border-slate-700/50 rounded-2xl p-8 flex flex-col items-center justify-center text-slate-400 dark:text-slate-600">
-                  <Gamepad2 size={24} />
+                  {/* Title Editing Logic */}
+                  {isEditing(selectedItem.module_id) ? (
+                    <div className="mb-6">
+                      <input
+                        type="text"
+                        value={titleDraft}
+                        maxLength={MODULE_TITLE_MAX_LENGTH}
+                        onChange={(e) => { setTitleDraft(e.target.value); setTitleError(null); }}
+                        disabled={isBusy(selectedItem.module_id)}
+                        className="w-full text-2xl font-black text-[#0B1B3D] dark:text-white bg-slate-50 dark:bg-slate-900 border-2 border-[#3B82F6] rounded-xl px-4 py-3 outline-none"
+                        autoFocus
+                      />
+                      {titleError && <p className="mt-2 text-xs font-bold text-red-500">{titleError}</p>}
+                      <div className="flex items-center gap-2 mt-3">
+                        <button
+                          onClick={() => void handleSaveTitle(selectedItem.module_id)}
+                          disabled={isBusy(selectedItem.module_id) || !titleDraft.trim()}
+                          className="px-5 py-2 bg-[#3B82F6] hover:bg-blue-600 text-white text-xs font-bold rounded-xl flex items-center gap-2 disabled:opacity-50"
+                        >
+                          {isBusy(selectedItem.module_id) && busyAction === "title" ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Save
+                        </button>
+                        <button
+                          onClick={cancelTitleEdit}
+                          disabled={isBusy(selectedItem.module_id)}
+                          className="px-5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5"
+                        >
+                          <X size={14} /> Cancel
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <h2 className="text-2xl font-black text-[#0B1B3D] dark:text-white leading-tight mb-2">
+                      {selectedItem.module_title}
+                    </h2>
+                  )}
+
+                  <p className="text-xs font-semibold text-slate-500 leading-relaxed mb-6">
+                    {selectedItem.description || "Overview of the system and basics."}
+                  </p>
+
+                  {/* Attached Materials Panel */}
+                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-8 mb-4 flex items-center gap-2">
+                    <Layers3 size={14} /> Attached Materials
+                  </h3>
+
+                  <div className="border border-slate-200 dark:border-slate-700/50 rounded-2xl p-4 flex flex-col gap-4 relative">
+                    {isBusy(selectedItem.module_id) && busyAction !== "title" && (
+                      <div className="absolute inset-0 z-10 bg-white/50 dark:bg-slate-900/50 backdrop-blur-[2px] flex items-center justify-center rounded-2xl">
+                        <Loader2 size={24} className="text-[#3B82F6] animate-spin" />
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-4">
+                      <div className={`w-12 h-12 rounded-xl shrink-0 flex items-center justify-center ${selectedItem.pdf.has_pdf ? 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' : 'bg-slate-100 text-slate-400 dark:bg-slate-800'}`}>
+                        <FileText size={20} strokeWidth={2} />
+                      </div>
+                      <div className="flex-1 min-w-0 flex flex-col justify-center">
+                        <p className="font-bold text-[13px] text-slate-800 dark:text-slate-200 truncate">
+                          {selectedItem.pdf.has_pdf ? "Module Handout PDF" : "No Document Attached"}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 truncate">
+                            {selectedItem.pdf.has_pdf ? selectedItem.pdf.file_name : "Upload a PDF to link it here."}
+                          </p>
+                          {selectedItem.pdf.has_pdf && selectedItem.pdf.file_size != null && (
+                            <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider bg-slate-100 dark:bg-slate-800/50 px-1.5 py-0.5 rounded-md">
+                              {formatFileSize(selectedItem.pdf.file_size)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Card Action Buttons */}
+                    <div className="flex items-center gap-3">
+                      <label
+                        htmlFor={`file-upload-${selectedItem.module_id}`}
+                        className="flex-1 flex justify-center items-center gap-2 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer transition-colors"
+                      >
+                        <input
+                          type="file"
+                          id={`file-upload-${selectedItem.module_id}`}
+                          accept=".pdf,application/pdf"
+                          className="hidden"
+                          disabled={isBusy(selectedItem.module_id)}
+                          onChange={(event) => {
+                            const selected = event.target.files?.[0] ?? null;
+                            void handleUpload(selectedItem.module_id, selected);
+                            event.currentTarget.value = "";
+                          }}
+                        />
+                        <Upload size={14} /> {selectedItem.pdf.has_pdf ? "Replace" : "Upload"}
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={() => void handleRemove(selectedItem.module_id)}
+                        disabled={!selectedItem.pdf.has_pdf || isBusy(selectedItem.module_id)}
+                        className="flex-1 flex justify-center items-center gap-2 py-2 border border-red-100 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-xs font-bold text-red-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        <Trash2 size={14} /> Remove
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Assigned Simulations Panel */}
+                  <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-8 mb-4 flex items-center gap-2">
+                    <Gamepad2 size={14} /> Assigned Simulations
+                  </h3>
+
+                  <div className="border border-dashed border-slate-200 dark:border-slate-700/50 rounded-2xl p-8 flex flex-col items-center justify-center text-slate-400 dark:text-slate-600">
+                    <Gamepad2 size={24} />
+                  </div>
+
                 </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="empty-state-guide"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                transition={{ duration: 0.2 }}
+                className="details-pane w-full lg:w-[420px] shrink-0 bg-slate-50/50 dark:bg-[#1E293B]/50 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center text-center p-8"
+              >
+                <div className="w-16 h-16 rounded-full bg-blue-100/50 dark:bg-blue-900/20 flex items-center justify-center text-[#3B82F6] mb-5">
+                  <MousePointerClick size={28} />
+                </div>
+                <p className="text-base font-black text-slate-800 dark:text-slate-200">Select a learning module</p>
+                <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mt-2 max-w-[250px] leading-relaxed">
+                  Click on any row in the list to view its details, manage attached materials, and assign simulations.
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
-              </div>
-            </motion.div>
-          ) : (
-            <motion.div
-              key="empty-state-guide"
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.2 }}
-              className="details-pane w-full lg:w-[420px] shrink-0 bg-slate-50/50 dark:bg-[#1E293B]/50 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700/50 flex flex-col items-center justify-center text-center p-8"
-            >
-              <div className="w-16 h-16 rounded-full bg-blue-100/50 dark:bg-blue-900/20 flex items-center justify-center text-[#3B82F6] mb-5">
-                <MousePointerClick size={28} />
-              </div>
-              <p className="text-base font-black text-slate-800 dark:text-slate-200">Select a learning module</p>
-              <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mt-2 max-w-[250px] leading-relaxed">
-                Click on any row in the list to view its details, manage attached materials, and assign simulations.
-              </p>
-            </motion.div>
+        <AdminModalShell
+          open={addModalOpen}
+          onClose={closeAddModal}
+          title="Add Module"
+          description="Create a new lesson module."
+          icon={<Plus size={20} />}
+          maxWidthClass="max-w-md"
+          closeDisabled={addSaving}
+          closeOnBackdrop={!addSaving}
+          bodyClassName="p-6"
+          footer={(
+            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeAddModal}
+                className="px-5 py-2.5 rounded-full text-xs font-bold text-slate-500 hover:text-[#0B1B3D] dark:hover:text-slate-200 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 transition-colors duration-500 disabled:opacity-50"
+                disabled={addSaving}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="add-module-form"
+                className="px-6 py-2.5 rounded-full text-xs font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                disabled={disableCreateModule}
+              >
+                {addSaving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} aria-hidden="true" />}
+                {addSaving ? "Creating..." : "Create Module"}
+              </button>
+            </div>
           )}
-        </AnimatePresence>
+        >
+          <form id="add-module-form" onSubmit={handleCreateModule} className="space-y-4">
+            <label className="space-y-1.5 block">
+              <span className="text-sm font-bold text-[#0B1B3D] dark:text-slate-200">Module Title *</span>
+              <input
+                type="text"
+                value={addTitleDraft}
+                onChange={(event) => {
+                  setAddTitleDraft(event.target.value);
+                  if (addError) setAddError(null);
+                }}
+                placeholder="Enter module title"
+                maxLength={MODULE_TITLE_MAX_LENGTH}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
+                disabled={addSaving}
+                required
+                autoFocus
+              />
+              <p className="text-xs text-slate-500 font-medium mt-1.5">
+                {trimmedAddTitle.length}/{MODULE_TITLE_MAX_LENGTH}
+              </p>
+            </label>
+
+            {addError ? (
+              <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 text-xs font-semibold text-red-600 dark:text-red-400">
+                {addError}
+              </div>
+            ) : null}
+          </form>
+        </AdminModalShell>
       </div>
     </div>
   );

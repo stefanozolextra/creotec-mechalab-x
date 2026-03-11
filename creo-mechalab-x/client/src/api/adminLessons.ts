@@ -12,6 +12,20 @@ export const getAdminLessons = async (): Promise<AdminLessonsListResponse> => {
   return requestJson<AdminLessonsListResponse>("/api/admin/lessons");
 };
 
+export const createAdminLesson = async (
+  title: string,
+): Promise<{ item: AdminLessonItem | null }> => {
+  const trimmedTitle = title.trim();
+  if (!trimmedTitle) {
+    throw new Error("Title cannot be empty.");
+  }
+
+  return requestJson<{ item: AdminLessonItem | null }>("/api/admin/lessons", {
+    method: "POST",
+    body: { title: trimmedTitle },
+  });
+};
+
 export const updateAdminLessonTitle = async (
   moduleId: number,
   title: string,
