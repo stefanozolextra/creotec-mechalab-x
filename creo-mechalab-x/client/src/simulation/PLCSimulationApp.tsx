@@ -38,11 +38,20 @@ const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; 
     '0v_2': { x: 415, y: 640, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
 
     // === INPUT (00CH) ===
-    'plc_com_in': { x: 70, y: 410, color: HW_STYLES.jackRed, label: 'COM', desc: 'Input COM' },
-    'plc_in_00': { x: 130, y: 410, color: HW_STYLES.jackYellow, label: '00', desc: 'Input 0.00' },
-    'plc_in_01': { x: 190, y: 410, color: HW_STYLES.jackYellow, label: '01', desc: 'Input 0.01' },
-    'plc_in_02': { x: 250, y: 410, color: HW_STYLES.jackYellow, label: '02', desc: 'Input 0.02' },
-    'plc_in_03': { x: 310, y: 410, color: HW_STYLES.jackYellow, label: '03', desc: 'Input 0.03' },
+    // Adjust x/y here to reposition the INPUT 00CH circles on the board layout.
+    'plc_com_in': { x: 60, y: 370, color: HW_STYLES.jackRed, label: 'COM', desc: 'Input COM' },
+    'plc_in_00': { x: 110, y: 350, color: HW_STYLES.jackYellow, label: '00', desc: 'Input 0.00' },
+    'plc_in_01': { x: 170, y: 350, color: HW_STYLES.jackYellow, label: '01', desc: 'Input 0.01' },
+    'plc_in_02': { x: 230, y: 350, color: HW_STYLES.jackYellow, label: '02', desc: 'Input 0.02' },
+    'plc_in_03': { x: 290, y: 350, color: HW_STYLES.jackYellow, label: '03', desc: 'Input 0.03' },
+    'plc_in_04': { x: 350, y: 350, color: HW_STYLES.jackYellow, label: '04', desc: 'Input 0.04' },
+    'plc_in_05': { x: 410, y: 350, color: HW_STYLES.jackYellow, label: '05', desc: 'Input 0.05' },
+    'plc_in_06': { x: 111, y: 420, color: HW_STYLES.jackYellow, label: '06', desc: 'Input 0.06' },
+    'plc_in_07': { x: 170, y: 420, color: HW_STYLES.jackYellow, label: '07', desc: 'Input 0.07' },
+    'plc_in_08': { x: 230, y: 420, color: HW_STYLES.jackYellow, label: '08', desc: 'Input 0.08' },
+    'plc_in_09': { x: 290, y: 420, color: HW_STYLES.jackYellow, label: '09', desc: 'Input 0.09' },
+    'plc_in_10': { x: 350, y: 420, color: HW_STYLES.jackYellow, label: '10', desc: 'Input 0.10' },
+    'plc_in_11': { x: 410, y: 420, color: HW_STYLES.jackYellow, label: '11', desc: 'Input 0.11' },
 
     // === RELAY OUTPUT (10CH) ===
     'plc_com_out_1': { x: 70, y: 640, color: HW_STYLES.jackBlack, label: 'COM1', desc: 'Output COM 1' },
@@ -93,6 +102,10 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const PADDING = 24;
     const BASE_CANVAS_WIDTH = 1280;
     const BASE_CANVAS_HEIGHT = 720;
+    const MIDDLE_ROW_START_X = 110;
+    const MIDDLE_ROW_SPACING = 60;
+    const MIDDLE_ROW_Y = 320;
+    const SECOND_ROW_Y = 390;
 
     const availableCanvasWidth = viewport.width - SIDEBAR_WIDTH - PADDING * 2;
     const availableCanvasHeight = viewport.height - PADDING * 2;
@@ -155,9 +168,9 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
         const pos = GOTT_TRAINER_PORTS[portId];
         return (
             <Group key={`jack-${portId}`} x={pos.x} y={pos.y}>
-                <Circle radius={16} fill={HW_STYLES.labelYellow} />
+                <Circle radius={11} fill={HW_STYLES.labelYellow} />
                 <Text text={pos.label} x={-15} y={11} width={30} fontSize={9} fontFamily={HW_STYLES.technicalMono} fontStyle="bold" align="center" fill="#000000" />
-                <Circle radius={10} fill="#bdc3c7" stroke="#34495e" strokeWidth={1} />
+                <Circle radius={7} fill="#bdc3c7" stroke="#34495e" strokeWidth={1} />
                 <Circle
                     id={portId}
                     radius={8}
@@ -371,11 +384,19 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                     </Group>
                                 </Group>
 
-                                {/* Middle Row visuals */}
-                                {[...Array(4)].map((_, i) => (
-                                    <Group key={`knob-${i}`} x={130 + i * 60} y={340}>
-                                        <Circle radius={18} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
-                                        <Circle radius={4} y={-10} fill="#cbd5e1" listening={false} />
+                                {/* First Row Input 00CH */}
+                                {[...Array(6)].map((_, i) => (
+                                    <Group key={`knob-${i}`} x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING} y={MIDDLE_ROW_Y}>
+                                        <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
+                                        <Circle radius={3} y={-10} fill="#cbd5e1" listening={false} />
+                                    </Group>
+                                ))}
+
+                                {/* Second Row Input 00CH */}
+                                {[...Array(6)].map((_, i) => (
+                                    <Group key={`knob-second-${i}`} x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING} y={SECOND_ROW_Y}>
+                                        <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
+                                        <Circle radius={3} y={-10} fill="#cbd5e1" listening={false} />
                                     </Group>
                                 ))}
 
