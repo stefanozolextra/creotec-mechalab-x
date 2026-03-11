@@ -306,6 +306,20 @@ function parseNonNegativeInt(value) {
     return parsed;
 }
 
+function formatModuleCodeFromNumber(value) {
+    const parsed = Number(value);
+    const safeNumber = Number.isInteger(parsed) && parsed > 0 ? parsed : 1;
+    return `M${String(safeNumber).padStart(2, "0")}`;
+}
+
+function extractModuleCodeNumber(value) {
+    const match = /^M(\d+)$/i.exec(String(value || "").trim());
+    if (!match) return null;
+    const parsed = Number(match[1]);
+    if (!Number.isInteger(parsed) || parsed < 1) return null;
+    return parsed;
+}
+
 function isNonEmptyString(value) {
     return typeof value === "string" && value.trim().length > 0;
 }
@@ -1270,6 +1284,94 @@ app.get("/api/admin/lessons", async (req, res) => {
     } catch (error) {
         console.error("Admin lessons listing endpoint failed:", error);
         return res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+app.post("/api/admin/lessons", async (req, res) => {
+    const rawTitle = req.body?.title;
+    if (typeof rawTitle !== "string") {
+        return res.status(400).json({ error: "Title is required" });
+    }
+
+    const title = rawTitle.trim();
+    if (!title) {
+        return res.status(400).json({ error: "Title cannot be empty" });
+    }
+    if (title.length > MODULE_TITLE_MAX_LENGTH) {
+        return res.status(400).json({ error: `Title must be at most ${MODULE_TITLE_MAX_LENGTH} characters` });
+    }
+
+    const client = await pool.connect();
+    let createdModuleId = null;
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await client.query("LOCK TABLE modules IN SHARE ROW EXCLUSIVE MODE");
+
+        const nextOrderResult = await client.query(
+            `SELECT COALESCE(MAX(order_no), 0)::INT + 1 AS next_order
+             FROM modules`
+        );
+        const nextOrder = Number(nextOrderResult.rows[0]?.next_order) || 1;
+
+        const existingCodesResult = await client.query(`SELECT module_code FROM modules`);
+        const usedCodeNumbers = new Set();
+        for (const row of existingCodesResult.rows) {
+            const codeNumber = extractModuleCodeNumber(row.module_code);
+            if (codeNumber) usedCodeNumbers.add(codeNumber);
+        }
+
+        let candidateCodeNumber = Math.max(nextOrder, 1);
+        while (usedCodeNumbers.has(candidateCodeNumber)) {
+            candidateCodeNumber += 1;
+        }
+        const moduleCode = formatModuleCodeFromNumber(candidateCodeNumber);
+
+        const insertResult = await client.query(
+            `INSERT INTO modules (module_code, title, order_no)
+             VALUES ($1, $2, $3)
+             RETURNING module_id`,
+            [moduleCode, title, nextOrder]
+        );
+
+        createdModuleId = Number(insertResult.rows[0]?.module_id) || null;
+        if (!createdModuleId) {
+            await client.query("ROLLBACK");
+            return res.status(500).json({ error: "Failed to create module" });
+        }
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin lesson create:", rollbackError);
+            }
+        }
+
+        if (error?.code === "23505") {
+            return res.status(409).json({ error: "Module code already exists" });
+        }
+
+        console.error("Admin lesson create endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    } finally {
+        client.release();
+    }
+
+    invalidateAdminCaches();
+    try {
+        const [item] = await getAdminLessonItems(createdModuleId);
+        if (!item) {
+            return res.status(500).json({ error: "Failed to load lesson after create" });
+        }
+        return res.status(201).json({ item });
+    } catch (error) {
+        console.error("Admin lesson create follow-up listing failed:", error);
+        return res.status(201).json({ item: null });
     }
 });
 

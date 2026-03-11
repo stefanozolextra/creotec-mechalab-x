@@ -107,6 +107,7 @@ const AnimatedRoutes = () => {
           path="/simulation/:id"
           element={
             <RequireAuth role="trainee">
+              {/* <SimulationView /> */}
               <PLCSimulationApp />
             </RequireAuth>
           }

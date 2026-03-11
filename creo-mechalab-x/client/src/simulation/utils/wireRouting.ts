@@ -1,5 +1,3 @@
-// wireRouting.ts
-
 export interface WireRoutingPoint {
   x: number;
   y: number;
@@ -36,10 +34,6 @@ interface ComputeWireRouteParams {
   bottomRowPins: string[];
 }
 
-/**
- * Match your gray duct thickness.
- * (From your screenshot, 40px is correct.)
- */
 const DUCT_THICKNESS = 40;
 const HALF = DUCT_THICKNESS / 2;
 
@@ -56,7 +50,7 @@ function keyOf(p: WireRoutingPoint): NodeKey {
 }
 
 /**
- * Dijkstra on a small grid graph.
+ * Dijkstra algorithm to find the shortest path on the duct grid.
  */
 function dijkstra(
   startKey: NodeKey,
@@ -85,9 +79,7 @@ function dijkstra(
       }
     }
 
-    if (!u) break;
-    if (u === endKey) break;
-
+    if (!u || u === endKey) break;
     unvisited.delete(u);
 
     for (const v of edges[u] ?? []) {
@@ -107,7 +99,6 @@ function dijkstra(
     cur = prev[cur];
   }
   path.reverse();
-
   return path.length > 0 && path[0] === startKey ? path : [];
 }
 
@@ -125,7 +116,6 @@ export const computeWireDuctIntermediatePoints = ({
   const start = getPinPos(fromPin);
   const end = getPinPos(toPin);
 
-  // stable “slot” offsets (prevents overlaps)
   const getWireIndex = (from: string, to: string) => {
     const key = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
     const allKeys = wires.map((w) => key(w.fromPin, w.toPin)).concat([key(from, to)]);
@@ -136,7 +126,6 @@ export const computeWireDuctIntermediatePoints = ({
   const slotOffsets = [-12, -6, 0, 6, 12];
   const slot = slotOffsets[getWireIndex(fromPin, toPin) % slotOffsets.length];
 
-  // Duct centerlines (outer frame + middle dividers)
   const dLeft = HALF + slot;
   const dRight = stageWidth - HALF - slot;
   const dTop = HALF + slot;
@@ -147,16 +136,6 @@ export const computeWireDuctIntermediatePoints = ({
   const vLines = [dLeft, dCenterV, dRight];
   const hLines = [dTop, dMidH, dBottom];
 
-  const nearestOf = (v: number, arr: number[]) =>
-    arr.reduce((best, x) => (Math.abs(v - x) < Math.abs(v - best) ? x : best), arr[0]);
-
-  /**
-   * rotation -> facing direction using YOUR rules:
-   * 0   -> UP
-   * 90  -> RIGHT
-   * 180 -> DOWN
-   * 270 -> LEFT
-   */
   const getFacingDir = (pinId: string): "up" | "down" | "left" | "right" => {
     const meta = getPinMeta(pinId);
     const t = componentTransforms[meta.componentId] ?? defaultTransform;
@@ -169,48 +148,31 @@ export const computeWireDuctIntermediatePoints = ({
   };
 
   /**
-   * GREEN-LINE behavior:
-   * Exit directly into the duct in front of the pin.
-   * IMPORTANT: do NOT “pre-slide” to another duct before routing.
+   * Forces the wire to exit into the duct directly in front of the pin.
+   * This prevents over-extension past the component.
    */
   const attachToFacingDuct = (p: WireRoutingPoint, dir: "up" | "down" | "left" | "right") => {
-    if (dir === "up") {
-      const y = p.y <= dMidH ? dTop : dMidH;
-      return { x: p.x, y };
-    }
-    if (dir === "down") {
-      const y = p.y < dMidH ? dMidH : dBottom;
-      return { x: p.x, y };
-    }
-    if (dir === "left") {
-      const x = p.x >= dCenterV ? dCenterV : dLeft;
-      return { x, y: p.y };
-    }
-    // right
-    const x = p.x < dCenterV ? dCenterV : dRight;
-    return { x, y: p.y };
+    if (dir === "up") return { x: p.x, y: p.y <= dMidH ? dTop : dMidH };
+    if (dir === "down") return { x: p.x, y: p.y < dMidH ? dMidH : dBottom };
+    if (dir === "left") return { x: p.x >= dCenterV ? dCenterV : dLeft, y: p.y };
+    return { x: p.x < dCenterV ? dCenterV : dRight, y: p.y };
   };
 
   const fromDir = getFacingDir(fromPin);
   const toDir = getFacingDir(toPin);
-
   const exit = attachToFacingDuct(start, fromDir);
   const entry = attachToFacingDuct(end, toDir);
 
-  /**
-   * Build duct graph nodes = intersections of vLines x hLines
-   */
   const nodes: Record<NodeKey, WireRoutingPoint> = {};
   const edges: Record<NodeKey, NodeKey[]> = {};
-
   const addNode = (p: WireRoutingPoint) => {
     const k = keyOf(p);
-    nodes[k] = p;
+    if (!nodes[k]) nodes[k] = p;
     if (!edges[k]) edges[k] = [];
     return k;
   };
 
-  // 3x3 grid intersections
+  // Build grid intersections
   const gridKeys: NodeKey[][] = [];
   for (let yi = 0; yi < hLines.length; yi++) {
     const row: NodeKey[] = [];
@@ -220,100 +182,48 @@ export const computeWireDuctIntermediatePoints = ({
     gridKeys.push(row);
   }
 
-  // connect neighbors
+  // Connect grid neighbors
   for (let yi = 0; yi < 3; yi++) {
     for (let xi = 0; xi < 3; xi++) {
-      const k = gridKeys[yi][xi];
-      const n: NodeKey[] = [];
-      if (xi > 0) n.push(gridKeys[yi][xi - 1]);
-      if (xi < 2) n.push(gridKeys[yi][xi + 1]);
-      if (yi > 0) n.push(gridKeys[yi - 1][xi]);
-      if (yi < 2) n.push(gridKeys[yi + 1][xi]);
-      edges[k].push(...n);
+      if (xi > 0) edges[gridKeys[yi][xi]].push(gridKeys[yi][xi - 1]);
+      if (xi < 2) edges[gridKeys[yi][xi]].push(gridKeys[yi][xi + 1]);
+      if (yi > 0) edges[gridKeys[yi][xi]].push(gridKeys[yi - 1][xi]);
+      if (yi < 2) edges[gridKeys[yi][xi]].push(gridKeys[yi + 1][xi]);
     }
   }
 
   /**
-   * ✅ KEY FIX (prevents extended lines):
-   * Do NOT guess whether attachment is vertical/horizontal.
-   * Use facing direction:
-   * - UP/DOWN -> attach on horizontal duct (same y = dTop/dMidH/dBottom, x moves)
-   * - LEFT/RIGHT -> attach on vertical duct (same x = dLeft/dCenterV/dRight, y moves)
-   *
-   * Also snap the attachment to the nearest actual duct centerline on its axis,
-   * so it cannot “drift” and create long runs.
+   * Snaps the attachment point onto the closest duct centerline to prevent extended lines.
    */
   const attachPointToGraph = (p: WireRoutingPoint, kind: "horizontal" | "vertical"): NodeKey => {
     const pk = addNode(p);
+    const axisLines = kind === "horizontal" ? vLines : hLines;
+    const coord = kind === "horizontal" ? p.y : p.x;
 
-    if (kind === "horizontal") {
-      const y = nearestOf(p.y, hLines);
-      nodes[pk] = { x: p.x, y }; // snap onto the horizontal duct line
-
-      // connect to 2 nearest intersections along this horizontal duct
-      const candidates = vLines
-        .map((x) => ({ x, y }))
-        .map((c) => ({ c, d: manhattan(nodes[pk], c) }))
-        .sort((a, b) => a.d - b.d)
-        .slice(0, 2)
-        .map((x) => addNode(x.c));
-
-      for (const ck of candidates) {
-        edges[pk].push(ck);
-        edges[ck].push(pk);
-      }
-
-      return pk;
-    }
-
-    // vertical
-    const x = nearestOf(p.x, vLines);
-    nodes[pk] = { x, y: p.y }; // snap onto the vertical duct line
-
-    // connect to 2 nearest intersections along this vertical duct
-    const candidates = hLines
-      .map((y) => ({ x, y }))
-      .map((c) => ({ c, d: manhattan(nodes[pk], c) }))
+    const candidates = axisLines
+      .map(line => kind === "horizontal" ? { x: line, y: coord } : { x: coord, y: line })
+      .map(c => ({ k: addNode(c), d: manhattan(p, c) }))
       .sort((a, b) => a.d - b.d)
-      .slice(0, 2)
-      .map((x) => addNode(x.c));
+      .slice(0, 2);
 
-    for (const ck of candidates) {
-      edges[pk].push(ck);
-      edges[ck].push(pk);
+    for (const cand of candidates) {
+      edges[pk].push(cand.k);
+      edges[cand.k].push(pk);
     }
-
     return pk;
   };
 
-  const exitKind: "horizontal" | "vertical" =
-    fromDir === "up" || fromDir === "down" ? "horizontal" : "vertical";
-
-  const entryKind: "horizontal" | "vertical" =
-    toDir === "up" || toDir === "down" ? "horizontal" : "vertical";
-
-  const exitK = attachPointToGraph(exit, exitKind);
-  const entryK = attachPointToGraph(entry, entryKind);
+  const exitK = attachPointToGraph(exit, (fromDir === "up" || fromDir === "down") ? "horizontal" : "vertical");
+  const entryK = attachPointToGraph(entry, (toDir === "up" || toDir === "down") ? "horizontal" : "vertical");
 
   const pathKeys = dijkstra(exitK, entryK, nodes, edges);
+  const ductPath = pathKeys.map(k => nodes[k]);
 
-  const ductPath: WireRoutingPoint[] =
-    pathKeys.length > 0
-      ? pathKeys.map((k) => nodes[k])
-      : [nodes[exitK], { x: dCenterV, y: nodes[exitK].y }, { x: dCenterV, y: nodes[entryK].y }, nodes[entryK]];
-
-  /**
-   * Build full polyline:
-   * start -> exit -> ductPath -> entry -> end
-   */
-  const full: WireRoutingPoint[] = [start, nodes[exitK], ...ductPath.slice(1, -1), nodes[entryK], end];
-
-  // de-dupe consecutive points
+  const full = [start, ...ductPath, end];
   const compact: WireRoutingPoint[] = [];
   for (const p of full) {
     if (compact.length === 0 || !samePoint(compact[compact.length - 1], p)) compact.push(p);
   }
 
-  // return intermediates only
   return compact.slice(1, -1);
 };
