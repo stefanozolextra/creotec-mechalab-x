@@ -30,6 +30,14 @@ const HW_STYLES = {
 };
 
 // --- CONFIGURATION: PLC BOARD PORTS (1:1 with Reference Photo) ---
+const SOL_PAIR_START_X = 535;
+const SOL_PAIR_Y = 535;
+const SOL_PAIR_INNER_SPACING = 40; // px between plus and minus in a pair
+const SOL_PAIR_OUTER_SPACING = 150; // px between pairs
+const solPairX = (pairIdx: number, isPlus: boolean) =>
+    SOL_PAIR_START_X + pairIdx * SOL_PAIR_OUTER_SPACING + (isPlus ? 0 : SOL_PAIR_INNER_SPACING);
+
+// --- CONFIGURATION: PLC BOARD PORTS (1:1 with Reference Photo) ---
 const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; label: string; desc: string }> = {
     // === POWER SUPPLY ===
     '24v_1': { x: 377, y: 530, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
@@ -94,17 +102,39 @@ const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; 
     'emo_no_out': { x: 1200, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'EMO (NO) Out' },
 
     // === SOLENOID VALVES ===
-    'sol_a_plus': { x: 550, y: 530, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
-    'sol_a_minus': { x: 590, y: 530, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
+    'sol3/2_a_plus': { x: solPairX(0, true), y: SOL_PAIR_Y, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
+    'sol3/2_a_minus': { x: solPairX(0, false), y: SOL_PAIR_Y, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
+
+    'sol4/2_a_plus': { x: solPairX(1, true), y: SOL_PAIR_Y, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
+    'sol4/2_a_minus': { x: solPairX(1, false), y: SOL_PAIR_Y, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
+
+    'sol4/2_b_plus': { x: solPairX(2, true), y: SOL_PAIR_Y, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
+    'sol4/2_b_minus': { x: solPairX(2, false), y: SOL_PAIR_Y, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
+
+    'sol4/3_a_plus': { x: solPairX(3, true), y: SOL_PAIR_Y, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
+    'sol4/3_a_minus': { x: solPairX(3, false), y: SOL_PAIR_Y, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
+
+    'sol4/3_b_plus': { x: solPairX(4, true), y: SOL_PAIR_Y, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
+    'sol4/3_b_minus': { x: solPairX(4, false), y: SOL_PAIR_Y, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
 
     // === BUZZER TERMINALS ===
     'buzzer_plus': { x: 495, y: 665, color: HW_STYLES.jackRed, label: '+', desc: 'Buzzer Positive (+)' },
     'buzzer_minus': { x: 560, y: 665, color: HW_STYLES.jackBlack, label: '-', desc: 'Buzzer Negative (-)' },
 
     // === REED SWITCHES ===
-    'reed_ret': { x: 510, y: 410, color: HW_STYLES.jackYellow, label: 'RET', desc: 'Cyl Retracted' },
-    'reed_ext': { x: 570, y: 410, color: HW_STYLES.jackYellow, label: 'EXT', desc: 'Cyl Extended' },
+    'reed_ret_1.1': { x: 495, y: 360, color: HW_STYLES.jackYellow, label: 'RET', desc: 'Cyl Retracted' },
+    'reed_ext_1.2': { x: 535, y: 360, color: HW_STYLES.jackBlue, label: 'EXT', desc: 'Cyl Extended' },
+
+    'reed_ret_2.1': { x: 615, y: 360, color: HW_STYLES.jackYellow, label: 'RET', desc: 'Cyl Retracted' },
+    'reed_ext_2.2': { x: 655, y: 360, color: HW_STYLES.jackBlue, label: 'EXT', desc: 'Cyl Extended' },
+
+    'reed_ret_3.1': { x: 555, y: 430, color: HW_STYLES.jackYellow, label: 'RET', desc: 'Cyl Retracted' },
+    'reed_ext_3.2': { x: 595, y: 430, color: HW_STYLES.jackBlue, label: 'EXT', desc: 'Cyl Extended' },
 };
+
+// Spacing between reed jack and its light (positive = light above jack, negative = below)
+const REED_LIGHT_OFFSET_Y = -38;
+
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; }
 interface PLCSimulationAppProps { routeId?: string; onNavigateBack?: () => void; }
@@ -119,6 +149,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const [isStartPressed, setIsStartPressed] = useState<boolean>(false);
     const [isStopPressed, setIsStopPressed] = useState<boolean>(false);
     const [activeKnob, setActiveKnob] = useState<'selector' | 'emo' | `input-${number}` | null>(null);
+    // All knob angles are now -30 to 30 degrees (60-degree sweep)
     const [selectorAngle, setSelectorAngle] = useState<number>(0);
     const [emoAngle, setEmoAngle] = useState<number>(0);
     const [inputKnobAngles, setInputKnobAngles] = useState<number[]>(Array.from({ length: 12 }, () => 0));
@@ -156,6 +187,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const START_BUTTON_Y = 645;
     const START_TEXT_X = -20;
     const START_TEXT_Y = 20;
+
     const STOP_BUTTON_X = 820;
     const STOP_BUTTON_Y = 645;
     const STOP_TEXT_X = -15;
@@ -164,8 +196,8 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const SELECTOR_KNOB_Y = 645;
     const EMO_KNOB_X = 1120;
     const EMO_KNOB_Y = 645;
-    const KNOB_MIN_ANGLE = -150;
-    const KNOB_MAX_ANGLE = 150;
+    const KNOB_MIN_ANGLE = -45;
+    const KNOB_MAX_ANGLE = 45;
 
     const availableCanvasWidth = viewport.width - SIDEBAR_WIDTH - PADDING * 2;
     const availableCanvasHeight = viewport.height - PADDING * 2;
@@ -209,7 +241,11 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                 centerY = inputIndex < 6 ? MIDDLE_ROW_Y : SECOND_ROW_Y;
             }
 
-            const rawAngle = (Math.atan2(pointerY - centerY, pointerX - centerX) * 180) / Math.PI + 90;
+            // Calculate angle from vertical (0 at top)
+            let rawAngle = (Math.atan2(pointerY - centerY, pointerX - centerX) * 180) / Math.PI + 90;
+            // Normalize to -180 to 180
+            if (rawAngle > 180) rawAngle -= 360;
+            // Clamp to -30 (left) to 30 (right)
             const clampedAngle = Math.max(KNOB_MIN_ANGLE, Math.min(KNOB_MAX_ANGLE, rawAngle));
 
             if (activeKnob === 'selector') {
@@ -270,10 +306,17 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     // --- HARDWARE REPLICA DRAWING FUNCTIONS ---
     const renderHardwareJack = (portId: string, isHovered: boolean, isActive: boolean) => {
         const pos = GOTT_TRAINER_PORTS[portId];
+        const isReed = portId.startsWith('reed_ret_') || portId.startsWith('reed_ext_');
         return (
             <Group key={`jack-${portId}`} x={pos.x} y={pos.y}>
+                {/* Label on top for reed jacks, below for others */}
+                {isReed && (
+                    <Text text={pos.label} x={-15} y={-18} width={30} fontSize={9} fontFamily={HW_STYLES.technicalMono} fontStyle="bold" align="center" fill="#000000" />
+                )}
                 <Circle radius={11} fill={HW_STYLES.labelYellow} />
-                <Text text={pos.label} x={-15} y={11} width={30} fontSize={9} fontFamily={HW_STYLES.technicalMono} fontStyle="bold" align="center" fill="#000000" />
+                {!isReed && (
+                    <Text text={pos.label} x={-15} y={11} width={30} fontSize={9} fontFamily={HW_STYLES.technicalMono} fontStyle="bold" align="center" fill="#000000" />
+                )}
                 <Circle radius={7} fill="#bdc3c7" stroke="#34495e" strokeWidth={1} />
                 <Circle
                     id={portId}
@@ -389,7 +432,30 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                 {/* Bottom Row */}
                                 {renderTechnicalPanel("relays", 30, 470, 300, 220, "RELAY TYPE OUTPUT (10CH)")}
                                 {renderTechnicalPanel("power", 345, 470, 105, 220, "POWER SUPPLY")}
+
                                 {renderTechnicalPanel("solenoids", 460, 470, 790, 90, "SOLENOID VALVES")}
+
+                                {/* Solenoid Valve Pair Labels */}
+                                {[
+                                    { label: '3/2 A', x: solPairX(0, true) + SOL_PAIR_INNER_SPACING / 2 },
+                                    { label: '4/2 A-', x: solPairX(1, true) + SOL_PAIR_INNER_SPACING / 2 },
+                                    { label: '4/2A+', x: solPairX(2, true) + SOL_PAIR_INNER_SPACING / 2 },
+                                    { label: '4/3 B-', x: solPairX(3, true) + SOL_PAIR_INNER_SPACING / 2 },
+                                    { label: '4/3B+', x: solPairX(4, true) + SOL_PAIR_INNER_SPACING / 2 },
+                                ].map((pair, i) => (
+                                    <Text
+                                        key={`sol-pair-label-${i}`}
+                                        text={pair.label}
+                                        x={pair.x - SOL_PAIR_INNER_SPACING / 2}
+                                        y={SOL_PAIR_Y - 28}
+                                        fontSize={14}
+                                        fontStyle="bold"
+                                        fill="#1e293b"
+                                        align="center"
+                                        width={SOL_PAIR_INNER_SPACING}
+                                        listening={false}
+                                    />
+                                ))}
                                 {renderTechnicalPanel("buzzer", 460, 575, 140, 115, "BUZZER")}
                                 {renderTechnicalPanel("manual", 615, 575, 635, 115, "MANUAL INPUTS")}
 
@@ -542,7 +608,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                     </Group>
                                 ))}
 
-                                {/* Buzzer Visual (1 only) */}
+                                {/* Buzzer Visual*/}
                                 {[...Array(1)].map((_, i) => (
                                     <Group key={`buzzer-${i}`} x={BUZZER_VISUAL_X} y={BUZZER_VISUAL_Y}>
                                         <Circle radius={18} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
@@ -550,7 +616,67 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                     </Group>
                                 ))}
 
-                                {/* Upper Relay Type Light */}
+                                {/* Reed switch pairs with border container */}
+                                {[
+                                    // Each pair: [retId, extId]
+                                    ['reed_ret_1.1', 'reed_ext_1.2'],
+                                    ['reed_ret_2.1', 'reed_ext_2.2'],
+                                    ['reed_ret_3.1', 'reed_ext_3.2'],
+                                ].map((pair, i) => {
+                                    const ret = GOTT_TRAINER_PORTS[pair[0]];
+                                    const ext = GOTT_TRAINER_PORTS[pair[1]];
+                                    if (!ret || !ext) return null;
+                                    // Light and jack visual radius + stroke: 16+4=20 for light, 11 for jack outer
+                                    const lightRadius = 16;
+                                    const lightStroke = 4;
+                                    const jackRadius = 11;
+                                    // Get all x/y for both lights and jacks
+                                    const points = [
+                                        { x: ret.x, y: ret.y },
+                                        { x: ext.x, y: ext.y },
+                                        { x: ret.x, y: ret.y + REED_LIGHT_OFFSET_Y },
+                                        { x: ext.x, y: ext.y + REED_LIGHT_OFFSET_Y },
+                                    ];
+                                    // Compute min/max for all points
+                                    const minX = Math.min(...points.map(p => p.x - Math.max(lightRadius + lightStroke, jackRadius)));
+                                    const maxX = Math.max(...points.map(p => p.x + Math.max(lightRadius + lightStroke, jackRadius)));
+                                    const minY = Math.min(...points.map(p => p.y - Math.max(lightRadius + lightStroke, jackRadius)));
+                                    const maxY = Math.max(...points.map(p => p.y + Math.max(lightRadius + lightStroke, jackRadius)));
+                                    const width = maxX - minX;
+                                    const height = maxY - minY;
+                                    return (
+                                        <Group key={`reed-pair-border-${i}`}>
+                                            {/* Border container */}
+                                            <Rect
+                                                x={minX}
+                                                y={minY}
+                                                width={width}
+                                                height={height}
+                                                stroke="#111827"
+                                                strokeWidth={3}
+                                                cornerRadius={20}
+                                                fillEnabled={false}
+                                                listening={false}
+                                            />
+                                            {/* Lights for this pair */}
+                                            {[0, 1].map(j => {
+                                                const jack = GOTT_TRAINER_PORTS[pair[j]];
+                                                return (
+                                                    <Circle
+                                                        key={`reed-light-${pair[j]}`}
+                                                        x={jack.x}
+                                                        y={jack.y + REED_LIGHT_OFFSET_Y}
+                                                        radius={lightRadius}
+                                                        fill={HW_STYLES.switchRedOff}
+                                                        stroke="#cbd5e1"
+                                                        strokeWidth={lightStroke}
+                                                        listening={false}
+                                                    />
+                                                );
+                                            })}
+                                        </Group>
+                                    );
+                                })}
                                 {[...Array(4)].map((_, i) => (
                                     <Circle key={`relay-light-${i}`} x={UPPER_RELAY_LIGHT_START_X + i * UPPER_RELAY_LIGHT_SPACING} y={UPPER_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
                                 ))}
@@ -562,7 +688,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
                                 <Group
                                     x={START_BUTTON_X}
-                                    y={START_BUTTON_Y + (isStartPressed ? 2 : 0)}
+                                    y={START_BUTTON_Y}
                                     onMouseDown={() => setIsStartPressed(true)}
                                     onMouseUp={() => setIsStartPressed(false)}
                                     onMouseLeave={() => setIsStartPressed(false)}
@@ -573,13 +699,15 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                         if (container) container.style.cursor = 'pointer';
                                     }}
                                 >
-                                    <Circle radius={16} fill={isStartPressed ? '#0f766e' : '#10b981'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
-                                    <Circle radius={11} fill={isStartPressed ? '#10b981' : '#34d399'} />
+                                    <Group y={isStartPressed ? 2 : 0}>
+                                        <Circle radius={16} fill={isStartPressed ? '#0f766e' : '#10b981'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
+                                        <Circle radius={11} fill={isStartPressed ? '#10b981' : '#34d399'} />
+                                    </Group>
                                     <Text text="START" x={START_TEXT_X} y={START_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
                                 </Group>
                                 <Group
                                     x={STOP_BUTTON_X}
-                                    y={STOP_BUTTON_Y + (isStopPressed ? 2 : 0)}
+                                    y={STOP_BUTTON_Y}
                                     onMouseDown={() => setIsStopPressed(true)}
                                     onMouseUp={() => setIsStopPressed(false)}
                                     onMouseLeave={() => setIsStopPressed(false)}
@@ -590,8 +718,10 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                         if (container) container.style.cursor = 'pointer';
                                     }}
                                 >
-                                    <Circle radius={16} fill={isStopPressed ? '#b91c1c' : '#ef4444'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
-                                    <Circle radius={11} fill={isStopPressed ? '#ef4444' : '#f87171'} />
+                                    <Group y={isStopPressed ? 2 : 0}>
+                                        <Circle radius={16} fill={isStopPressed ? '#b91c1c' : '#ef4444'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
+                                        <Circle radius={11} fill={isStopPressed ? '#ef4444' : '#f87171'} />
+                                    </Group>
                                     <Text text="STOP" x={STOP_TEXT_X} y={STOP_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
                                 </Group>
 
