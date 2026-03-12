@@ -32,10 +32,14 @@ const HW_STYLES = {
 // --- CONFIGURATION: PLC BOARD PORTS (1:1 with Reference Photo) ---
 const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; label: string; desc: string }> = {
     // === POWER SUPPLY ===
-    '24v_1': { x: 375, y: 560, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
-    '24v_2': { x: 415, y: 560, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
-    '0v_1': { x: 375, y: 640, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
-    '0v_2': { x: 415, y: 640, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
+    '24v_1': { x: 377, y: 530, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
+    '24v_2': { x: 420, y: 530, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
+    '24v_3': { x: 377, y: 570, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
+    '24v_4': { x: 420, y: 570, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
+    '0v_1': { x: 377, y: 620, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
+    '0v_2': { x: 420, y: 620, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
+    '0v_3': { x: 377, y: 660, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
+    '0v_4': { x: 420, y: 660, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
 
     // === INPUT (00CH) ===
     // Adjust x/y here to reposition the INPUT 00CH circles on the board layout.
