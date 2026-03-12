@@ -81,6 +81,10 @@ const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; 
     'sol_a_plus': { x: 550, y: 530, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
     'sol_a_minus': { x: 590, y: 530, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
 
+    // === BUZZER TERMINALS ===
+    'buzzer_plus': { x: 495, y: 665, color: HW_STYLES.jackRed, label: '+', desc: 'Buzzer Positive (+)' },
+    'buzzer_minus': { x: 560, y: 665, color: HW_STYLES.jackBlack, label: '-', desc: 'Buzzer Negative (-)' },
+
     // === REED SWITCHES ===
     'reed_ret': { x: 510, y: 410, color: HW_STYLES.jackYellow, label: 'RET', desc: 'Cyl Retracted' },
     'reed_ext': { x: 570, y: 410, color: HW_STYLES.jackYellow, label: 'EXT', desc: 'Cyl Extended' },
@@ -124,6 +128,8 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const BOTTOM_RELAY_LIGHT_START_X = 95;
     const BOTTOM_RELAY_LIGHT_SPACING = 65;
     const BOTTOM_RELAY_LIGHT_Y = 620;
+    const BUZZER_VISUAL_X = 530;
+    const BUZZER_VISUAL_Y = 630;
 
     const availableCanvasWidth = viewport.width - SIDEBAR_WIDTH - PADDING * 2;
     const availableCanvasHeight = viewport.height - PADDING * 2;
@@ -415,6 +421,14 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                     <Group key={`knob-second-${i}`} x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING} y={SECOND_ROW_Y}>
                                         <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
                                         <Circle radius={3} y={-10} fill="#cbd5e1" listening={false} />
+                                    </Group>
+                                ))}
+
+                                {/* Buzzer Visual (1 only) */}
+                                {[...Array(1)].map((_, i) => (
+                                    <Group key={`buzzer-${i}`} x={BUZZER_VISUAL_X} y={BUZZER_VISUAL_Y}>
+                                        <Circle radius={18} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
+                                        <Circle radius={5} fill="#ef4444" listening={false} />
                                     </Group>
                                 ))}
 
