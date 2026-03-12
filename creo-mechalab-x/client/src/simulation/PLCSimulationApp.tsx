@@ -72,14 +72,26 @@ const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; 
     'plc_out_07': { x: 290, y: 655, color: HW_STYLES.jackBlue, label: '07', desc: 'Output 10.07' },
 
     // === MANUAL INPUTS ===
-    'start_no_in': { x: 690, y: 625, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) In' },
-    'start_no_out': { x: 730, y: 625, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) Out' },
-    'start_nc_in': { x: 690, y: 660, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Start (NC) In' },
-    'start_nc_out': { x: 730, y: 660, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Start (NC) Out' },
-    'stop_no_in': { x: 820, y: 625, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Stop (NO) In' },
-    'stop_no_out': { x: 860, y: 625, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Stop (NO) Out' },
-    'stop_nc_in': { x: 820, y: 660, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Stop (NC) In' },
-    'stop_nc_out': { x: 860, y: 660, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Stop (NC) Out' },
+    // START
+    'start_nc_in': { x: 710, y: 625, color: HW_STYLES.jackBlue, label: 'Nc', desc: 'Start (NC) In' },
+    'start_nc_out': { x: 750, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Start (NC) Out' },
+    'start_no_in': { x: 710, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) In' },
+    'start_no_out': { x: 750, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) Out' },
+    // STOP
+    'stop_nc_in': { x: 860, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Stop (NC) In' },
+    'stop_nc_out': { x: 900, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Stop (NC) Out' },
+    'stop_no_in': { x: 860, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Stop (NO) In' },
+    'stop_no_out': { x: 900, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Stop (NO) Out' },
+    // SELECTOR 
+    'selector_nc_in': { x: 1010, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Selector (NC) In' },
+    'selector_nc_out': { x: 1050, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Selector (NC) Out' },
+    'selector_no_in': { x: 1010, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Selector (NO) In' },
+    'selector_no_out': { x: 1050, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Selector (NO) Out' },
+    // EMO
+    'emo_nc_in': { x: 1160, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'EMO (NC) In' },
+    'emo_nc_out': { x: 1200, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'EMO (NC) Out' },
+    'emo_no_in': { x: 1160, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'EMO (NO) In' },
+    'emo_no_out': { x: 1200, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'EMO (NO) Out' },
 
     // === SOLENOID VALVES ===
     'sol_a_plus': { x: 550, y: 530, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
@@ -136,14 +148,18 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const BOTTOM_RELAY_LIGHT_Y = 620;
     const BUZZER_VISUAL_X = 530;
     const BUZZER_VISUAL_Y = 630;
-    const START_BUTTON_X = 650;
+    const START_BUTTON_X = 670;
     const START_BUTTON_Y = 645;
     const START_TEXT_X = -20;
     const START_TEXT_Y = 20;
-    const STOP_BUTTON_X = 780;
+    const STOP_BUTTON_X = 820;
     const STOP_BUTTON_Y = 645;
     const STOP_TEXT_X = -15;
     const STOP_TEXT_Y = 20;
+    const SELECTOR_KNOB_X = 970;
+    const SELECTOR_KNOB_Y = 645;
+    const EMO_KNOB_X = 1120;
+    const EMO_KNOB_Y = 645;
 
     const availableCanvasWidth = viewport.width - SIDEBAR_WIDTH - PADDING * 2;
     const availableCanvasHeight = viewport.height - PADDING * 2;
@@ -489,6 +505,18 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                     <Circle radius={16} fill={isStopPressed ? '#b91c1c' : '#ef4444'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
                                     <Circle radius={11} fill={isStopPressed ? '#ef4444' : '#f87171'} />
                                     <Text text="STOP" x={STOP_TEXT_X} y={STOP_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
+                                </Group>
+
+                                <Group x={SELECTOR_KNOB_X} y={SELECTOR_KNOB_Y}>
+                                    <Circle radius={15} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
+                                    <Circle radius={3} y={-8} fill="#cbd5e1" listening={false} />
+                                    <Text text="SELECTOR" x={-26} y={22} fontSize={10} fontStyle="bold" fill="#1e293b" listening={false} />
+                                </Group>
+
+                                <Group x={EMO_KNOB_X} y={EMO_KNOB_Y}>
+                                    <Circle radius={15} fill="#b91c1c" stroke="#cbd5e1" strokeWidth={2} listening={false} />
+                                    <Circle radius={3} y={-8} fill="#f87171" listening={false} />
+                                    <Text text="EMO" x={-12} y={22} fontSize={10} fontStyle="bold" fill="#7f1d1d" listening={false} />
                                 </Group>
 
                                 <Group x={690} y={30} listening={false}>
