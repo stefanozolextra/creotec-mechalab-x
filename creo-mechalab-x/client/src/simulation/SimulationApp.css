@@ -154,11 +154,12 @@ body,
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 50%;
+  left: 60%;
+  /* Shifted from 50% to 60% */
   border-left-style: solid;
   border-left-color: #808080;
   border-left-width: var(--wire-duct-size);
-  /* center the vertical duct at 50% */
+  /* center the vertical duct */
   transform: translateX(-50%);
   pointer-events: none;
   z-index: 0;
@@ -168,7 +169,8 @@ body,
   content: '';
   position: absolute;
   left: 0;
-  right: 50%;
+  right: 40%;
+  /* Shifted from 50% to 40% */
   top: 50%;
   border-top-style: solid;
   border-top-color: #808080;

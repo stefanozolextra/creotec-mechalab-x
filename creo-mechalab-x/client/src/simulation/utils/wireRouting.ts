@@ -34,9 +34,6 @@ interface ComputeWireRouteParams {
   bottomRowPins: string[];
 }
 
-const DUCT_THICKNESS = 40;
-const HALF = DUCT_THICKNESS / 2;
-
 type NodeKey = string;
 
 const samePoint = (a: WireRoutingPoint, b: WireRoutingPoint) =>
@@ -126,18 +123,30 @@ export const computeWireDuctIntermediatePoints = ({
   const slotOffsets = [-12, -6, 0, 6, 12];
   const slot = slotOffsets[getWireIndex(fromPin, toPin) % slotOffsets.length];
 
-  const dLeft = HALF + slot;
-  const dRight = stageWidth - HALF - slot;
-  const dTop = HALF + slot;
-  const dBottom = stageHeight - HALF - slot;
-  const dCenterV = stageWidth / 2 + slot;
-  const dMidH = stageHeight / 2 + slot;
+  // --- HARDCODED GRID POSITIONS TO MATCH THE CSS LAYOUT ---
+  // The perimeter ducts are 40px thick, meaning their centerlines sit at 20px from the edge.
+  const dLeft = 20 + slot;
+  const dTop = 20 + slot;
+  const dRight = stageWidth - 20 + slot;
+  const dBottom = stageHeight - 20 + slot;
+
+  // The central layout boundaries
+  const dCenterV = 810 + slot;
+  const dMidH = 320 + slot;
 
   const vLines = [dLeft, dCenterV, dRight];
   const hLines = [dTop, dMidH, dBottom];
 
   const getFacingDir = (pinId: string): "up" | "down" | "left" | "right" => {
     const meta = getPinMeta(pinId);
+
+    // Override: Top-Left power terminals always route downward into the middle duct
+    if (meta.componentId.startsWith('battery-40')) return "down";
+    // Override: Solenoids on the right always route left into the vertical duct
+    if (meta.componentId.startsWith('solenoid')) return "left";
+    // Override: Relays/Timers on the bottom left route upward into the middle duct
+    if (meta.componentId.startsWith('relay') || meta.componentId.startsWith('timer') || meta.componentId.startsWith('counter')) return "up";
+
     const t = componentTransforms[meta.componentId] ?? defaultTransform;
     const rot = ((t.rotation % 360) + 360) % 360;
 
@@ -149,7 +158,6 @@ export const computeWireDuctIntermediatePoints = ({
 
   /**
    * Forces the wire to exit into the duct directly in front of the pin.
-   * This prevents over-extension past the component.
    */
   const attachToFacingDuct = (p: WireRoutingPoint, dir: "up" | "down" | "left" | "right") => {
     if (dir === "up") return { x: p.x, y: p.y <= dMidH ? dTop : dMidH };
@@ -185,15 +193,25 @@ export const computeWireDuctIntermediatePoints = ({
   // Connect grid neighbors
   for (let yi = 0; yi < 3; yi++) {
     for (let xi = 0; xi < 3; xi++) {
-      if (xi > 0) edges[gridKeys[yi][xi]].push(gridKeys[yi][xi - 1]);
-      if (xi < 2) edges[gridKeys[yi][xi]].push(gridKeys[yi][xi + 1]);
-      if (yi > 0) edges[gridKeys[yi][xi]].push(gridKeys[yi - 1][xi]);
-      if (yi < 2) edges[gridKeys[yi][xi]].push(gridKeys[yi + 1][xi]);
+      // Horizontal edges
+      if (xi < 2) {
+        // OMIT the non-existent duct extending to the right of the vertical spine
+        const isNonExistentRightMidDuct = (yi === 1 && xi === 1);
+        if (!isNonExistentRightMidDuct) {
+          edges[gridKeys[yi][xi]].push(gridKeys[yi][xi + 1]);
+          edges[gridKeys[yi][xi + 1]].push(gridKeys[yi][xi]);
+        }
+      }
+      // Vertical edges
+      if (yi < 2) {
+        edges[gridKeys[yi][xi]].push(gridKeys[yi + 1][xi]);
+        edges[gridKeys[yi + 1][xi]].push(gridKeys[yi][xi]);
+      }
     }
   }
 
   /**
-   * Snaps the attachment point onto the closest duct centerline to prevent extended lines.
+   * Snaps the attachment point onto the closest duct centerline.
    */
   const attachPointToGraph = (p: WireRoutingPoint, kind: "horizontal" | "vertical"): NodeKey => {
     const pk = addNode(p);
@@ -202,6 +220,7 @@ export const computeWireDuctIntermediatePoints = ({
 
     const candidates = axisLines
       .map(line => kind === "horizontal" ? { x: line, y: coord } : { x: coord, y: line })
+      .filter(c => !(Math.abs(c.y - dMidH) < 20 && c.x > dCenterV + 10)) // Ignore the missing right-middle duct
       .map(c => ({ k: addNode(c), d: manhattan(p, c) }))
       .sort((a, b) => a.d - b.d)
       .slice(0, 2);

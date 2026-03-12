@@ -7,7 +7,7 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft, Play, Copy, ClipboardPaste, Trash2,
   Undo2, Redo2, RotateCw, FlipHorizontal, Sun, Moon, RefreshCw,
-  Lock, Unlock, ChevronRight, ChevronLeft
+  Lock, Unlock, ChevronLeft
 } from 'lucide-react';
 
 import { SIMULATION_ACTIVITIES, evaluateActivity } from './constants/activities';
@@ -81,45 +81,40 @@ const TERMINAL_STRIP_PLACEMENTS: Partial<Record<SimulationComponentType, ShapePo
   solenoidValve: { x: 885, y: 640 },
 };
 
-// --- SHIFTED DOWN & RIGHT COORDINATES ---
-// We use NEW ID keys here ('battery-vplus-2') to bypass the browser's cache. 
-// This forces the terminal blocks to spawn exactly at the new, shifted positions!
+// --- RESTORED TOP-LEFT COORDINATES ---
 const INITIAL_COMPONENTS: Record<string, ShapePos> = {
-  'battery-vplus-2': { x: 90, y: 268 },      // V+ Block
-  'battery-vminus-2': { x: 330, y: 268 },    // V- Block
-  'battery-signals-2': { x: 570, y: 268 },   // Signals Block
+  // Top Left Panel (Reverted x coordinates)
+  'battery-401': { x: 70, y: 256 },
+  'battery-402': { x: 325, y: 256 },
+  'battery-403': { x: 580, y: 256 },
 
-  // Standard placements for the rest of the canvas
-  'relayModule-1': { x: 124, y: 420 },
-  'relayModule-2': { x: 309, y: 420 },
-  'relayModule-3': { x: 450, y: 420 },
-  'counter-1': TERMINAL_STRIP_PLACEMENTS.counter ?? { x: 309, y: 640 },
-  'timer-1': TERMINAL_STRIP_PLACEMENTS.timer ?? { x: 450, y: 640 },
+  // Bottom-Left: Relays & Timers 
+  'relayModule-601': { x: 60, y: 440 },
+  'relayModule-602': { x: 310, y: 440 },
+  'relayModule-603': { x: 560, y: 440 },
+  'timer-601': { x: 180, y: 550 },
+  'counter-601': { x: 440, y: 550 },
 
-  // Shifted slightly right to make room for the expanded left panel
-  'magneticMotor-1': { x: 840, y: 515 },
-  'rollerLever-1': { x: 840, y: 335 },
-  'solenoidValve-1': { x: 840, y: 150 },
-  'rollerLever-2': { x: 1040, y: 640 },
-  'solenoidValve-2': { x: 1225, y: 640 }
+  // Right-Side Actuators: ONLY 2 Solenoid blocks stacked vertically
+  'solenoidValve-701': { x: 807, y: 195 }, // Top Solenoid
+  'solenoidValve-702': { x: 807, y: 455 }  // Bottom Solenoid
 };
 
 const INITIAL_COMPONENT_TRANSFORMS: Record<string, { rotation: number; flipX: boolean }> = {
-  'battery-vplus-2': { rotation: 180, flipX: false },
-  'battery-vminus-2': { rotation: 180, flipX: false },
-  'battery-signals-2': { rotation: 180, flipX: false },
+  'battery-401': { rotation: 0, flipX: false },
+  'battery-402': { rotation: 0, flipX: false },
+  'battery-403': { rotation: 0, flipX: false },
 
-  // Unchanged standard transforms
-  'relayModule-1': { rotation: 0, flipX: false },
-  'relayModule-2': { rotation: 0, flipX: false },
-  'relayModule-3': { rotation: 0, flipX: false },
-  'counter-1': { rotation: 180, flipX: false },
-  'timer-1': { rotation: 180, flipX: false },
-  'magneticMotor-1': { rotation: 270, flipX: false },
-  'rollerLever-1': { rotation: 270, flipX: false },
-  'solenoidValve-1': { rotation: 270, flipX: false },
-  'rollerLever-2': { rotation: 180, flipX: false },
-  'solenoidValve-2': { rotation: 180, flipX: false }
+  // Bottom-Left blocks are horizontal
+  'relayModule-601': { rotation: 0, flipX: false },
+  'relayModule-602': { rotation: 0, flipX: false },
+  'relayModule-603': { rotation: 0, flipX: false },
+  'timer-601': { rotation: 0, flipX: false },
+  'counter-601': { rotation: 0, flipX: false },
+
+  // Solenoids rotated vertically to sit on the left edge of the right panel
+  'solenoidValve-701': { rotation: 270, flipX: false },
+  'solenoidValve-702': { rotation: 270, flipX: false }
 };
 
 const WIRE_COLOR_OPTIONS = [
@@ -175,13 +170,9 @@ interface SimulationAppProps {
   onNavigateBack?: () => void;
 }
 
-// =========================================================================
-// MAIN SIMULATION ENGINE COMPONENT
-// =========================================================================
 export default function SimulationApp({ routeId, onNavigateBack }: SimulationAppProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Theme State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     if (typeof document !== 'undefined') return document.documentElement.classList.contains('dark');
     return true;
@@ -189,13 +180,8 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
 
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
 
-  // === OVERLAY STATES ===
-  const [isControlsPinned, setIsControlsPinned] = useState(true);
-  const [isControlsHovered, setIsControlsHovered] = useState(false);
   const [isDevicePinned, setIsDevicePinned] = useState(true);
   const [isDeviceHovered, setIsDeviceHovered] = useState(false);
-
-  const showControls = isControlsPinned || isControlsHovered;
   const showDevice = isDevicePinned || isDeviceHovered;
 
   const [components, setComponents] = useState<Record<string, ShapePos>>(INITIAL_COMPONENTS);
@@ -224,11 +210,13 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     components: INITIAL_COMPONENTS, wires: [], componentTransforms: INITIAL_COMPONENT_TRANSFORMS, switchStates: {},
   });
 
-  const sidebarWidth = Math.max(180, Math.min(280, Math.round(viewport.width * 0.2)));
-  const deviceSidebarWidth = sidebarWidth;
-  const controlsPanelWidth = Math.max(280, Math.min(360, Math.round(viewport.width * 0.28)));
-  const stageWidth = Math.max(320, viewport.width);
-  const stageHeight = Math.max(260, viewport.height - NAVBAR_HEIGHT);
+  const LEFT_PANEL_WIDTH = 340;
+  const MIN_STAGE_WIDTH = 1350;
+  const MIN_STAGE_HEIGHT = 640;
+
+  const deviceSidebarWidth = Math.max(180, Math.min(280, Math.round(viewport.width * 0.2)));
+  const stageWidth = Math.max(MIN_STAGE_WIDTH, viewport.width - LEFT_PANEL_WIDTH);
+  const stageHeight = Math.max(MIN_STAGE_HEIGHT, viewport.height - NAVBAR_HEIGHT);
 
   useEffect(() => {
     const handleResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
@@ -570,6 +558,19 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   return (
     <div className={`flex flex-col h-screen w-screen text-slate-800 dark:text-slate-200 font-sans overflow-hidden select-none transition-colors duration-300 ${isDarkMode ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
 
+      {/* OVERRIDE CSS WIRE DUCTS TO MATCH FIXED COORDINATES */}
+      <style>{`
+        .simulation-canvas-frame::before {
+          left: 810px !important;
+          transform: none !important;
+        }
+        .simulation-canvas-frame::after {
+          top: 320px !important;
+          width: 810px !important;
+          transform: none !important;
+        }
+      `}</style>
+
       {/* HEADER */}
       <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-[#0B1120] border-b border-slate-200 dark:border-cyan-900/50 z-[60] shadow-md relative">
         <div className="flex items-center gap-4">
@@ -624,227 +625,15 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
         </div>
       </header>
 
-      {/* MAIN CANVAS & OVERLAYS */}
-      <main className="flex-1 relative w-full h-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-900" ref={containerRef}>
+      {/* MAIN LAYOUT: Split into Fixed Left Sidebar & Scrollable Canvas Area */}
+      <div className="flex flex-1 overflow-hidden relative">
 
-        {/* Left Edge Indicator (Controls Panel) */}
-        <div
-          className={`absolute left-0 top-0 bottom-0 w-16 z-40 flex items-center justify-start group transition-opacity duration-300 ${showControls ? 'opacity-0 pointer-events-none' : 'opacity-100 cursor-e-resize'}`}
-          onMouseEnter={() => setIsControlsHovered(true)}
-        >
-          <div className="h-32 w-2 bg-slate-400/20 dark:bg-cyan-500/20 group-hover:w-4 group-hover:bg-cyan-500/50 backdrop-blur-sm border-y border-r border-slate-400/30 dark:border-cyan-400/30 rounded-r-lg flex items-center justify-center relative transition-all duration-300 shadow-[2px_0_10px_rgba(0,0,0,0.1)] dark:shadow-[2px_0_15px_rgba(6,182,212,0.2)] group-hover:shadow-[4px_0_20px_rgba(6,182,212,0.6)]">
-            <ChevronRight className="absolute left-0.5 text-slate-500 dark:text-cyan-400/50 group-hover:text-white dark:group-hover:text-cyan-200 group-hover:translate-x-1 group-hover:scale-125 transition-all duration-300" size={20} strokeWidth={2.5} />
-          </div>
-        </div>
-
-        {/* Right Edge Indicator (Devices Panel) */}
-        <div
-          className={`absolute right-0 top-0 bottom-0 w-16 z-40 flex items-center justify-end group transition-opacity duration-300 ${showDevice ? 'opacity-0 pointer-events-none' : 'opacity-100 cursor-w-resize'}`}
-          onMouseEnter={() => setIsDeviceHovered(true)}
-        >
-          <div className="h-32 w-2 bg-slate-400/20 dark:bg-cyan-500/20 group-hover:w-4 group-hover:bg-cyan-500/50 backdrop-blur-sm border-y border-l border-slate-400/30 dark:border-cyan-400/30 rounded-l-lg flex items-center justify-center relative transition-all duration-300 shadow-[-2px_0_10px_rgba(0,0,0,0.1)] dark:shadow-[-2px_0_15px_rgba(6,182,212,0.2)] group-hover:shadow-[-4px_0_20px_rgba(6,182,212,0.6)]">
-            <ChevronLeft className="absolute right-0.5 text-slate-500 dark:text-cyan-400/50 group-hover:text-white dark:group-hover:text-cyan-200 group-hover:-translate-x-1 group-hover:scale-125 transition-all duration-300" size={20} strokeWidth={2.5} />
-          </div>
-        </div>
-
-        {/* 100% SCALE KONVA STAGE */}
-        <div className="app-layout" style={{ position: 'absolute', inset: 0 }}>
-          <div className="simulation-canvas-frame" style={{ width: stageWidth, height: stageHeight }}>
-            <Stage
-              width={stageWidth}
-              height={stageHeight}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleStageMouseUp}
-              onMouseDown={() => { setPinTooltip(null); if (!activePin) { setSelectedWireId(null); setSelectedIntermediatePoint(null); setSelectedComponentId(null); } }}
-            >
-              <Layer>
-
-                {/* --- TOP-LEFT COMPONENTS (Shifted Down and Right) --- */}
-                <Group x={0} y={0} listening={false}>
-                  {/* Panel Base */}
-                  <Rect x={40} y={40} width={792} height={296} fill={isDarkMode ? '#1e293b' : '#ffffff'} stroke={isDarkMode ? '#334155' : '#e2e8f0'} strokeWidth={2} shadowColor="rgba(0,0,0,0.05)" shadowBlur={10} shadowOffsetY={4} />
-                  <Text text="CONTROL & INDICATOR PANEL" x={70} y={60} fontSize={12} fontStyle="bold" fill={isDarkMode ? '#94a3b8' : '#cbd5e1'} />
-
-                  {/* Switch Indicator */}
-                  <Group x={90} y={100}>
-                    <Rect width={70} height={80} fill={isDarkMode ? "#0f172a" : "#f8fafc"} cornerRadius={6} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
-                    <Rect x={15} y={15} width={40} height={50} fill={isDarkMode ? "#334155" : "#e2e8f0"} cornerRadius={4} stroke="#cbd5e1" strokeWidth={1} />
-                    <Rect x={15} y={15} width={40} height={25} fill={isDarkMode ? "#475569" : "#f1f5f9"} cornerRadius={[4, 4, 0, 0]} />
-                    <Text text="MAIN SWITCH" x={0} y={90} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
-                  </Group>
-
-                  {/* Green Lamp */}
-                  <Group x={260} y={140}>
-                    <Circle radius={24} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
-                    <Circle radius={16} fill="#22c55e" stroke="#16a34a" strokeWidth={1} />
-                    <Text text="LAMP 1 (G)" x={-26} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
-                  </Group>
-
-                  {/* Yellow Lamp */}
-                  <Group x={390} y={140}>
-                    <Circle radius={24} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
-                    <Circle radius={16} fill="#eab308" stroke="#ca8a04" strokeWidth={1} />
-                    <Text text="LAMP 2 (Y)" x={-26} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
-                  </Group>
-
-                  {/* Red Lamp */}
-                  <Group x={520} y={140}>
-                    <Circle radius={24} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
-                    <Circle radius={16} fill="#ef4444" stroke="#dc2626" strokeWidth={1} />
-                    <Text text="LAMP 3 (R)" x={-26} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
-                  </Group>
-
-                  {/* Buzzer */}
-                  <Group x={650} y={140}>
-                    <Circle radius={24} fill="#0f172a" stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
-                    <Circle radius={6} fill="#000000" />
-                    <Circle radius={14} stroke="#1e293b" strokeWidth={2} />
-                    <Text text="BUZZER" x={-20} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
-                  </Group>
-
-                  {/* Dashed drop zones perfectly hugging the terminal strips */}
-                  <Rect x={80} y={260} width={220} height={45} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                  <Text text="V+ (24VDC)" x={80} y={240} fontSize={11} fill={isDarkMode ? '#cbd5e1' : '#64748b'} fontStyle="bold" />
-
-                  <Rect x={320} y={260} width={220} height={45} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                  <Text text="V- (0VDC)" x={320} y={240} fontSize={11} fill={isDarkMode ? '#cbd5e1' : '#64748b'} fontStyle="bold" />
-
-                  <Rect x={560} y={260} width={220} height={45} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                  <Text text="SIGNALS (X1/X2)" x={560} y={240} fontSize={11} fill={isDarkMode ? '#cbd5e1' : '#64748b'} fontStyle="bold" />
-                </Group>
-
-
-                {wires.map((wire) => {
-                  const start = getPinPos(wire.fromPin);
-                  const end = getPinPos(wire.toPin);
-                  const intermediatePoints = wire.intermediatePoints ?? [];
-                  const polylinePoints = [start, ...intermediatePoints, end];
-                  const flattenedPoints = polylinePoints.flatMap((point) => [point.x, point.y]);
-                  const isSelected = selectedWireId === wire.id;
-                  return (
-                    <Line
-                      key={wire.id} points={flattenedPoints} stroke={wire.color} strokeWidth={isSelected ? 6 : 4} hitStrokeWidth={14} lineCap="round" lineJoin="round" tension={0}
-                      shadowColor={isSelected ? '#f39c12' : undefined} shadowBlur={isSelected ? 12 : 0}
-                      onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); setSelectedIntermediatePoint(null); setSelectedComponentId(null); setActivePin(null); setMousePos(null); }}
-                      onDblClick={(e) => {
-                        e.cancelBubble = true; const stagePointer = e.target.getStage()?.getPointerPosition(); if (!stagePointer) return;
-                        let nearestSegmentIndex = 0; let nearestDistanceSquared = Number.POSITIVE_INFINITY;
-                        for (let i = 0; i < polylinePoints.length - 1; i += 1) {
-                          const distanceSquared = getDistanceSquaredToSegment(stagePointer, polylinePoints[i], polylinePoints[i + 1]);
-                          if (distanceSquared < nearestDistanceSquared) { nearestDistanceSquared = distanceSquared; nearestSegmentIndex = i; }
-                        }
-                        setWires((prev) => prev.map((currentWire) => {
-                          if (currentWire.id !== wire.id) return currentWire;
-                          const nextIntermediatePoints = [...(currentWire.intermediatePoints ?? [])];
-                          const elbow = getOrthogonalElbow(stagePointer, polylinePoints[nearestSegmentIndex], polylinePoints[nearestSegmentIndex + 1]);
-                          nextIntermediatePoints.splice(nearestSegmentIndex, 0, elbow);
-                          return { ...currentWire, intermediatePoints: nextIntermediatePoints };
-                        }));
-                        setSelectedWireId(wire.id); setSelectedIntermediatePoint({ wireId: wire.id, index: nearestSegmentIndex }); setSelectedComponentId(null); setActivePin(null); setMousePos(null);
-                      }}
-                    />
-                  );
-                })}
-
-                {wires.flatMap((wire) => {
-                  if (selectedWireId !== wire.id) return [];
-                  const points = wire.intermediatePoints ?? [];
-                  return points.map((point, index) => {
-                    const isPointSelected = selectedIntermediatePoint?.wireId === wire.id && selectedIntermediatePoint.index === index && selectedWireId === wire.id;
-                    return (
-                      <Circle
-                        key={`${wire.id}-point-${index}`} x={point.x} y={point.y} radius={isPointSelected ? 7 : 6} fill={isPointSelected ? '#f39c12' : '#ffffff'} stroke="#2c3e50" strokeWidth={2} draggable={!activePin}
-                        onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); setSelectedIntermediatePoint({ wireId: wire.id, index }); setSelectedComponentId(null); setActivePin(null); setMousePos(null); }}
-                        onDragMove={(e) => {
-                          const wireStart = getPinPos(wire.fromPin); const wireEnd = getPinPos(wire.toPin);
-                          const pointer = { x: e.target.x(), y: e.target.y() };
-                          const previousPoint = index === 0 ? wireStart : points[index - 1];
-                          const nextPoint = index === points.length - 1 ? wireEnd : points[index + 1];
-                          const snappedPoint = getSnappedIntermediatePoint(pointer, previousPoint, nextPoint);
-                          e.target.x(snappedPoint.x); e.target.y(snappedPoint.y);
-                          setWires((prev) => prev.map((currentWire) => {
-                            if (currentWire.id !== wire.id) return currentWire;
-                            const nextIntermediatePoints = [...(currentWire.intermediatePoints ?? [])];
-                            nextIntermediatePoints[index] = snappedPoint;
-                            return { ...currentWire, intermediatePoints: nextIntermediatePoints };
-                          }));
-                        }}
-                        onDblClick={(e) => {
-                          e.cancelBubble = true;
-                          setWires((prev) => prev.map((currentWire) => {
-                            if (currentWire.id !== wire.id) return currentWire;
-                            return { ...currentWire, intermediatePoints: (currentWire.intermediatePoints ?? []).filter((_, pointIndex) => pointIndex !== index) };
-                          }));
-                          setSelectedIntermediatePoint(null);
-                        }}
-                      />
-                    );
-                  });
-                })}
-
-                {activePin && mousePos && (
-                  <Line points={[getPinPos(activePin).x, getPinPos(activePin).y, mousePos.x, mousePos.y]} stroke="#e67e22" strokeWidth={2} dash={[10, 5]} />
-                )}
-
-                {Object.entries(components).map(([id, pos]) => {
-                  const componentType = inferPaletteTypeFromComponentId(id);
-                  return componentType ? (
-                    (() => {
-                      const asset = GENERAL_TERMINAL_STRIP_ASSET;
-                      const pinKeys = Object.keys(asset.pins).filter((key) => /^pin_\d+$/.test(key)).sort((a, b) => Number(a.replace('pin_', '')) - Number(b.replace('pin_', '')));
-                      const pinAKey = pinKeys[0] ?? 'in'; const pinBKey = pinKeys[1] ?? 'out';
-                      const pinAOffset = asset.pins[pinAKey] ?? { x: 8, y: asset.height / 2 };
-                      const pinBOffset = asset.pins[pinBKey] ?? { x: asset.width - 8, y: asset.height / 2 };
-                      const pinOffsets = Object.fromEntries(pinKeys.map((key) => [key, asset.pins[key]]));
-                      return (
-                        <AssetComponent
-                          key={id} id={id} x={pos.x} y={pos.y} rotation={componentTransforms[id]?.rotation ?? 0} flipX={componentTransforms[id]?.flipX ?? false}
-                          isWiring={Boolean(activePin)} isSelected={selectedComponentId === id} imageSrc={asset.imageSrc} width={asset.width} height={asset.height} nodeSize={NODE_SIZE} isLocked={!COMPONENTS_MOVABLE}
-                          pinAId={pinAKey} pinBId={pinBKey} pinAOffset={pinAOffset} pinBOffset={pinBOffset} pinOffsets={pinOffsets}
-                          onPinMouseDown={handlePinMouseDown} pinWireColorForPin={getPinWireColor} pinTooltipForPin={getPinTooltipText} onShowPinTooltip={handleShowPinTooltip} onHidePinTooltip={handleHidePinTooltip}
-                          onSelect={(componentId) => { setSelectedComponentId(componentId); setSelectedWireId(null); setActivePin(null); setMousePos(null); }}
-                          onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
-                        />
-                      );
-                    })()
-                  ) : (
-                    <CircuitComponent
-                      key={id} id={id} x={pos.x} y={pos.y} rotation={componentTransforms[id]?.rotation ?? 0} flipX={componentTransforms[id]?.flipX ?? false} label={id.toUpperCase()} color="#e74c3c" nodeSize={NODE_SIZE}
-                      isWiring={Boolean(activePin)} isLocked={!COMPONENTS_MOVABLE} isSelected={selectedComponentId === id}
-                      onPinMouseDown={handlePinMouseDown} pinWireColorForPin={getPinWireColor} onShowPinTooltip={handleShowPinTooltip} onHidePinTooltip={handleHidePinTooltip}
-                      onSelect={(componentId) => { setSelectedComponentId(componentId); setSelectedWireId(null); setActivePin(null); setMousePos(null); }}
-                      onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
-                    />
-                  );
-                })}
-              </Layer>
-            </Stage>
-            {pinTooltip && (
-              <div className="pin-tooltip-popup" style={{ left: pinTooltip.pos.x + 12, top: pinTooltip.pos.y - 10 }}>{pinTooltip.text}</div>
-            )}
-          </div>
-        </div>
-
-        {/* LEFT OVERLAY: Controls & Ladder Diagram */}
-        <motion.aside
-          className="absolute left-0 top-0 bottom-0 z-50 flex flex-col bg-white dark:bg-[#0B1120] border-r border-slate-200 dark:border-cyan-900/50 shadow-[4px_0_24px_rgba(0,0,0,0.05)] dark:shadow-[4px_0_24px_rgba(6,182,212,0.15)] transition-colors duration-300"
-          style={{ width: controlsPanelWidth }}
-          initial={{ x: '-100%' }}
-          animate={{ x: showControls ? 0 : '-100%' }}
-          transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          onMouseEnter={() => setIsControlsHovered(true)}
-          onMouseLeave={() => setIsControlsHovered(false)}
-        >
+        {/* ========================================= */}
+        {/* FIXED LEFT SIDEBAR: Controls & Diagram    */}
+        {/* ========================================= */}
+        <aside className="w-[340px] shrink-0 flex flex-col bg-white dark:bg-[#0B1120] border-r border-slate-200 dark:border-cyan-900/50 z-20 shadow-[4px_0_24px_rgba(0,0,0,0.05)] dark:shadow-[4px_0_24px_rgba(6,182,212,0.15)] transition-colors duration-300 relative">
           <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-900/50">
             <h3 className="font-black text-slate-800 dark:text-cyan-400 uppercase tracking-widest text-sm">Controls</h3>
-            <button
-              type="button"
-              onClick={() => setIsControlsPinned(!isControlsPinned)}
-              className={`p-1.5 rounded-lg transition-colors ${isControlsPinned ? 'bg-cyan-100 text-cyan-600 dark:bg-cyan-900/40 dark:text-cyan-400 shadow-inner' : 'bg-slate-200 text-slate-500 hover:text-cyan-500 dark:bg-slate-800 dark:hover:text-cyan-400 shadow-sm'}`}
-              title={isControlsPinned ? "Unlock Overlay" : "Lock Overlay"}
-            >
-              {isControlsPinned ? <Lock size={14} /> : <Unlock size={14} />}
-            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
@@ -916,9 +705,211 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                 </button>
               </div>
             </div>
-
           </div>
-        </motion.aside>
+        </aside>
+
+        {/* ========================================= */}
+        {/* SCROLLABLE CANVAS AREA                    */}
+        {/* ========================================= */}
+        <main className="flex-1 overflow-auto relative bg-slate-200 dark:bg-slate-900" ref={containerRef}>
+          <div style={{ width: stageWidth, height: stageHeight }}>
+            <div className="simulation-canvas-frame w-full h-full">
+              <Stage
+                width={stageWidth}
+                height={stageHeight}
+                onMouseMove={handleMouseMove}
+                onMouseUp={handleStageMouseUp}
+                onMouseDown={() => { setPinTooltip(null); if (!activePin) { setSelectedWireId(null); setSelectedIntermediatePoint(null); setSelectedComponentId(null); } }}
+              >
+                <Layer>
+
+                  {/* --- SECTION 1: TOP-LEFT CONTROL PANEL --- */}
+                  <Group x={20} y={20} listening={false}>
+                    <Rect x={20} y={20} width={770} height={280} fill={isDarkMode ? '#1e293b' : '#ffffff'} stroke={isDarkMode ? '#334155' : '#e2e8f0'} strokeWidth={2} shadowColor="rgba(0,0,0,0.05)" shadowBlur={10} shadowOffsetY={4} />
+                    <Text text="CONTROL & INDICATOR PANEL" x={40} y={35} fontSize={12} fontStyle="bold" fill={isDarkMode ? '#94a3b8' : '#cbd5e1'} />
+
+                    <Group x={80} y={70}>
+                      <Rect width={80} height={80} fill={isDarkMode ? "#0f172a" : "#f8fafc"} cornerRadius={6} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+                      <Rect x={20} y={20} width={40} height={40} fill={isDarkMode ? "#334155" : "#e2e8f0"} cornerRadius={4} stroke="#cbd5e1" strokeWidth={1} />
+                      <Rect x={20} y={20} width={40} height={20} fill={isDarkMode ? "#475569" : "#f1f5f9"} cornerRadius={[4, 4, 0, 0]} />
+                      <Text text="MAIN SWITCH" x={5} y={95} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+                    </Group>
+
+                    <Group x={260} y={110}>
+                      <Circle radius={26} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+                      <Circle radius={18} fill="#22c55e" stroke="#16a34a" strokeWidth={1} />
+                      <Text text="LAMP 1 (G)" x={-28} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+                    </Group>
+
+                    <Group x={405} y={110}>
+                      <Circle radius={26} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+                      <Circle radius={18} fill="#eab308" stroke="#ca8a04" strokeWidth={1} />
+                      <Text text="LAMP 2 (Y)" x={-28} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+                    </Group>
+
+                    <Group x={550} y={110}>
+                      <Circle radius={26} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+                      <Circle radius={18} fill="#ef4444" stroke="#dc2626" strokeWidth={1} />
+                      <Text text="LAMP 3 (R)" x={-28} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+                    </Group>
+
+                    <Group x={695} y={110}>
+                      <Circle radius={26} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+                      <Circle radius={18} fill="#1e293b" />
+                      <Circle radius={6} fill="#000000" />
+                      <Text text="BUZZER" x={-20} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+                    </Group>
+
+                    <Rect x={40} y={230} width={220} height={45} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                    <Text text="V+ (24VDC)" x={40} y={210} fontSize={11} fill={isDarkMode ? '#cbd5e1' : '#64748b'} fontStyle="bold" />
+
+                    <Rect x={295} y={230} width={220} height={45} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                    <Text text="V- (0VDC)" x={295} y={210} fontSize={11} fill={isDarkMode ? '#cbd5e1' : '#64748b'} fontStyle="bold" />
+
+                    <Rect x={550} y={230} width={220} height={45} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                    <Text text="SIGNALS (X1/X2)" x={550} y={210} fontSize={11} fill={isDarkMode ? '#cbd5e1' : '#64748b'} fontStyle="bold" />
+                  </Group>
+
+                  {/* --- SECTION 2: BOTTOM-LEFT RELAY & TIMER PANEL --- */}
+                  <Group x={0} y={0} listening={false}>
+                    <Rect x={40} y={360} width={770} height={300} fill={isDarkMode ? '#1e293b' : '#ffffff'} stroke={isDarkMode ? '#334155' : '#e2e8f0'} strokeWidth={2} shadowColor="rgba(0,0,0,0.05)" shadowBlur={10} shadowOffsetY={4} />
+                    <Text text="RELAYS & TIMERS" x={60} y={395} fontSize={12} fontStyle="bold" fill={isDarkMode ? '#94a3b8' : '#cbd5e1'} />
+                  </Group>
+
+                  {/* --- SECTION 3: RIGHT-SIDE PNEUMATICS & SENSORS PANEL --- */}
+                  <Group x={0} y={0} listening={false}>
+                    <Rect x={850} y={40} width={467} height={620} fill={isDarkMode ? '#1e293b' : '#ffffff'} stroke={isDarkMode ? '#334155' : '#e2e8f0'} strokeWidth={2} shadowColor="rgba(0,0,0,0.05)" shadowBlur={10} shadowOffsetY={4} />
+                    <Text text="ACTUATORS & SENSORS" x={870} y={55} fontSize={12} fontStyle="bold" fill={isDarkMode ? '#94a3b8' : '#cbd5e1'} />
+
+                    {/* Dashed drop zones for the right side solenoids */}
+                    <Rect x={885} y={100} width={45} height={220} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                    <Text text="SOLENOID 1" x={883} y={80} fontSize={11} fontStyle="bold" fill={isDarkMode ? '#94a3b8' : '#64748b'} />
+
+                    <Rect x={885} y={360} width={45} height={220} stroke={isDarkMode ? '#475569' : '#94a3b8'} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                    <Text text="SOLENOID 2" x={883} y={340} fontSize={11} fontStyle="bold" fill={isDarkMode ? '#94a3b8' : '#64748b'} />
+                  </Group>
+
+                  {wires.map((wire) => {
+                    const start = getPinPos(wire.fromPin);
+                    const end = getPinPos(wire.toPin);
+                    const intermediatePoints = wire.intermediatePoints ?? [];
+                    const polylinePoints = [start, ...intermediatePoints, end];
+                    const flattenedPoints = polylinePoints.flatMap((point) => [point.x, point.y]);
+                    const isSelected = selectedWireId === wire.id;
+                    return (
+                      <Line
+                        key={wire.id} points={flattenedPoints} stroke={wire.color} strokeWidth={isSelected ? 6 : 4} hitStrokeWidth={14} lineCap="round" lineJoin="round" tension={0}
+                        shadowColor={isSelected ? '#f39c12' : undefined} shadowBlur={isSelected ? 12 : 0}
+                        onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); setSelectedIntermediatePoint(null); setSelectedComponentId(null); setActivePin(null); setMousePos(null); }}
+                        onDblClick={(e) => {
+                          e.cancelBubble = true; const stagePointer = e.target.getStage()?.getPointerPosition(); if (!stagePointer) return;
+                          let nearestSegmentIndex = 0; let nearestDistanceSquared = Number.POSITIVE_INFINITY;
+                          for (let i = 0; i < polylinePoints.length - 1; i += 1) {
+                            const distanceSquared = getDistanceSquaredToSegment(stagePointer, polylinePoints[i], polylinePoints[i + 1]);
+                            if (distanceSquared < nearestDistanceSquared) { nearestDistanceSquared = distanceSquared; nearestSegmentIndex = i; }
+                          }
+                          setWires((prev) => prev.map((currentWire) => {
+                            if (currentWire.id !== wire.id) return currentWire;
+                            const nextIntermediatePoints = [...(currentWire.intermediatePoints ?? [])];
+                            const elbow = getOrthogonalElbow(stagePointer, polylinePoints[nearestSegmentIndex], polylinePoints[nearestSegmentIndex + 1]);
+                            nextIntermediatePoints.splice(nearestSegmentIndex, 0, elbow);
+                            return { ...currentWire, intermediatePoints: nextIntermediatePoints };
+                          }));
+                          setSelectedWireId(wire.id); setSelectedIntermediatePoint({ wireId: wire.id, index: nearestSegmentIndex }); setSelectedComponentId(null); setActivePin(null); setMousePos(null);
+                        }}
+                      />
+                    );
+                  })}
+
+                  {wires.flatMap((wire) => {
+                    if (selectedWireId !== wire.id) return [];
+                    const points = wire.intermediatePoints ?? [];
+                    return points.map((point, index) => {
+                      const isPointSelected = selectedIntermediatePoint?.wireId === wire.id && selectedIntermediatePoint.index === index && selectedWireId === wire.id;
+                      return (
+                        <Circle
+                          key={`${wire.id}-point-${index}`} x={point.x} y={point.y} radius={isPointSelected ? 7 : 6} fill={isPointSelected ? '#f39c12' : '#ffffff'} stroke="#2c3e50" strokeWidth={2} draggable={!activePin}
+                          onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); setSelectedIntermediatePoint({ wireId: wire.id, index }); setSelectedComponentId(null); setActivePin(null); setMousePos(null); }}
+                          onDragMove={(e) => {
+                            const wireStart = getPinPos(wire.fromPin); const wireEnd = getPinPos(wire.toPin);
+                            const pointer = { x: e.target.x(), y: e.target.y() };
+                            const previousPoint = index === 0 ? wireStart : points[index - 1];
+                            const nextPoint = index === points.length - 1 ? wireEnd : points[index + 1];
+                            const snappedPoint = getSnappedIntermediatePoint(pointer, previousPoint, nextPoint);
+                            e.target.x(snappedPoint.x); e.target.y(snappedPoint.y);
+                            setWires((prev) => prev.map((currentWire) => {
+                              if (currentWire.id !== wire.id) return currentWire;
+                              const nextIntermediatePoints = [...(currentWire.intermediatePoints ?? [])];
+                              nextIntermediatePoints[index] = snappedPoint;
+                              return { ...currentWire, intermediatePoints: nextIntermediatePoints };
+                            }));
+                          }}
+                          onDblClick={(e) => {
+                            e.cancelBubble = true;
+                            setWires((prev) => prev.map((currentWire) => {
+                              if (currentWire.id !== wire.id) return currentWire;
+                              return { ...currentWire, intermediatePoints: (currentWire.intermediatePoints ?? []).filter((_, pointIndex) => pointIndex !== index) };
+                            }));
+                            setSelectedIntermediatePoint(null);
+                          }}
+                        />
+                      );
+                    });
+                  })}
+
+                  {activePin && mousePos && (
+                    <Line points={[getPinPos(activePin).x, getPinPos(activePin).y, mousePos.x, mousePos.y]} stroke="#e67e22" strokeWidth={2} dash={[10, 5]} />
+                  )}
+
+                  {Object.entries(components).map(([id, pos]) => {
+                    const componentType = inferPaletteTypeFromComponentId(id);
+                    return componentType ? (
+                      (() => {
+                        const asset = GENERAL_TERMINAL_STRIP_ASSET;
+                        const pinKeys = Object.keys(asset.pins).filter((key) => /^pin_\d+$/.test(key)).sort((a, b) => Number(a.replace('pin_', '')) - Number(b.replace('pin_', '')));
+                        const pinAKey = pinKeys[0] ?? 'in'; const pinBKey = pinKeys[1] ?? 'out';
+                        const pinAOffset = asset.pins[pinAKey] ?? { x: 8, y: asset.height / 2 };
+                        const pinBOffset = asset.pins[pinBKey] ?? { x: asset.width - 8, y: asset.height / 2 };
+                        const pinOffsets = Object.fromEntries(pinKeys.map((key) => [key, asset.pins[key]]));
+                        return (
+                          <AssetComponent
+                            key={id} id={id} x={pos.x} y={pos.y} rotation={componentTransforms[id]?.rotation ?? 0} flipX={componentTransforms[id]?.flipX ?? false}
+                            isWiring={Boolean(activePin)} isSelected={selectedComponentId === id} imageSrc={asset.imageSrc} width={asset.width} height={asset.height} nodeSize={NODE_SIZE} isLocked={!COMPONENTS_MOVABLE}
+                            pinAId={pinAKey} pinBId={pinBKey} pinAOffset={pinAOffset} pinBOffset={pinBOffset} pinOffsets={pinOffsets}
+                            onPinMouseDown={handlePinMouseDown} pinWireColorForPin={getPinWireColor} pinTooltipForPin={getPinTooltipText} onShowPinTooltip={handleShowPinTooltip} onHidePinTooltip={handleHidePinTooltip}
+                            onSelect={(componentId) => { setSelectedComponentId(componentId); setSelectedWireId(null); setActivePin(null); setMousePos(null); }}
+                            onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
+                          />
+                        );
+                      })()
+                    ) : (
+                      <CircuitComponent
+                        key={id} id={id} x={pos.x} y={pos.y} rotation={componentTransforms[id]?.rotation ?? 0} flipX={componentTransforms[id]?.flipX ?? false} label={id.toUpperCase()} color="#e74c3c" nodeSize={NODE_SIZE}
+                        isWiring={Boolean(activePin)} isLocked={!COMPONENTS_MOVABLE} isSelected={selectedComponentId === id}
+                        onPinMouseDown={handlePinMouseDown} pinWireColorForPin={getPinWireColor} onShowPinTooltip={handleShowPinTooltip} onHidePinTooltip={handleHidePinTooltip}
+                        onSelect={(componentId) => { setSelectedComponentId(componentId); setSelectedWireId(null); setActivePin(null); setMousePos(null); }}
+                        onDrag={(compId, x, y) => setComponents(prev => ({ ...prev, [compId]: { x, y } }))}
+                      />
+                    );
+                  })}
+                </Layer>
+              </Stage>
+              {pinTooltip && (
+                <div className="pin-tooltip-popup" style={{ left: pinTooltip.pos.x + 12, top: pinTooltip.pos.y - 10 }}>{pinTooltip.text}</div>
+              )}
+            </div>
+          </div>
+        </main>
+
+        {/* Right Edge Indicator (Devices Panel) */}
+        <div
+          className={`absolute right-0 top-0 bottom-0 w-16 z-40 flex items-center justify-end group transition-opacity duration-300 ${showDevice ? 'opacity-0 pointer-events-none' : 'opacity-100 cursor-w-resize'}`}
+          onMouseEnter={() => setIsDeviceHovered(true)}
+        >
+          <div className="h-32 w-2 bg-slate-400/20 dark:bg-cyan-500/20 group-hover:w-4 group-hover:bg-cyan-500/50 backdrop-blur-sm border-y border-l border-slate-400/30 dark:border-cyan-400/30 rounded-l-lg flex items-center justify-center relative transition-all duration-300 shadow-[-2px_0_10px_rgba(0,0,0,0.1)] dark:shadow-[-2px_0_15px_rgba(6,182,212,0.2)] group-hover:shadow-[-4px_0_20px_rgba(6,182,212,0.6)]">
+            <ChevronLeft className="absolute right-0.5 text-slate-500 dark:text-cyan-400/50 group-hover:text-white dark:group-hover:text-cyan-200 group-hover:-translate-x-1 group-hover:scale-125 transition-all duration-300" size={20} strokeWidth={2.5} />
+          </div>
+        </div>
 
         {/* RIGHT OVERLAY: Device Palette */}
         <motion.aside
@@ -961,7 +952,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
           </div>
         </motion.aside>
 
-      </main>
+      </div>
     </div>
   );
 }
