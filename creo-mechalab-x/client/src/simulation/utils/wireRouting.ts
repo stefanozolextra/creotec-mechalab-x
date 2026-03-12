@@ -1,248 +1,125 @@
 export interface WireRoutingPoint {
-  x: number;
-  y: number;
+    x: number;
+    y: number;
 }
 
-export interface WireRoutingConnection {
-  fromPin: string;
-  toPin: string;
-}
+const manhattan = (a: WireRoutingPoint, b: WireRoutingPoint) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
-export interface WireRoutingComponentTransform {
-  rotation: number;
-  flipX: boolean;
-}
+export function computeOrthogonalPath(
+    fromId: string,
+    toId: string,
+    ports: Record<string, { x: number; y: number }>,
+    wireIndex: number
+): WireRoutingPoint[] {
+    const start = ports[fromId];
+    const end = ports[toId];
+    if (!start || !end) return [];
 
-interface ComputeWireRouteParams {
-  fromPin: string;
-  toPin: string;
-  getPinPos: (pinId: string) => WireRoutingPoint;
-  stageWidth: number;
-  stageHeight: number;
-  wires: WireRoutingConnection[];
-  getPinMeta: (pinId: string) => { pinName: string; componentId: string };
-  getComponentNodeConfig: (componentId: string) => {
-    width: number;
-    height: number;
-    pins: Record<string, WireRoutingPoint>;
-  };
-  componentTransforms: Record<string, WireRoutingComponentTransform>;
-  defaultTransform: WireRoutingComponentTransform;
-  inferPaletteTypeFromComponentId: (componentId: string) => string | null;
-  terminalStripPlacements: Partial<Record<string, WireRoutingPoint>>;
-  topRowPins: string[];
-  bottomRowPins: string[];
-}
+    // Offsets lines so multiple wires don't visually merge into one
+    const offset = (wireIndex % 5 - 2) * 6; // Values: -12, -6, 0, 6, 12
 
-type NodeKey = string;
+    // The centerlines of the gray wire ducts based on panel gaps
+    const H_TOP = 20 + offset;
+    const H_MID = 320 + offset;
+    const H_BOT = 700 + offset;
+    const V_LEFT = 20 + offset;
+    const V_MID = 800 + offset;
+    const V_RIGHT = 1260 + offset;
 
-const samePoint = (a: WireRoutingPoint, b: WireRoutingPoint) =>
-  Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5;
+    // Forces the wire to properly exit into the correct duct based on the port's location
+    const getDuctEntry = (id: string, p: WireRoutingPoint): WireRoutingPoint => {
+        if (id.startsWith('vplus') || id.startsWith('vminus') || id.startsWith('signals')) return { x: p.x, y: H_MID }; // Down
+        if (id.includes('_top')) return { x: p.x, y: H_MID }; // Up
+        if (id.includes('_bot')) return { x: p.x, y: H_BOT }; // Down
+        if (id.startsWith('solenoid')) return { x: V_MID, y: p.y }; // Left
+        return { x: p.x, y: H_MID }; // Fallback
+    };
 
-const manhattan = (a: WireRoutingPoint, b: WireRoutingPoint) =>
-  Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+    const sPrime = getDuctEntry(fromId, start);
+    const ePrime = getDuctEntry(toId, end);
 
-function keyOf(p: WireRoutingPoint): NodeKey {
-  return `${Math.round(p.x * 10) / 10},${Math.round(p.y * 10) / 10}`;
-}
+    const uniqueXs = Array.from(new Set([V_LEFT, V_MID, V_RIGHT, sPrime.x, ePrime.x])).sort((a, b) => a - b);
+    const uniqueYs = Array.from(new Set([H_TOP, H_MID, H_BOT, sPrime.y, ePrime.y])).sort((a, b) => a - b);
 
-/**
- * Dijkstra algorithm to find the shortest path on the duct grid.
- */
-function dijkstra(
-  startKey: NodeKey,
-  endKey: NodeKey,
-  nodes: Record<NodeKey, WireRoutingPoint>,
-  edges: Record<NodeKey, NodeKey[]>
-): NodeKey[] {
-  const dist: Record<NodeKey, number> = {};
-  const prev: Record<NodeKey, NodeKey | null> = {};
-  const unvisited = new Set<NodeKey>(Object.keys(nodes));
+    const isValidH = (y: number) => Math.abs(y - H_TOP) < 1 || Math.abs(y - H_MID) < 1 || Math.abs(y - H_BOT) < 1;
+    const isValidV = (x: number) => Math.abs(x - V_LEFT) < 1 || Math.abs(x - V_MID) < 1 || Math.abs(x - V_RIGHT) < 1;
 
-  for (const k of unvisited) {
-    dist[k] = Infinity;
-    prev[k] = null;
-  }
-  dist[startKey] = 0;
+    // Construct the Duct Grid Graph
+    const nodes: Record<string, WireRoutingPoint> = {};
+    const edges: Record<string, string[]> = {};
+    const key = (x: number, y: number) => `${x},${y}`;
 
-  while (unvisited.size > 0) {
-    let u: NodeKey | null = null;
-    let best = Infinity;
+    uniqueXs.forEach(x => {
+        uniqueYs.forEach(y => {
+            nodes[key(x, y)] = { x, y };
+            edges[key(x, y)] = [];
+        });
+    });
 
-    for (const k of unvisited) {
-      if (dist[k] < best) {
-        best = dist[k];
-        u = k;
-      }
-    }
-
-    if (!u || u === endKey) break;
-    unvisited.delete(u);
-
-    for (const v of edges[u] ?? []) {
-      if (!unvisited.has(v)) continue;
-      const alt = dist[u] + manhattan(nodes[u], nodes[v]);
-      if (alt < dist[v]) {
-        dist[v] = alt;
-        prev[v] = u;
-      }
-    }
-  }
-
-  const path: NodeKey[] = [];
-  let cur: NodeKey | null = endKey;
-  while (cur) {
-    path.push(cur);
-    cur = prev[cur];
-  }
-  path.reverse();
-  return path.length > 0 && path[0] === startKey ? path : [];
-}
-
-export const computeWireDuctIntermediatePoints = ({
-  fromPin,
-  toPin,
-  getPinPos,
-  stageWidth,
-  stageHeight,
-  wires,
-  getPinMeta,
-  componentTransforms,
-  defaultTransform,
-}: ComputeWireRouteParams): WireRoutingPoint[] => {
-  const start = getPinPos(fromPin);
-  const end = getPinPos(toPin);
-
-  const getWireIndex = (from: string, to: string) => {
-    const key = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
-    const allKeys = wires.map((w) => key(w.fromPin, w.toPin)).concat([key(from, to)]);
-    const uniqueKeys = Array.from(new Set(allKeys)).sort();
-    return uniqueKeys.indexOf(key(from, to));
-  };
-
-  const slotOffsets = [-12, -6, 0, 6, 12];
-  const slot = slotOffsets[getWireIndex(fromPin, toPin) % slotOffsets.length];
-
-  // --- HARDCODED GRID POSITIONS TO MATCH THE CSS LAYOUT ---
-  // The perimeter ducts are 40px thick, meaning their centerlines sit at 20px from the edge.
-  const dLeft = 20 + slot;
-  const dTop = 20 + slot;
-  const dRight = stageWidth - 20 + slot;
-  const dBottom = stageHeight - 20 + slot;
-
-  // The central layout boundaries
-  const dCenterV = 810 + slot;
-  const dMidH = 320 + slot;
-
-  const vLines = [dLeft, dCenterV, dRight];
-  const hLines = [dTop, dMidH, dBottom];
-
-  const getFacingDir = (pinId: string): "up" | "down" | "left" | "right" => {
-    const meta = getPinMeta(pinId);
-
-    // Override: Top-Left power terminals always route downward into the middle duct
-    if (meta.componentId.startsWith('battery-40')) return "down";
-    // Override: Solenoids on the right always route left into the vertical duct
-    if (meta.componentId.startsWith('solenoid')) return "left";
-    // Override: Relays/Timers on the bottom left route upward into the middle duct
-    if (meta.componentId.startsWith('relay') || meta.componentId.startsWith('timer') || meta.componentId.startsWith('counter')) return "up";
-
-    const t = componentTransforms[meta.componentId] ?? defaultTransform;
-    const rot = ((t.rotation % 360) + 360) % 360;
-
-    if (rot === 0) return "up";
-    if (rot === 90) return "right";
-    if (rot === 180) return "down";
-    return "left";
-  };
-
-  /**
-   * Forces the wire to exit into the duct directly in front of the pin.
-   */
-  const attachToFacingDuct = (p: WireRoutingPoint, dir: "up" | "down" | "left" | "right") => {
-    if (dir === "up") return { x: p.x, y: p.y <= dMidH ? dTop : dMidH };
-    if (dir === "down") return { x: p.x, y: p.y < dMidH ? dMidH : dBottom };
-    if (dir === "left") return { x: p.x >= dCenterV ? dCenterV : dLeft, y: p.y };
-    return { x: p.x < dCenterV ? dCenterV : dRight, y: p.y };
-  };
-
-  const fromDir = getFacingDir(fromPin);
-  const toDir = getFacingDir(toPin);
-  const exit = attachToFacingDuct(start, fromDir);
-  const entry = attachToFacingDuct(end, toDir);
-
-  const nodes: Record<NodeKey, WireRoutingPoint> = {};
-  const edges: Record<NodeKey, NodeKey[]> = {};
-  const addNode = (p: WireRoutingPoint) => {
-    const k = keyOf(p);
-    if (!nodes[k]) nodes[k] = p;
-    if (!edges[k]) edges[k] = [];
-    return k;
-  };
-
-  // Build grid intersections
-  const gridKeys: NodeKey[][] = [];
-  for (let yi = 0; yi < hLines.length; yi++) {
-    const row: NodeKey[] = [];
-    for (let xi = 0; xi < vLines.length; xi++) {
-      row.push(addNode({ x: vLines[xi], y: hLines[yi] }));
-    }
-    gridKeys.push(row);
-  }
-
-  // Connect grid neighbors
-  for (let yi = 0; yi < 3; yi++) {
-    for (let xi = 0; xi < 3; xi++) {
-      // Horizontal edges
-      if (xi < 2) {
-        // OMIT the non-existent duct extending to the right of the vertical spine
-        const isNonExistentRightMidDuct = (yi === 1 && xi === 1);
-        if (!isNonExistentRightMidDuct) {
-          edges[gridKeys[yi][xi]].push(gridKeys[yi][xi + 1]);
-          edges[gridKeys[yi][xi + 1]].push(gridKeys[yi][xi]);
+    for (let i = 0; i < uniqueXs.length; i++) {
+        for (let j = 0; j < uniqueYs.length; j++) {
+            const k1 = key(uniqueXs[i], uniqueYs[j]);
+            if (i < uniqueXs.length - 1 && isValidH(uniqueYs[j])) {
+                const k2 = key(uniqueXs[i + 1], uniqueYs[j]);
+                edges[k1].push(k2);
+                edges[k2].push(k1);
+            }
+            if (j < uniqueYs.length - 1 && isValidV(uniqueXs[i])) {
+                const k2 = key(uniqueXs[i], uniqueYs[j + 1]);
+                edges[k1].push(k2);
+                edges[k2].push(k1);
+            }
         }
-      }
-      // Vertical edges
-      if (yi < 2) {
-        edges[gridKeys[yi][xi]].push(gridKeys[yi + 1][xi]);
-        edges[gridKeys[yi + 1][xi]].push(gridKeys[yi][xi]);
-      }
     }
-  }
 
-  /**
-   * Snaps the attachment point onto the closest duct centerline.
-   */
-  const attachPointToGraph = (p: WireRoutingPoint, kind: "horizontal" | "vertical"): NodeKey => {
-    const pk = addNode(p);
-    const axisLines = kind === "horizontal" ? vLines : hLines;
-    const coord = kind === "horizontal" ? p.y : p.x;
+    // Dijkstra Pathfinding
+    const startKey = key(sPrime.x, sPrime.y);
+    const endKey = key(ePrime.x, ePrime.y);
+    const dist: Record<string, number> = {};
+    const prev: Record<string, string | null> = {};
+    const unvisited = new Set<string>(Object.keys(nodes));
 
-    const candidates = axisLines
-      .map(line => kind === "horizontal" ? { x: line, y: coord } : { x: coord, y: line })
-      .filter(c => !(Math.abs(c.y - dMidH) < 20 && c.x > dCenterV + 10)) // Ignore the missing right-middle duct
-      .map(c => ({ k: addNode(c), d: manhattan(p, c) }))
-      .sort((a, b) => a.d - b.d)
-      .slice(0, 2);
+    for (const k of unvisited) { dist[k] = Infinity; prev[k] = null; }
+    dist[startKey] = 0;
 
-    for (const cand of candidates) {
-      edges[pk].push(cand.k);
-      edges[cand.k].push(pk);
+    while (unvisited.size > 0) {
+        let u: string | null = null;
+        let best = Infinity;
+        for (const k of unvisited) { if (dist[k] < best) { best = dist[k]; u = k; } }
+        if (!u || u === endKey) break;
+        unvisited.delete(u);
+
+        for (const v of edges[u]) {
+            if (!unvisited.has(v)) continue;
+            const alt = dist[u] + manhattan(nodes[u], nodes[v]);
+            if (alt < dist[v]) { dist[v] = alt; prev[v] = u; }
+        }
     }
-    return pk;
-  };
 
-  const exitK = attachPointToGraph(exit, (fromDir === "up" || fromDir === "down") ? "horizontal" : "vertical");
-  const entryK = attachPointToGraph(entry, (toDir === "up" || toDir === "down") ? "horizontal" : "vertical");
+    const pathKeys: string[] = [];
+    let cur: string | null = endKey;
+    while (cur) { pathKeys.push(cur); cur = prev[cur]; }
+    pathKeys.reverse();
 
-  const pathKeys = dijkstra(exitK, entryK, nodes, edges);
-  const ductPath = pathKeys.map(k => nodes[k]);
+    if (pathKeys.length === 0 || pathKeys[0] !== startKey) return [start, end];
 
-  const full = [start, ...ductPath, end];
-  const compact: WireRoutingPoint[] = [];
-  for (const p of full) {
-    if (compact.length === 0 || !samePoint(compact[compact.length - 1], p)) compact.push(p);
-  }
+    // Clean up collinear points for smooth rendering
+    const rawPath = [start, ...pathKeys.map(k => nodes[k]), end];
+    const cleanPath: WireRoutingPoint[] = [rawPath[0]];
 
-  return compact.slice(1, -1);
-};
+    for (let i = 1; i < rawPath.length - 1; i++) {
+        const prevP = rawPath[i - 1];
+        const currP = rawPath[i];
+        const nextP = rawPath[i + 1];
+
+        const isCollinearX = Math.abs(prevP.x - currP.x) < 1 && Math.abs(currP.x - nextP.x) < 1;
+        const isCollinearY = Math.abs(prevP.y - currP.y) < 1 && Math.abs(currP.y - nextP.y) < 1;
+
+        if (!isCollinearX && !isCollinearY) {
+            cleanPath.push(currP);
+        }
+    }
+    cleanPath.push(rawPath[rawPath.length - 1]);
+
+    return cleanPath;
+}
