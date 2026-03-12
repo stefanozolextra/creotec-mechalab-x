@@ -72,10 +72,14 @@ const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; 
     'plc_out_07': { x: 290, y: 655, color: HW_STYLES.jackBlue, label: '07', desc: 'Output 10.07' },
 
     // === MANUAL INPUTS ===
-    'start_no_in': { x: 660, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) In' },
-    'start_no_out': { x: 700, y: 660, color: HW_STYLES.jackBlue, label: 'NO', desc: 'Start (NO) Out' },
-    'stop_nc_in': { x: 780, y: 660, color: HW_STYLES.jackYellow, label: 'NC', desc: 'Stop (NC) In' },
-    'stop_nc_out': { x: 820, y: 660, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Stop (NC) Out' },
+    'start_no_in': { x: 690, y: 625, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) In' },
+    'start_no_out': { x: 730, y: 625, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) Out' },
+    'start_nc_in': { x: 690, y: 660, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Start (NC) In' },
+    'start_nc_out': { x: 730, y: 660, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Start (NC) Out' },
+    'stop_no_in': { x: 820, y: 625, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Stop (NO) In' },
+    'stop_no_out': { x: 860, y: 625, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Stop (NO) Out' },
+    'stop_nc_in': { x: 820, y: 660, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Stop (NC) In' },
+    'stop_nc_out': { x: 860, y: 660, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Stop (NC) Out' },
 
     // === SOLENOID VALVES ===
     'sol_a_plus': { x: 550, y: 530, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
@@ -100,6 +104,8 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
     // Logic flow control for visual interactivity
     const [isAcPowerOn, setIsAcPowerOn] = useState<boolean>(false);
+    const [isStartPressed, setIsStartPressed] = useState<boolean>(false);
+    const [isStopPressed, setIsStopPressed] = useState<boolean>(false);
 
     // Wiring States
     const [wires, setWires] = useState<Connection[]>([]);
@@ -130,6 +136,14 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const BOTTOM_RELAY_LIGHT_Y = 620;
     const BUZZER_VISUAL_X = 530;
     const BUZZER_VISUAL_Y = 630;
+    const START_BUTTON_X = 650;
+    const START_BUTTON_Y = 645;
+    const START_TEXT_X = -20;
+    const START_TEXT_Y = 20;
+    const STOP_BUTTON_X = 780;
+    const STOP_BUTTON_Y = 645;
+    const STOP_TEXT_X = -15;
+    const STOP_TEXT_Y = 20;
 
     const availableCanvasWidth = viewport.width - SIDEBAR_WIDTH - PADDING * 2;
     const availableCanvasHeight = viewport.height - PADDING * 2;
@@ -442,15 +456,39 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                     <Circle key={`relay-light-bottom-${i}`} x={BOTTOM_RELAY_LIGHT_START_X + i * BOTTOM_RELAY_LIGHT_SPACING} y={BOTTOM_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
                                 ))}
 
-                                <Group x={680} y={610} listening={false}>
-                                    <Circle radius={24} fill="#10b981" shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
-                                    <Circle radius={18} fill="#34d399" />
-                                    <Text text="START" x={-15} y={35} fontSize={11} fontStyle="bold" fill="#1e293b" />
+                                <Group
+                                    x={START_BUTTON_X}
+                                    y={START_BUTTON_Y + (isStartPressed ? 2 : 0)}
+                                    onMouseDown={() => setIsStartPressed(true)}
+                                    onMouseUp={() => setIsStartPressed(false)}
+                                    onMouseLeave={() => setIsStartPressed(false)}
+                                    onTouchStart={() => setIsStartPressed(true)}
+                                    onTouchEnd={() => setIsStartPressed(false)}
+                                    onMouseEnter={(e) => {
+                                        const container = e.target.getStage()?.container();
+                                        if (container) container.style.cursor = 'pointer';
+                                    }}
+                                >
+                                    <Circle radius={16} fill={isStartPressed ? '#0f766e' : '#10b981'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
+                                    <Circle radius={11} fill={isStartPressed ? '#10b981' : '#34d399'} />
+                                    <Text text="START" x={START_TEXT_X} y={START_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
                                 </Group>
-                                <Group x={800} y={610} listening={false}>
-                                    <Circle radius={24} fill="#ef4444" shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
-                                    <Circle radius={18} fill="#f87171" />
-                                    <Text text="STOP" x={-12} y={35} fontSize={11} fontStyle="bold" fill="#1e293b" />
+                                <Group
+                                    x={STOP_BUTTON_X}
+                                    y={STOP_BUTTON_Y + (isStopPressed ? 2 : 0)}
+                                    onMouseDown={() => setIsStopPressed(true)}
+                                    onMouseUp={() => setIsStopPressed(false)}
+                                    onMouseLeave={() => setIsStopPressed(false)}
+                                    onTouchStart={() => setIsStopPressed(true)}
+                                    onTouchEnd={() => setIsStopPressed(false)}
+                                    onMouseEnter={(e) => {
+                                        const container = e.target.getStage()?.container();
+                                        if (container) container.style.cursor = 'pointer';
+                                    }}
+                                >
+                                    <Circle radius={16} fill={isStopPressed ? '#b91c1c' : '#ef4444'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
+                                    <Circle radius={11} fill={isStopPressed ? '#ef4444' : '#f87171'} />
+                                    <Text text="STOP" x={STOP_TEXT_X} y={STOP_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
                                 </Group>
 
                                 <Group x={690} y={30} listening={false}>
