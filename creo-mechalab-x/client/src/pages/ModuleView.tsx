@@ -9,6 +9,19 @@ import { getAuthToken } from '../utils/auth';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
+type ModuleLessonOption = {
+    resourceId: number;
+    title: string;
+    url: string;
+    orderNo: number;
+};
+
+type ModuleLocationState = {
+    pdfUrl?: unknown;
+    lessonResourceId?: unknown;
+    lessonTitle?: unknown;
+} | null;
+
 const toNumber = (value: string | number | null | undefined): number => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -33,10 +46,14 @@ const ModuleView = () => {
 
     const moduleId = Number(id);
     const hasValidModuleId = Number.isInteger(moduleId) && moduleId > 0;
-    const hintedPdfUrl =
-        typeof (location.state as { pdfUrl?: unknown } | null)?.pdfUrl === 'string'
-            ? ((location.state as { pdfUrl: string }).pdfUrl || '').trim()
-            : '';
+
+    const locationState = (location.state as ModuleLocationState) || null;
+    const hintedPdfUrl = typeof locationState?.pdfUrl === 'string' ? locationState.pdfUrl.trim() : '';
+    const hintedLessonTitle = typeof locationState?.lessonTitle === 'string' ? locationState.lessonTitle.trim() : '';
+    const hintedLessonResourceId = (() => {
+        const parsed = Number(locationState?.lessonResourceId);
+        return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    })();
 
     const [numPages, setNumPages] = useState<number | null>(null);
     const [pageNumber, setPageNumber] = useState<number>(1);
@@ -44,9 +61,13 @@ const ModuleView = () => {
 
     const [isResolvingPdf, setIsResolvingPdf] = useState(true);
     const [resolvedPdfUrl, setResolvedPdfUrl] = useState<string | null>(hintedPdfUrl || null);
-    const [resolvedPdfTitle, setResolvedPdfTitle] = useState<string>(`Module ${id} Theory Manual`);
+    const [resolvedPdfTitle, setResolvedPdfTitle] = useState<string>(hintedLessonTitle || `Module ${id} Theory Manual`);
+    const [moduleTitle, setModuleTitle] = useState<string>(`Module ${id} Theory Manual`);
     const [resolveError, setResolveError] = useState<string | null>(null);
     const [viewerError, setViewerError] = useState<string | null>(null);
+
+    const [lessonOptions, setLessonOptions] = useState<ModuleLessonOption[]>([]);
+    const [selectedLessonResourceId, setSelectedLessonResourceId] = useState<number | null>(hintedLessonResourceId);
 
     const authToken = getAuthToken();
 
@@ -69,6 +90,7 @@ const ModuleView = () => {
         setViewerError(null);
         setNumPages(null);
         setPageNumber(1);
+        setLessonOptions([]);
 
         if (!hasValidModuleId) {
             setResolveError('Invalid module id.');
@@ -86,43 +108,67 @@ const ModuleView = () => {
 
                 const moduleRow =
                     dashboard.moduleContent.modules.find((module) => toNumber(module.module_id) === moduleId) ?? null;
-                const moduleTitle =
+                const resolvedModuleTitle =
                     typeof moduleRow?.title === 'string' && moduleRow.title.trim()
                         ? moduleRow.title.trim()
                         : `Module ${moduleId} Theory Manual`;
+                setModuleTitle(resolvedModuleTitle);
 
                 const moduleResources = dashboard.moduleContent.resources.filter(
                     (resource) => String(resource.type).toUpperCase() === 'PDF' && toNumber(resource.module_id) === moduleId
                 );
 
-                const selectedPdf =
-                    moduleResources.find((resource) => {
+                const options = moduleResources
+                    .map((resource) => {
                         const resolved = typeof resource.resolved_url === 'string' ? resource.resolved_url.trim() : '';
                         const fallback = typeof resource.url === 'string' ? resource.url.trim() : '';
-                        return Boolean(resolved || fallback);
-                    }) ?? null;
+                        const url = resolved || fallback;
+                        const resourceId = toNumber(resource.resource_id);
+                        if (!url || resourceId < 1) return null;
 
-                if (!selectedPdf) {
+                        const title =
+                            typeof resource.title === 'string' && resource.title.trim()
+                                ? resource.title.trim()
+                                : `Lesson ${resourceId}`;
+
+                        return {
+                            resourceId,
+                            title,
+                            url,
+                            orderNo: toNumber(resource.order_no),
+                        } as ModuleLessonOption;
+                    })
+                    .filter((entry): entry is ModuleLessonOption => entry !== null)
+                    .sort((a, b) => {
+                        if (a.orderNo !== b.orderNo) return a.orderNo - b.orderNo;
+                        return a.resourceId - b.resourceId;
+                    });
+
+                setLessonOptions(options);
+
+                if (options.length === 0) {
+                    if (hintedPdfUrl) {
+                        setResolvedPdfUrl(hintedPdfUrl);
+                        setResolvedPdfTitle(hintedLessonTitle || resolvedModuleTitle);
+                        setSelectedLessonResourceId(null);
+                        return;
+                    }
+
                     setResolvedPdfUrl(null);
-                    setResolvedPdfTitle(moduleTitle);
-                    setResolveError('No PDF manual is assigned to this module yet.');
+                    setResolvedPdfTitle(resolvedModuleTitle);
+                    setSelectedLessonResourceId(null);
+                    setResolveError('No lesson PDFs are assigned to this module yet.');
                     return;
                 }
 
-                const pdfUrl =
-                    (typeof selectedPdf.resolved_url === 'string' ? selectedPdf.resolved_url.trim() : '') ||
-                    (typeof selectedPdf.url === 'string' ? selectedPdf.url.trim() : '');
+                const initialLesson =
+                    (hintedLessonResourceId
+                        ? options.find((option) => option.resourceId === hintedLessonResourceId)
+                        : null) ?? options[0];
 
-                if (!pdfUrl) {
-                    setResolvedPdfUrl(null);
-                    setResolvedPdfTitle(moduleTitle);
-                    setResolveError('No PDF manual is assigned to this module yet.');
-                    return;
-                }
-
-                setResolvedPdfUrl(pdfUrl);
-                const resourceTitle = typeof selectedPdf.title === 'string' ? selectedPdf.title.trim() : '';
-                setResolvedPdfTitle(moduleTitle || resourceTitle || `Module ${moduleId} Theory Manual`);
+                setSelectedLessonResourceId(initialLesson.resourceId);
+                setResolvedPdfUrl(initialLesson.url);
+                setResolvedPdfTitle(initialLesson.title || resolvedModuleTitle);
             } catch (error) {
                 if (controller.signal.aborted) return;
                 if (!active) return;
@@ -139,7 +185,30 @@ const ModuleView = () => {
             active = false;
             controller.abort();
         };
-    }, [hasValidModuleId, moduleId]);
+    }, [hasValidModuleId, hintedLessonResourceId, hintedLessonTitle, hintedPdfUrl, moduleId]);
+
+    useEffect(() => {
+        if (isResolvingPdf) return;
+        if (lessonOptions.length === 0) return;
+
+        const selectedLesson =
+            (selectedLessonResourceId !== null
+                ? lessonOptions.find((option) => option.resourceId === selectedLessonResourceId)
+                : null) ?? lessonOptions[0];
+
+        if (!selectedLesson) return;
+
+        if (selectedLessonResourceId !== selectedLesson.resourceId) {
+            setSelectedLessonResourceId(selectedLesson.resourceId);
+        }
+
+        setResolvedPdfUrl(selectedLesson.url);
+        setResolvedPdfTitle(selectedLesson.title || moduleTitle || `Module ${moduleId} Theory Manual`);
+        setResolveError(null);
+        setViewerError(null);
+        setNumPages(null);
+        setPageNumber(1);
+    }, [isResolvingPdf, lessonOptions, moduleId, moduleTitle, selectedLessonResourceId]);
 
     const documentFile = useMemo(() => {
         if (!resolvedPdfUrl) return null;
@@ -171,19 +240,40 @@ const ModuleView = () => {
     return (
         <PageTransition>
             <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col select-none">
-                <header className="bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between sticky top-0 z-10 shadow-lg">
-                    <div className="flex items-center gap-4">
+                <header className="bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between sticky top-0 z-10 shadow-lg gap-4">
+                    <div className="flex items-center gap-4 min-w-0">
                         <button
                             onClick={() => navigate('/dashboard')}
                             className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition flex items-center gap-2"
                         >
                             <ArrowLeft size={20} /> <span className="font-semibold text-sm">Return to Map</span>
                         </button>
-                        <div className="h-6 w-px bg-slate-700"></div>
-                        <h1 className="font-bold text-lg text-white flex items-center gap-2">
-                            <BookOpen className="text-cyan-500" size={20} />
-                            {resolvedPdfTitle}
-                        </h1>
+                        <div className="h-6 w-px bg-slate-700" />
+                        <div className="min-w-0">
+                            <h1 className="font-bold text-lg text-white flex items-center gap-2 truncate">
+                                <BookOpen className="text-cyan-500" size={20} />
+                                <span className="truncate">{resolvedPdfTitle}</span>
+                            </h1>
+                            {lessonOptions.length > 0 ? (
+                                <div className="mt-1 flex items-center gap-2">
+                                    <span className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Lesson</span>
+                                    <select
+                                        value={selectedLessonResourceId ?? lessonOptions[0].resourceId}
+                                        onChange={(event) => {
+                                            const nextResourceId = Number(event.target.value);
+                                            setSelectedLessonResourceId(Number.isFinite(nextResourceId) ? nextResourceId : null);
+                                        }}
+                                        className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200"
+                                    >
+                                        {lessonOptions.map((option) => (
+                                            <option key={option.resourceId} value={option.resourceId}>
+                                                {option.title}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : null}
+                        </div>
                     </div>
 
                     {numPages && !isResolvingPdf && !resolveError && !viewerError ? (
@@ -213,7 +303,7 @@ const ModuleView = () => {
                     {isResolvingPdf ? (
                         <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-300">
                             <Loader2 size={42} className="animate-spin mx-auto mb-3 text-cyan-500" />
-                            Resolving module PDF...
+                            Resolving lesson PDF...
                         </div>
                     ) : resolveError ? (
                         <div className="w-full max-w-3xl bg-red-950/40 border border-red-900 rounded-xl p-8 text-center text-red-200">
@@ -236,7 +326,7 @@ const ModuleView = () => {
                                 loading={
                                     <div className="flex flex-col items-center justify-center h-[500px] w-full text-slate-400 p-8 text-center">
                                         <Loader2 size={48} className="animate-spin mb-4 text-cyan-500 mx-auto" />
-                                        <p>Loading module PDF...</p>
+                                        <p>Loading lesson PDF...</p>
                                     </div>
                                 }
                             >
@@ -250,7 +340,7 @@ const ModuleView = () => {
                         </div>
                     ) : (
                         <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-300">
-                            No PDF manual is available for this module.
+                            No lesson PDF is available for this module.
                         </div>
                     )}
                 </main>

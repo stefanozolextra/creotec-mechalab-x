@@ -38,6 +38,14 @@ type LevelCard = {
     score: number;
 };
 
+type ModuleLessonOption = {
+    resourceId: number;
+    moduleId: number;
+    title: string;
+    url: string;
+    orderNo: number;
+};
+
 const toNumber = (value: string | number | null | undefined): number => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : 0;
@@ -124,6 +132,7 @@ const Dashboard = () => {
     });
 
     const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
+    const [selectedLessonResourceId, setSelectedLessonResourceId] = useState<number | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(true);
     const requestControllerRef = useRef<AbortController | null>(null);
@@ -240,21 +249,40 @@ const Dashboard = () => {
         return getNextSimulationByModuleId(simulations, simulationProgressById);
     }, [dashboardState.data, simulationProgressById]);
 
-    const pdfUrlByModuleId = useMemo(() => {
-        const map = new Map<number, string>();
+    const lessonsByModuleId = useMemo(() => {
+        const map = new Map<number, ModuleLessonOption[]>();
         const resources = dashboardState.data?.moduleContent.resources ?? [];
 
         for (const resource of resources) {
             if (String(resource.type).toUpperCase() !== 'PDF') continue;
             const moduleId = toNumber(resource.module_id);
-            if (moduleId < 1 || map.has(moduleId)) continue;
+            if (moduleId < 1) continue;
 
             const resolvedUrl = typeof resource.resolved_url === 'string' ? resource.resolved_url.trim() : '';
             const fallbackUrl = typeof resource.url === 'string' ? resource.url.trim() : '';
             const pdfUrl = resolvedUrl || fallbackUrl;
             if (!pdfUrl) continue;
 
-            map.set(moduleId, pdfUrl);
+            const resourceId = toNumber(resource.resource_id);
+            if (resourceId < 1) continue;
+
+            if (!map.has(moduleId)) map.set(moduleId, []);
+            const moduleLessons = map.get(moduleId);
+            const title = typeof resource.title === 'string' && resource.title.trim() ? resource.title.trim() : `Lesson ${resourceId}`;
+            moduleLessons?.push({
+                resourceId,
+                moduleId,
+                title,
+                url: pdfUrl,
+                orderNo: toNumber(resource.order_no),
+            });
+        }
+
+        for (const lessonRows of map.values()) {
+            lessonRows.sort((a, b) => {
+                if (a.orderNo !== b.orderNo) return a.orderNo - b.orderNo;
+                return a.resourceId - b.resourceId;
+            });
         }
 
         return map;
@@ -267,7 +295,37 @@ const Dashboard = () => {
 
     const selectedSimulationId =
         selectedLevel !== null ? nextSimulationByModuleId.get(selectedLevel) ?? null : null;
-    const selectedModulePdfUrl = selectedLevel !== null ? pdfUrlByModuleId.get(selectedLevel) ?? null : null;
+    const selectedModuleLessons = useMemo(() => {
+        if (selectedLevel === null) return [];
+        return lessonsByModuleId.get(selectedLevel) ?? [];
+    }, [lessonsByModuleId, selectedLevel]);
+
+    useEffect(() => {
+        if (selectedLevel === null) {
+            setSelectedLessonResourceId(null);
+            return;
+        }
+
+        if (selectedModuleLessons.length === 0) {
+            setSelectedLessonResourceId(null);
+            return;
+        }
+
+        const hasSelection =
+            selectedLessonResourceId !== null &&
+            selectedModuleLessons.some((lesson) => lesson.resourceId === selectedLessonResourceId);
+        if (!hasSelection) {
+            setSelectedLessonResourceId(selectedModuleLessons[0].resourceId);
+        }
+    }, [selectedLevel, selectedLessonResourceId, selectedModuleLessons]);
+
+    const selectedLesson = useMemo(() => {
+        if (selectedModuleLessons.length === 0) return null;
+        if (selectedLessonResourceId === null) return selectedModuleLessons[0];
+        return selectedModuleLessons.find((lesson) => lesson.resourceId === selectedLessonResourceId) ?? selectedModuleLessons[0];
+    }, [selectedLessonResourceId, selectedModuleLessons]);
+
+    const selectedModulePdfUrl = selectedLesson?.url ?? null;
 
     const trainee = dashboardState.data?.trainee ?? null;
 
@@ -282,9 +340,13 @@ const Dashboard = () => {
     };
 
     const handleViewModule = () => {
-        if (!selectedLevelData || !selectedModulePdfUrl) return;
+        if (!selectedLevelData || !selectedLesson || !selectedModulePdfUrl) return;
         navigate(`/module/${selectedLevelData.id}`, {
-            state: { pdfUrl: selectedModulePdfUrl },
+            state: {
+                pdfUrl: selectedModulePdfUrl,
+                lessonResourceId: selectedLesson.resourceId,
+                lessonTitle: selectedLesson.title,
+            },
         });
     };
 
@@ -478,6 +540,29 @@ const Dashboard = () => {
                                                         <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-3 font-mono">
                                                             {'>'} {level.description ?? 'Initialize the wiring interface for this module before testing the circuit.'}
                                                         </p>
+                                                        {selectedModuleLessons.length > 0 ? (
+                                                            <div className="mb-3">
+                                                                <label className="block text-[9px] uppercase tracking-widest font-black text-slate-500 mb-1">
+                                                                    Lesson
+                                                                </label>
+                                                                <select
+                                                                    value={selectedLessonResourceId ?? selectedModuleLessons[0]?.resourceId ?? ''}
+                                                                    onChange={(event) => {
+                                                                        const nextResourceId = Number(event.target.value);
+                                                                        setSelectedLessonResourceId(Number.isFinite(nextResourceId) ? nextResourceId : null);
+                                                                    }}
+                                                                    className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[10px] sm:text-xs font-mono px-2 py-2 text-slate-700 dark:text-slate-200"
+                                                                >
+                                                                    {selectedModuleLessons.map((lesson) => (
+                                                                        <option key={lesson.resourceId} value={lesson.resourceId}>
+                                                                            {lesson.title}
+                                                                        </option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
+                                                        ) : (
+                                                            <p className="text-[10px] sm:text-xs font-mono text-slate-500 mb-3">No lesson PDFs available yet.</p>
+                                                        )}
                                                         <div className="flex flex-col gap-2">
                                                             <button
                                                                 type="button"
@@ -552,6 +637,30 @@ const Dashboard = () => {
                                         <div className="bg-slate-200 dark:bg-slate-900/50 p-3 lg:p-4 rounded-sm border-l-2 border-cyan-500 mb-6 lg:mb-8 font-mono text-[10px] lg:text-xs text-slate-700 dark:text-slate-400 leading-relaxed">
                                             {'>'} {selectedLevelData.description ?? 'Initialize the wiring interface for this module before testing the circuit.'}
                                             <span className="inline-block w-1.5 h-3 bg-cyan-500 ml-1 animate-pulse" />
+                                        </div>
+
+                                        <div className="mb-6 lg:mb-8">
+                                            <p className="text-[10px] lg:text-xs font-black uppercase tracking-widest text-slate-500 mb-2">
+                                                Lesson
+                                            </p>
+                                            {selectedModuleLessons.length > 0 ? (
+                                                <select
+                                                    value={selectedLessonResourceId ?? selectedModuleLessons[0]?.resourceId ?? ''}
+                                                    onChange={(event) => {
+                                                        const nextResourceId = Number(event.target.value);
+                                                        setSelectedLessonResourceId(Number.isFinite(nextResourceId) ? nextResourceId : null);
+                                                    }}
+                                                    className="w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-3 py-2.5 text-xs lg:text-sm font-mono"
+                                                >
+                                                    {selectedModuleLessons.map((lesson) => (
+                                                        <option key={lesson.resourceId} value={lesson.resourceId}>
+                                                            {lesson.title}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                            ) : (
+                                                <p className="text-[10px] lg:text-xs font-mono text-slate-500">No lesson PDFs available yet.</p>
+                                            )}
                                         </div>
 
                                         <div className="space-y-3 lg:space-y-4">
