@@ -118,6 +118,10 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const [isAcPowerOn, setIsAcPowerOn] = useState<boolean>(false);
     const [isStartPressed, setIsStartPressed] = useState<boolean>(false);
     const [isStopPressed, setIsStopPressed] = useState<boolean>(false);
+    const [activeKnob, setActiveKnob] = useState<'selector' | 'emo' | `input-${number}` | null>(null);
+    const [selectorAngle, setSelectorAngle] = useState<number>(0);
+    const [emoAngle, setEmoAngle] = useState<number>(0);
+    const [inputKnobAngles, setInputKnobAngles] = useState<number[]>(Array.from({ length: 12 }, () => 0));
 
     // Wiring States
     const [wires, setWires] = useState<Connection[]>([]);
@@ -160,6 +164,8 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const SELECTOR_KNOB_Y = 645;
     const EMO_KNOB_X = 1120;
     const EMO_KNOB_Y = 645;
+    const KNOB_MIN_ANGLE = -150;
+    const KNOB_MAX_ANGLE = 150;
 
     const availableCanvasWidth = viewport.width - SIDEBAR_WIDTH - PADDING * 2;
     const availableCanvasHeight = viewport.height - PADDING * 2;
@@ -176,7 +182,50 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
     // WIRING LOGIC
     const handlePortMouseDown = (portId: string) => { if (selectedWireId) { setSelectedWireId(null); return; } setActivePin(portId); setMousePos(GOTT_TRAINER_PORTS[portId]); };
-    const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => { if (activePin) { const pos = e.target.getStage()?.getPointerPosition(); if (pos) setMousePos({ x: pos.x / canvasScale, y: pos.y / canvasScale }); } };
+    const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
+        const pos = e.target.getStage()?.getPointerPosition();
+        if (!pos) return;
+
+        if (activePin) {
+            setMousePos({ x: pos.x / canvasScale, y: pos.y / canvasScale });
+        }
+
+        if (activeKnob) {
+            const pointerX = pos.x / canvasScale;
+            const pointerY = pos.y / canvasScale;
+            let centerX = 0;
+            let centerY = 0;
+
+            if (activeKnob === 'selector') {
+                centerX = SELECTOR_KNOB_X;
+                centerY = SELECTOR_KNOB_Y;
+            } else if (activeKnob === 'emo') {
+                centerX = EMO_KNOB_X;
+                centerY = EMO_KNOB_Y;
+            } else {
+                const inputIndex = Number(activeKnob.replace('input-', ''));
+                const column = inputIndex % 6;
+                centerX = MIDDLE_ROW_START_X + column * MIDDLE_ROW_SPACING;
+                centerY = inputIndex < 6 ? MIDDLE_ROW_Y : SECOND_ROW_Y;
+            }
+
+            const rawAngle = (Math.atan2(pointerY - centerY, pointerX - centerX) * 180) / Math.PI + 90;
+            const clampedAngle = Math.max(KNOB_MIN_ANGLE, Math.min(KNOB_MAX_ANGLE, rawAngle));
+
+            if (activeKnob === 'selector') {
+                setSelectorAngle(clampedAngle);
+            } else if (activeKnob === 'emo') {
+                setEmoAngle(clampedAngle);
+            } else {
+                const inputIndex = Number(activeKnob.replace('input-', ''));
+                setInputKnobAngles((prev) => {
+                    const next = [...prev];
+                    next[inputIndex] = clampedAngle;
+                    return next;
+                });
+            }
+        }
+    };
 
     const handleStageMouseUp = (e: KonvaEventObject<MouseEvent>) => {
         if (activePin) {
@@ -194,6 +243,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
             }
             setActivePin(null); setMousePos(null);
         }
+        setActiveKnob(null);
     };
 
     const deleteSelectedWire = useCallback(() => {
@@ -320,7 +370,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
                 <div className="flex-1 relative flex items-center justify-center p-6">
                     <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
-                        <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp}>
+                        <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseLeave={() => setActiveKnob(null)}>
                             <Layer scaleX={canvasScale} scaleY={canvasScale} id="board-layer">
 
                                 {/* 1. ENCLOSURE BACKGROUND */}
@@ -440,17 +490,55 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
                                 {/* First Row Input 00CH */}
                                 {[...Array(6)].map((_, i) => (
-                                    <Group key={`knob-${i}`} x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING} y={MIDDLE_ROW_Y}>
-                                        <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
-                                        <Circle radius={3} y={-10} fill="#cbd5e1" listening={false} />
+                                    <Group
+                                        key={`knob-${i}`}
+                                        x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING}
+                                        y={MIDDLE_ROW_Y}
+                                        onMouseDown={() => setActiveKnob(`input-${i}`)}
+                                        onMouseUp={() => setActiveKnob(null)}
+                                        onTouchStart={() => setActiveKnob(`input-${i}`)}
+                                        onTouchEnd={() => setActiveKnob(null)}
+                                        onMouseEnter={(e) => {
+                                            const container = e.target.getStage()?.container();
+                                            if (container) container.style.cursor = 'grab';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            const container = e.target.getStage()?.container();
+                                            if (container) container.style.cursor = 'default';
+                                        }}
+                                    >
+                                        <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
+                                        <Group rotation={inputKnobAngles[i]} listening={false}>
+                                            <Line points={[0, 0, 0, -9]} stroke="#cbd5e1" strokeWidth={2} lineCap="round" />
+                                            <Circle y={-9} radius={2.5} fill="#cbd5e1" />
+                                        </Group>
                                     </Group>
                                 ))}
 
                                 {/* Second Row Input 00CH */}
                                 {[...Array(6)].map((_, i) => (
-                                    <Group key={`knob-second-${i}`} x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING} y={SECOND_ROW_Y}>
-                                        <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
-                                        <Circle radius={3} y={-10} fill="#cbd5e1" listening={false} />
+                                    <Group
+                                        key={`knob-second-${i}`}
+                                        x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING}
+                                        y={SECOND_ROW_Y}
+                                        onMouseDown={() => setActiveKnob(`input-${i + 6}`)}
+                                        onMouseUp={() => setActiveKnob(null)}
+                                        onTouchStart={() => setActiveKnob(`input-${i + 6}`)}
+                                        onTouchEnd={() => setActiveKnob(null)}
+                                        onMouseEnter={(e) => {
+                                            const container = e.target.getStage()?.container();
+                                            if (container) container.style.cursor = 'grab';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            const container = e.target.getStage()?.container();
+                                            if (container) container.style.cursor = 'default';
+                                        }}
+                                    >
+                                        <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
+                                        <Group rotation={inputKnobAngles[i + 6]} listening={false}>
+                                            <Line points={[0, 0, 0, -9]} stroke="#cbd5e1" strokeWidth={2} lineCap="round" />
+                                            <Circle y={-9} radius={2.5} fill="#cbd5e1" />
+                                        </Group>
                                     </Group>
                                 ))}
 
@@ -507,15 +595,51 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                     <Text text="STOP" x={STOP_TEXT_X} y={STOP_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
                                 </Group>
 
-                                <Group x={SELECTOR_KNOB_X} y={SELECTOR_KNOB_Y}>
-                                    <Circle radius={15} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
-                                    <Circle radius={3} y={-8} fill="#cbd5e1" listening={false} />
+                                <Group
+                                    x={SELECTOR_KNOB_X}
+                                    y={SELECTOR_KNOB_Y}
+                                    onMouseDown={() => setActiveKnob('selector')}
+                                    onMouseUp={() => setActiveKnob(null)}
+                                    onTouchStart={() => setActiveKnob('selector')}
+                                    onTouchEnd={() => setActiveKnob(null)}
+                                    onMouseEnter={(e) => {
+                                        const container = e.target.getStage()?.container();
+                                        if (container) container.style.cursor = 'grab';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        const container = e.target.getStage()?.container();
+                                        if (container) container.style.cursor = 'default';
+                                    }}
+                                >
+                                    <Circle radius={15} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
+                                    <Group rotation={selectorAngle} listening={false}>
+                                        <Line points={[0, 0, 0, -9]} stroke="#cbd5e1" strokeWidth={2} lineCap="round" />
+                                        <Circle y={-9} radius={2.5} fill="#cbd5e1" />
+                                    </Group>
                                     <Text text="SELECTOR" x={-26} y={22} fontSize={10} fontStyle="bold" fill="#1e293b" listening={false} />
                                 </Group>
 
-                                <Group x={EMO_KNOB_X} y={EMO_KNOB_Y}>
-                                    <Circle radius={15} fill="#b91c1c" stroke="#cbd5e1" strokeWidth={2} listening={false} />
-                                    <Circle radius={3} y={-8} fill="#f87171" listening={false} />
+                                <Group
+                                    x={EMO_KNOB_X}
+                                    y={EMO_KNOB_Y}
+                                    onMouseDown={() => setActiveKnob('emo')}
+                                    onMouseUp={() => setActiveKnob(null)}
+                                    onTouchStart={() => setActiveKnob('emo')}
+                                    onTouchEnd={() => setActiveKnob(null)}
+                                    onMouseEnter={(e) => {
+                                        const container = e.target.getStage()?.container();
+                                        if (container) container.style.cursor = 'grab';
+                                    }}
+                                    onMouseLeave={(e) => {
+                                        const container = e.target.getStage()?.container();
+                                        if (container) container.style.cursor = 'default';
+                                    }}
+                                >
+                                    <Circle radius={15} fill="#b91c1c" stroke="#cbd5e1" strokeWidth={2} />
+                                    <Group rotation={emoAngle} listening={false}>
+                                        <Line points={[0, 0, 0, -9]} stroke="#fca5a5" strokeWidth={2} lineCap="round" />
+                                        <Circle y={-9} radius={2.5} fill="#fca5a5" />
+                                    </Group>
                                     <Text text="EMO" x={-12} y={22} fontSize={10} fontStyle="bold" fill="#7f1d1d" listening={false} />
                                 </Group>
 
