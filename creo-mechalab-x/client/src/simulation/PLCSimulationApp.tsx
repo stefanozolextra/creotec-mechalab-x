@@ -54,18 +54,18 @@ const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; 
     'plc_in_11': { x: 410, y: 420, color: HW_STYLES.jackYellow, label: '11', desc: 'Input 0.11' },
 
     // === RELAY OUTPUT (10CH) ===
-    'plc_com_out_1': { x: 55, y: 580, color: HW_STYLES.jackBlack, label: 'COM1', desc: 'Output COM 1' },
-    'plc_out_00': { x: 85, y: 580, color: HW_STYLES.jackBlue, label: '00', desc: 'Output 10.00' },
-    'plc_com_out_2': { x: 130, y: 580, color: HW_STYLES.jackBlack, label: 'COM2', desc: 'Output COM 2' },
-    'plc_out_01': { x: 160, y: 580, color: HW_STYLES.jackBlue, label: '01', desc: 'Output 10.01' },
-    'plc_com_out_3': { x: 205, y: 580, color: HW_STYLES.jackBlack, label: 'COM3', desc: 'Output COM 3' },
-    'plc_out_02': { x: 235, y: 580, color: HW_STYLES.jackBlue, label: '02', desc: 'Output 10.02' },
-    'plc_out_03': { x: 295, y: 580, color: HW_STYLES.jackBlue, label: '03', desc: 'Output 10.03' },
-    'plc_com_out_4': { x: 55, y: 665, color: HW_STYLES.jackBlack, label: 'COM4', desc: 'Output COM 4' },
-    'plc_out_04': { x: 95, y: 665, color: HW_STYLES.jackBlue, label: '04', desc: 'Output 10.04' },
-    'plc_out_05': { x: 160, y: 665, color: HW_STYLES.jackBlue, label: '05', desc: 'Output 10.05' },
-    'plc_out_06': { x: 225, y: 665, color: HW_STYLES.jackBlue, label: '06', desc: 'Output 10.06' },
-    'plc_out_07': { x: 290, y: 665, color: HW_STYLES.jackBlue, label: '07', desc: 'Output 10.07' },
+    'plc_com_out_1': { x: 55, y: 570, color: HW_STYLES.jackBlack, label: 'COM1', desc: 'Output COM 1' },
+    'plc_out_00': { x: 85, y: 570, color: HW_STYLES.jackBlue, label: '00', desc: 'Output 10.00' },
+    'plc_com_out_2': { x: 130, y: 570, color: HW_STYLES.jackBlack, label: 'COM2', desc: 'Output COM 2' },
+    'plc_out_01': { x: 160, y: 570, color: HW_STYLES.jackBlue, label: '01', desc: 'Output 10.01' },
+    'plc_com_out_3': { x: 205, y: 570, color: HW_STYLES.jackBlack, label: 'COM3', desc: 'Output COM 3' },
+    'plc_out_02': { x: 235, y: 570, color: HW_STYLES.jackBlue, label: '02', desc: 'Output 10.02' },
+    'plc_out_03': { x: 295, y: 570, color: HW_STYLES.jackBlue, label: '03', desc: 'Output 10.03' },
+    'plc_com_out_4': { x: 55, y: 655, color: HW_STYLES.jackBlack, label: 'COM4', desc: 'Output COM 4' },
+    'plc_out_04': { x: 95, y: 655, color: HW_STYLES.jackBlue, label: '04', desc: 'Output 10.04' },
+    'plc_out_05': { x: 160, y: 655, color: HW_STYLES.jackBlue, label: '05', desc: 'Output 10.05' },
+    'plc_out_06': { x: 225, y: 655, color: HW_STYLES.jackBlue, label: '06', desc: 'Output 10.06' },
+    'plc_out_07': { x: 290, y: 655, color: HW_STYLES.jackBlue, label: '07', desc: 'Output 10.07' },
 
     // === MANUAL INPUTS ===
     'start_no_in': { x: 660, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) In' },
@@ -116,10 +116,10 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const SECOND_ROW_Y = 390;
     const UPPER_RELAY_LIGHT_START_X = 70;
     const UPPER_RELAY_LIGHT_SPACING = 75;
-    const UPPER_RELAY_LIGHT_Y = 540;
+    const UPPER_RELAY_LIGHT_Y = 530;
     const BOTTOM_RELAY_LIGHT_START_X = 95;
     const BOTTOM_RELAY_LIGHT_SPACING = 65;
-    const BOTTOM_RELAY_LIGHT_Y = 630;
+    const BOTTOM_RELAY_LIGHT_Y = 620;
 
     const availableCanvasWidth = viewport.width - SIDEBAR_WIDTH - PADDING * 2;
     const availableCanvasHeight = viewport.height - PADDING * 2;
