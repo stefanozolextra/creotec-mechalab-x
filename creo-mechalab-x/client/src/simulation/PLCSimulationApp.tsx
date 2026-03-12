@@ -54,10 +54,18 @@ const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; 
     'plc_in_11': { x: 410, y: 420, color: HW_STYLES.jackYellow, label: '11', desc: 'Input 0.11' },
 
     // === RELAY OUTPUT (10CH) ===
-    'plc_com_out_1': { x: 70, y: 640, color: HW_STYLES.jackBlack, label: 'COM1', desc: 'Output COM 1' },
-    'plc_out_00': { x: 130, y: 640, color: HW_STYLES.jackBlue, label: '00', desc: 'Output 10.00' },
-    'plc_out_01': { x: 190, y: 640, color: HW_STYLES.jackBlue, label: '01', desc: 'Output 10.01' },
-    'plc_out_02': { x: 250, y: 640, color: HW_STYLES.jackBlue, label: '02', desc: 'Output 10.02' },
+    'plc_com_out_1': { x: 55, y: 580, color: HW_STYLES.jackBlack, label: 'COM1', desc: 'Output COM 1' },
+    'plc_out_00': { x: 85, y: 580, color: HW_STYLES.jackBlue, label: '00', desc: 'Output 10.00' },
+    'plc_com_out_2': { x: 130, y: 580, color: HW_STYLES.jackBlack, label: 'COM2', desc: 'Output COM 2' },
+    'plc_out_01': { x: 160, y: 580, color: HW_STYLES.jackBlue, label: '01', desc: 'Output 10.01' },
+    'plc_com_out_3': { x: 205, y: 580, color: HW_STYLES.jackBlack, label: 'COM3', desc: 'Output COM 3' },
+    'plc_out_02': { x: 235, y: 580, color: HW_STYLES.jackBlue, label: '02', desc: 'Output 10.02' },
+    'plc_out_03': { x: 295, y: 580, color: HW_STYLES.jackBlue, label: '03', desc: 'Output 10.03' },
+    'plc_com_out_4': { x: 55, y: 665, color: HW_STYLES.jackBlack, label: 'COM4', desc: 'Output COM 4' },
+    'plc_out_04': { x: 95, y: 665, color: HW_STYLES.jackBlue, label: '04', desc: 'Output 10.04' },
+    'plc_out_05': { x: 160, y: 665, color: HW_STYLES.jackBlue, label: '05', desc: 'Output 10.05' },
+    'plc_out_06': { x: 225, y: 665, color: HW_STYLES.jackBlue, label: '06', desc: 'Output 10.06' },
+    'plc_out_07': { x: 290, y: 665, color: HW_STYLES.jackBlue, label: '07', desc: 'Output 10.07' },
 
     // === MANUAL INPUTS ===
     'start_no_in': { x: 660, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) In' },
@@ -106,6 +114,12 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const MIDDLE_ROW_SPACING = 60;
     const MIDDLE_ROW_Y = 320;
     const SECOND_ROW_Y = 390;
+    const UPPER_RELAY_LIGHT_START_X = 70;
+    const UPPER_RELAY_LIGHT_SPACING = 75;
+    const UPPER_RELAY_LIGHT_Y = 540;
+    const BOTTOM_RELAY_LIGHT_START_X = 95;
+    const BOTTOM_RELAY_LIGHT_SPACING = 65;
+    const BOTTOM_RELAY_LIGHT_Y = 630;
 
     const availableCanvasWidth = viewport.width - SIDEBAR_WIDTH - PADDING * 2;
     const availableCanvasHeight = viewport.height - PADDING * 2;
@@ -400,9 +414,14 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                     </Group>
                                 ))}
 
-                                {/* Bottom Row Visuals */}
-                                {[...Array(3)].map((_, i) => (
-                                    <Circle key={`relay-light-${i}`} x={130 + i * 60} y={550} radius={22} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
+                                {/* Upper Relay Type Light */}
+                                {[...Array(4)].map((_, i) => (
+                                    <Circle key={`relay-light-${i}`} x={UPPER_RELAY_LIGHT_START_X + i * UPPER_RELAY_LIGHT_SPACING} y={UPPER_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
+                                ))}
+
+                                {/* Bottom Row Relay Type Light */}
+                                {[...Array(4)].map((_, i) => (
+                                    <Circle key={`relay-light-bottom-${i}`} x={BOTTOM_RELAY_LIGHT_START_X + i * BOTTOM_RELAY_LIGHT_SPACING} y={BOTTOM_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
                                 ))}
 
                                 <Group x={680} y={610} listening={false}>
