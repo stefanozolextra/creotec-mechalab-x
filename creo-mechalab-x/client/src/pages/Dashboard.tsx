@@ -19,8 +19,10 @@ import {
     Crosshair
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Document, Page, pdfjs } from 'react-pdf';
 import CyberTransition from '../components/CyberTransition';
-import { clearAuthRole } from '../utils/auth';
+import { API_BASE_URL } from '../api/http';
+import { clearAuthRole, getAuthToken } from '../utils/auth';
 import { getTraineeDashboard } from '../api/trainees';
 import type {
     DashboardState,
@@ -28,6 +30,8 @@ import type {
     ModuleStatusValue,
     SimulationApi,
 } from '../types/traineeDashboard';
+
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 type LevelCard = {
     id: number;
@@ -60,6 +64,13 @@ const getLevelStatus = (moduleStatus: ModuleStatusValue | undefined): LevelCard[
 const getErrorMessage = (error: unknown, fallback: string): string => {
     if (error instanceof Error && error.message) return error.message;
     return fallback;
+};
+
+const toAbsoluteUrl = (value: string): string => {
+    const trimmed = value.trim();
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+    const normalizedPath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+    return `${API_BASE_URL}${normalizedPath}`;
 };
 
 const isAbortError = (error: unknown): boolean => {
@@ -132,10 +143,13 @@ const Dashboard = () => {
     });
 
     const [selectedLevel, setSelectedLevel] = useState<number | null>(null);
-    const [selectedLessonResourceId, setSelectedLessonResourceId] = useState<number | null>(null);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isDarkMode, setIsDarkMode] = useState(true);
+    const [briefingPreviewError, setBriefingPreviewError] = useState<string | null>(null);
+    const [briefingPreviewHeight, setBriefingPreviewHeight] = useState<number>(124);
     const requestControllerRef = useRef<AbortController | null>(null);
+    const briefingPreviewRef = useRef<HTMLDivElement | null>(null);
+    const authToken = getAuthToken();
 
     useEffect(() => {
         setIsDarkMode(document.documentElement.classList.contains('dark'));
@@ -299,35 +313,57 @@ const Dashboard = () => {
         if (selectedLevel === null) return [];
         return lessonsByModuleId.get(selectedLevel) ?? [];
     }, [lessonsByModuleId, selectedLevel]);
+    const selectedPrimaryLesson = selectedModuleLessons[0] ?? null;
+    const selectedModuleLessonCount = selectedModuleLessons.length;
+    const selectedModuleHasManual = selectedModuleLessonCount > 0;
+    const briefingPreviewFile = useMemo(() => {
+        const previewUrl = selectedPrimaryLesson?.url?.trim() ?? '';
+        if (!previewUrl) return null;
+        const absoluteUrl = toAbsoluteUrl(previewUrl);
+        if (!absoluteUrl) return null;
 
-    useEffect(() => {
-        if (selectedLevel === null) {
-            setSelectedLessonResourceId(null);
-            return;
-        }
+        const shouldAttachAuthHeader =
+            previewUrl.startsWith('/') || absoluteUrl.startsWith(API_BASE_URL);
 
-        if (selectedModuleLessons.length === 0) {
-            setSelectedLessonResourceId(null);
-            return;
-        }
-
-        const hasSelection =
-            selectedLessonResourceId !== null &&
-            selectedModuleLessons.some((lesson) => lesson.resourceId === selectedLessonResourceId);
-        if (!hasSelection) {
-            setSelectedLessonResourceId(selectedModuleLessons[0].resourceId);
-        }
-    }, [selectedLevel, selectedLessonResourceId, selectedModuleLessons]);
-
-    const selectedLesson = useMemo(() => {
-        if (selectedModuleLessons.length === 0) return null;
-        if (selectedLessonResourceId === null) return selectedModuleLessons[0];
-        return selectedModuleLessons.find((lesson) => lesson.resourceId === selectedLessonResourceId) ?? selectedModuleLessons[0];
-    }, [selectedLessonResourceId, selectedModuleLessons]);
-
-    const selectedModulePdfUrl = selectedLesson?.url ?? null;
+        return {
+            url: absoluteUrl,
+            ...(shouldAttachAuthHeader && authToken
+                ? {
+                      httpHeaders: {
+                          Authorization: `Bearer ${authToken}`,
+                      },
+                  }
+                : {}),
+        };
+    }, [authToken, selectedPrimaryLesson]);
 
     const trainee = dashboardState.data?.trainee ?? null;
+
+    useEffect(() => {
+        setBriefingPreviewError(null);
+    }, [selectedPrimaryLesson?.resourceId, selectedPrimaryLesson?.url]);
+
+    useEffect(() => {
+        const node = briefingPreviewRef.current;
+        if (!node) return;
+
+        const updateHeight = () => {
+            const containerHeight = node.clientHeight;
+            if (!containerHeight) return;
+            setBriefingPreviewHeight(Math.max(96, containerHeight - 20));
+        };
+
+        updateHeight();
+
+        if (typeof ResizeObserver === 'undefined') {
+            window.addEventListener('resize', updateHeight);
+            return () => window.removeEventListener('resize', updateHeight);
+        }
+
+        const observer = new ResizeObserver(() => updateHeight());
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [selectedLevel]);
 
     const handleLogout = () => {
         clearAuthRole();
@@ -340,14 +376,8 @@ const Dashboard = () => {
     };
 
     const handleViewModule = () => {
-        if (!selectedLevelData || !selectedLesson || !selectedModulePdfUrl) return;
-        navigate(`/module/${selectedLevelData.id}`, {
-            state: {
-                pdfUrl: selectedModulePdfUrl,
-                lessonResourceId: selectedLesson.resourceId,
-                lessonTitle: selectedLesson.title,
-            },
-        });
+        if (!selectedLevelData || !selectedModuleHasManual) return;
+        navigate(`/module/${selectedLevelData.id}`);
     };
 
     return (
@@ -540,29 +570,9 @@ const Dashboard = () => {
                                                         <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-3 font-mono">
                                                             {'>'} {level.description ?? 'Initialize the wiring interface for this module before testing the circuit.'}
                                                         </p>
-                                                        {selectedModuleLessons.length > 0 ? (
-                                                            <div className="mb-3">
-                                                                <label className="block text-[9px] uppercase tracking-widest font-black text-slate-500 mb-1">
-                                                                    Lesson
-                                                                </label>
-                                                                <select
-                                                                    value={selectedLessonResourceId ?? selectedModuleLessons[0]?.resourceId ?? ''}
-                                                                    onChange={(event) => {
-                                                                        const nextResourceId = Number(event.target.value);
-                                                                        setSelectedLessonResourceId(Number.isFinite(nextResourceId) ? nextResourceId : null);
-                                                                    }}
-                                                                    className="w-full rounded-md border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-[10px] sm:text-xs font-mono px-2 py-2 text-slate-700 dark:text-slate-200"
-                                                                >
-                                                                    {selectedModuleLessons.map((lesson) => (
-                                                                        <option key={lesson.resourceId} value={lesson.resourceId}>
-                                                                            {lesson.title}
-                                                                        </option>
-                                                                    ))}
-                                                                </select>
-                                                            </div>
-                                                        ) : (
+                                                        {!selectedModuleHasManual ? (
                                                             <p className="text-[10px] sm:text-xs font-mono text-slate-500 mb-3">No lesson PDFs available yet.</p>
-                                                        )}
+                                                        ) : null}
                                                         <div className="flex flex-col gap-2">
                                                             <button
                                                                 type="button"
@@ -577,11 +587,11 @@ const Dashboard = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={handleViewModule}
-                                                                disabled={!selectedModulePdfUrl}
+                                                                disabled={!selectedModuleHasManual}
                                                                 className="w-full bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 py-2.5 text-[10px] sm:text-xs uppercase tracking-widest font-bold flex items-center justify-center gap-2 transition-all"
                                                             >
                                                                 <BookOpen size={12} />
-                                                                {selectedModulePdfUrl ? 'Access Intel Manual' : 'PDF Not Available'}
+                                                                {selectedModuleHasManual ? 'Access Intel Manual' : 'PDF Not Available'}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -622,9 +632,49 @@ const Dashboard = () => {
 
                                     <div className="bg-slate-50 dark:bg-[#0B1120] p-4 lg:p-6 h-full relative z-10">
 
-                                        <div className="h-32 lg:h-40 bg-slate-200 dark:bg-slate-900 relative mb-4 lg:mb-6 flex items-center justify-center border border-slate-300 dark:border-slate-800 overflow-hidden">
-                                            <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080801a_1px,transparent_1px),linear-gradient(to_bottom,#8080801a_1px,transparent_1px)] bg-[size:16px_16px]" />
-                                            <Terminal size={48} className="text-slate-400 dark:text-slate-700 relative z-10 lg:w-16 lg:h-16" strokeWidth={1} />
+                                        <div
+                                            ref={briefingPreviewRef}
+                                            className="h-32 lg:h-40 bg-slate-200 dark:bg-slate-900 relative mb-4 lg:mb-6 flex items-center justify-center border border-slate-300 dark:border-slate-800 overflow-hidden"
+                                        >
+                                            {selectedModuleHasManual ? (
+                                                briefingPreviewFile ? (
+                                                    <Document
+                                                        file={briefingPreviewFile}
+                                                        onLoadError={(loadError) => {
+                                                            setBriefingPreviewError(getErrorMessage(loadError, 'Failed to load PDF preview.'));
+                                                        }}
+                                                        loading={
+                                                            <div className="relative z-10 text-slate-500 dark:text-slate-400 text-xs font-semibold flex items-center gap-2">
+                                                                <Loader2 size={16} className="animate-spin" />
+                                                                Loading preview...
+                                                            </div>
+                                                        }
+                                                    >
+                                                        <Page
+                                                            pageNumber={1}
+                                                            height={briefingPreviewHeight}
+                                                            renderTextLayer={false}
+                                                            renderAnnotationLayer={false}
+                                                        />
+                                                    </Document>
+                                                ) : (
+                                                    <p className="relative z-10 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                                                        Preview source unavailable.
+                                                    </p>
+                                                )
+                                            ) : (
+                                                <p className="relative z-10 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                                                    No lesson PDFs available yet.
+                                                </p>
+                                            )}
+                                            <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080801a_1px,transparent_1px),linear-gradient(to_bottom,#8080801a_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none" />
+                                            {briefingPreviewError ? (
+                                                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-slate-100/90 dark:bg-slate-950/90 px-4 text-center text-red-600 dark:text-red-400">
+                                                    <AlertTriangle size={18} />
+                                                    <p className="text-[11px] font-semibold">{briefingPreviewError}</p>
+                                                </div>
+                                            ) : null}
+                                            <div className="absolute inset-0 bg-gradient-to-b from-slate-50/10 via-transparent to-slate-950/25 pointer-events-none" />
                                             <div className="absolute top-0 left-0 w-full h-1 bg-cyan-400/50 shadow-[0_0_10px_rgba(6,182,212,0.8)] animate-[scan_3s_ease-in-out_infinite]" />
                                         </div>
 
@@ -639,29 +689,9 @@ const Dashboard = () => {
                                             <span className="inline-block w-1.5 h-3 bg-cyan-500 ml-1 animate-pulse" />
                                         </div>
 
-                                        <div className="mb-6 lg:mb-8">
-                                            <p className="text-[10px] lg:text-xs font-black uppercase tracking-widest text-slate-500 mb-2">
-                                                Lesson
-                                            </p>
-                                            {selectedModuleLessons.length > 0 ? (
-                                                <select
-                                                    value={selectedLessonResourceId ?? selectedModuleLessons[0]?.resourceId ?? ''}
-                                                    onChange={(event) => {
-                                                        const nextResourceId = Number(event.target.value);
-                                                        setSelectedLessonResourceId(Number.isFinite(nextResourceId) ? nextResourceId : null);
-                                                    }}
-                                                    className="w-full rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 px-3 py-2.5 text-xs lg:text-sm font-mono"
-                                                >
-                                                    {selectedModuleLessons.map((lesson) => (
-                                                        <option key={lesson.resourceId} value={lesson.resourceId}>
-                                                            {lesson.title}
-                                                        </option>
-                                                    ))}
-                                                </select>
-                                            ) : (
-                                                <p className="text-[10px] lg:text-xs font-mono text-slate-500">No lesson PDFs available yet.</p>
-                                            )}
-                                        </div>
+                                        {!selectedModuleHasManual ? (
+                                            <p className="mb-6 lg:mb-8 text-[10px] lg:text-xs font-mono text-slate-500">No lesson PDFs available yet.</p>
+                                        ) : null}
 
                                         <div className="space-y-3 lg:space-y-4">
                                             <button
@@ -678,11 +708,11 @@ const Dashboard = () => {
                                             <button
                                                 type="button"
                                                 onClick={handleViewModule}
-                                                disabled={!selectedModulePdfUrl}
+                                                disabled={!selectedModuleHasManual}
                                                 className="w-full bg-slate-800 hover:bg-slate-900 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-slate-800 dark:hover:bg-slate-700 text-white dark:text-slate-200 py-3 uppercase tracking-widest font-bold text-[10px] lg:text-xs flex items-center justify-center gap-2 transition-colors border border-transparent dark:border-slate-700"
                                             >
                                                 <BookOpen size={14} className="lg:w-4 lg:h-4" />
-                                                {selectedModulePdfUrl ? 'Access Intel Manual' : 'PDF Not Available'}
+                                                {selectedModuleHasManual ? 'Access Intel Manual' : 'PDF Not Available'}
                                             </button>
                                         </div>
                                     </div>

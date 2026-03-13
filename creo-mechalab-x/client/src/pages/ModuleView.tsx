@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Loader2 } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
-import PageTransition from '../components/PageTransition';
+import CyberTransition from '../components/CyberTransition';
 import { API_BASE_URL } from '../api/http';
 import { getTraineeDashboard } from '../api/trainees';
 import { getAuthToken } from '../utils/auth';
@@ -57,7 +57,7 @@ const ModuleView = () => {
 
     const [numPages, setNumPages] = useState<number | null>(null);
     const [pageNumber, setPageNumber] = useState<number>(1);
-    const [pdfWidth, setPdfWidth] = useState(800);
+    const [pdfWidth, setPdfWidth] = useState(760);
 
     const [isResolvingPdf, setIsResolvingPdf] = useState(true);
     const [resolvedPdfUrl, setResolvedPdfUrl] = useState<string | null>(hintedPdfUrl || null);
@@ -70,16 +70,30 @@ const ModuleView = () => {
     const [selectedLessonResourceId, setSelectedLessonResourceId] = useState<number | null>(hintedLessonResourceId);
 
     const authToken = getAuthToken();
+    const previewPaneRef = useRef<HTMLDivElement | null>(null);
 
     useEffect(() => {
-        const handleResize = () => {
-            const screenWidth = window.innerWidth;
-            setPdfWidth(screenWidth < 864 ? screenWidth - 64 : 800);
+        const node = previewPaneRef.current;
+        if (!node) return;
+
+        const updateWidth = () => {
+            const containerWidth = node.clientWidth;
+            if (!containerWidth) return;
+            const nextWidth = Math.max(260, Math.min(containerWidth - 48, 820));
+            setPdfWidth((currentWidth) => (currentWidth === nextWidth ? currentWidth : nextWidth));
         };
-        handleResize();
-        window.addEventListener('resize', handleResize);
-        return () => window.removeEventListener('resize', handleResize);
-    }, []);
+
+        updateWidth();
+
+        if (typeof ResizeObserver === 'undefined') {
+            window.addEventListener('resize', updateWidth);
+            return () => window.removeEventListener('resize', updateWidth);
+        }
+
+        const observer = new ResizeObserver(() => updateWidth());
+        observer.observe(node);
+        return () => observer.disconnect();
+    }, [isResolvingPdf, lessonOptions.length, resolvedPdfUrl]);
 
     useEffect(() => {
         let active = true;
@@ -238,114 +252,207 @@ const ModuleView = () => {
     };
 
     return (
-        <PageTransition>
-            <div className="min-h-screen bg-slate-950 text-slate-200 flex flex-col select-none">
-                <header className="bg-slate-900 border-b border-slate-800 p-4 flex items-center justify-between sticky top-0 z-10 shadow-lg gap-4">
-                    <div className="flex items-center gap-4 min-w-0">
-                        <button
-                            onClick={() => navigate('/dashboard')}
-                            className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition flex items-center gap-2"
-                        >
-                            <ArrowLeft size={20} /> <span className="font-semibold text-sm">Return to Map</span>
-                        </button>
-                        <div className="h-6 w-px bg-slate-700" />
-                        <div className="min-w-0">
-                            <h1 className="font-bold text-lg text-white flex items-center gap-2 truncate">
-                                <BookOpen className="text-cyan-500" size={20} />
-                                <span className="truncate">{resolvedPdfTitle}</span>
-                            </h1>
-                            {lessonOptions.length > 0 ? (
-                                <div className="mt-1 flex items-center gap-2">
-                                    <span className="text-[10px] uppercase tracking-widest text-slate-400 font-bold">Lesson</span>
-                                    <select
-                                        value={selectedLessonResourceId ?? lessonOptions[0].resourceId}
-                                        onChange={(event) => {
-                                            const nextResourceId = Number(event.target.value);
-                                            setSelectedLessonResourceId(Number.isFinite(nextResourceId) ? nextResourceId : null);
-                                        }}
-                                        className="bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-slate-200"
-                                    >
-                                        {lessonOptions.map((option) => (
-                                            <option key={option.resourceId} value={option.resourceId}>
-                                                {option.title}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            ) : null}
-                        </div>
-                    </div>
+        <CyberTransition>
+            <div className="min-h-screen bg-slate-950 text-slate-200 relative overflow-x-hidden select-none">
+                <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:28px_28px] pointer-events-none -z-10" />
 
-                    {numPages && !isResolvingPdf && !resolveError && !viewerError ? (
-                        <div className="flex items-center gap-4 bg-slate-800 px-4 py-1.5 rounded-lg border border-slate-700">
+                <header className="sticky top-0 z-20 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md shadow-lg">
+                    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div className="flex items-start gap-4 min-w-0">
                             <button
-                                disabled={pageNumber <= 1}
-                                onClick={() => changePage(-1)}
-                                className="text-slate-400 hover:text-white disabled:opacity-30 transition"
+                                onClick={() => navigate('/dashboard')}
+                                className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition flex items-center gap-2 shrink-0"
                             >
-                                <ChevronLeft size={20} />
+                                <ArrowLeft size={20} /> <span className="font-semibold text-sm">Return to Briefing</span>
                             </button>
-                            <span className="text-sm font-mono text-slate-300">
-                                Page {pageNumber} of {numPages}
-                            </span>
-                            <button
-                                disabled={pageNumber >= numPages}
-                                onClick={() => changePage(1)}
-                                className="text-slate-400 hover:text-white disabled:opacity-30 transition"
-                            >
-                                <ChevronRight size={20} />
-                            </button>
+                            <div className="hidden sm:block h-10 w-px bg-slate-800" />
+                            <div className="min-w-0">
+                                <p className="text-[10px] uppercase tracking-[0.28em] text-cyan-400 font-black mb-1">
+                                    Intel Manual Workspace
+                                </p>
+                                <h1 className="font-black text-xl sm:text-2xl text-white flex items-center gap-2 min-w-0">
+                                    <BookOpen className="text-cyan-500 shrink-0" size={20} />
+                                    <span className="truncate">{moduleTitle}</span>
+                                </h1>
+                                <p className="mt-1 text-xs sm:text-sm text-slate-400 font-mono uppercase tracking-widest">
+                                    {lessonOptions.length === 1
+                                        ? '1 lesson file linked'
+                                        : `${lessonOptions.length} lesson files linked`}
+                                </p>
+                            </div>
                         </div>
-                    ) : null}
+
+                        {numPages && !isResolvingPdf && !resolveError && !viewerError ? (
+                            <div className="flex items-center gap-3 self-start lg:self-center bg-slate-900/90 px-3 sm:px-4 py-2 rounded-xl border border-slate-800">
+                                <button
+                                    disabled={pageNumber <= 1}
+                                    onClick={() => changePage(-1)}
+                                    className="text-slate-400 hover:text-white disabled:opacity-30 transition"
+                                >
+                                    <ChevronLeft size={20} />
+                                </button>
+                                <span className="text-xs sm:text-sm font-mono text-slate-300 uppercase tracking-widest">
+                                    Page {pageNumber} / {numPages}
+                                </span>
+                                <button
+                                    disabled={pageNumber >= numPages}
+                                    onClick={() => changePage(1)}
+                                    className="text-slate-400 hover:text-white disabled:opacity-30 transition"
+                                >
+                                    <ChevronRight size={20} />
+                                </button>
+                            </div>
+                        ) : null}
+                    </div>
                 </header>
 
-                <main className="flex-1 overflow-y-auto p-4 md:p-8 flex justify-center items-start">
-                    {isResolvingPdf ? (
-                        <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-300">
-                            <Loader2 size={42} className="animate-spin mx-auto mb-3 text-cyan-500" />
-                            Resolving lesson PDF...
-                        </div>
-                    ) : resolveError ? (
-                        <div className="w-full max-w-3xl bg-red-950/40 border border-red-900 rounded-xl p-8 text-center text-red-200">
-                            <AlertTriangle size={38} className="mx-auto mb-3" />
-                            {resolveError}
-                        </div>
-                    ) : viewerError ? (
-                        <div className="w-full max-w-3xl bg-red-950/40 border border-red-900 rounded-xl p-8 text-center text-red-200">
-                            <AlertTriangle size={38} className="mx-auto mb-3" />
-                            {viewerError}
-                        </div>
-                    ) : documentFile ? (
-                        <div className="bg-white rounded-sm shadow-2xl overflow-hidden border border-slate-800 flex justify-center items-start max-h-[85vh]">
-                            <Document
-                                file={documentFile}
-                                onLoadSuccess={onDocumentLoadSuccess}
-                                onLoadError={(error) => {
-                                    setViewerError(getErrorMessage(error, 'Failed to load PDF document.'));
-                                }}
-                                loading={
-                                    <div className="flex flex-col items-center justify-center h-[500px] w-full text-slate-400 p-8 text-center">
-                                        <Loader2 size={48} className="animate-spin mb-4 text-cyan-500 mx-auto" />
-                                        <p>Loading lesson PDF...</p>
+                <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6 lg:py-8">
+                    <div className="grid gap-4 lg:gap-6 xl:gap-8 lg:grid-cols-[280px_minmax(0,1fr)] xl:grid-cols-[320px_minmax(0,1fr)]">
+                        <aside className="rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden h-fit">
+                            <div className="px-4 py-4 border-b border-slate-800 bg-slate-900">
+                                <p className="text-[10px] uppercase tracking-[0.28em] text-slate-400 font-black">
+                                    Module Files
+                                </p>
+                                <div className="mt-3 flex items-center gap-3">
+                                    <div className="w-11 h-11 rounded-xl bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 flex items-center justify-center shrink-0">
+                                        <FileText size={18} />
                                     </div>
-                                }
+                                    <div className="min-w-0">
+                                        <p className="text-sm font-black text-white truncate">{moduleTitle}</p>
+                                        <p className="text-[10px] font-mono uppercase tracking-widest text-slate-400">
+                                            {lessonOptions.length === 0
+                                                ? 'No files linked'
+                                                : lessonOptions.length === 1
+                                                    ? '1 file ready'
+                                                    : `${lessonOptions.length} files ready`}
+                                        </p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="p-3 sm:p-4 space-y-2">
+                                {isResolvingPdf ? (
+                                    <div className="rounded-xl border border-slate-800 bg-slate-950/60 px-4 py-6 text-center text-slate-400">
+                                        <Loader2 size={24} className="animate-spin mx-auto mb-3 text-cyan-500" />
+                                        <p className="text-xs font-mono uppercase tracking-widest">Syncing lesson files...</p>
+                                    </div>
+                                ) : lessonOptions.length > 0 ? (
+                                    lessonOptions.map((option, index) => {
+                                        const isSelected = option.resourceId === selectedLessonResourceId;
+                                        return (
+                                            <button
+                                                key={option.resourceId}
+                                                type="button"
+                                                onClick={() => setSelectedLessonResourceId(option.resourceId)}
+                                                className={`w-full text-left rounded-xl border px-3 py-3 transition-colors ${
+                                                    isSelected
+                                                        ? 'border-cyan-500/40 bg-cyan-500/10 shadow-[0_0_20px_rgba(6,182,212,0.08)]'
+                                                        : 'border-slate-800 bg-slate-950/50 hover:bg-slate-900'
+                                                }`}
+                                            >
+                                                <div className="flex items-start gap-3">
+                                                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center text-[11px] font-black shrink-0 ${
+                                                        isSelected ? 'bg-cyan-500 text-slate-950' : 'bg-slate-800 text-slate-300'
+                                                    }`}>
+                                                        {String(index + 1).padStart(2, '0')}
+                                                    </div>
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className={`text-sm font-bold truncate ${isSelected ? 'text-white' : 'text-slate-200'}`}>
+                                                            {option.title}
+                                                        </p>
+                                                        <p className="mt-1 text-[10px] font-mono uppercase tracking-widest text-slate-400">
+                                                            {isSelected ? 'Active preview' : 'Select file'}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="rounded-xl border border-dashed border-slate-700 bg-slate-950/50 px-4 py-6 text-center text-slate-400">
+                                        <FileText size={22} className="mx-auto mb-3 opacity-70" />
+                                        <p className="text-sm font-semibold text-slate-300">No lesson files available</p>
+                                        <p className="mt-1 text-xs font-mono uppercase tracking-widest">
+                                            Admin uploads will appear here automatically
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        </aside>
+
+                        <section className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden flex flex-col">
+                            <div className="px-4 sm:px-6 py-4 border-b border-slate-800 bg-slate-900 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                                <div className="min-w-0">
+                                    <p className="text-[10px] uppercase tracking-[0.28em] text-slate-400 font-black mb-2">
+                                        Active Preview
+                                    </p>
+                                    <h2 className="text-lg sm:text-xl font-black text-white truncate">
+                                        {resolvedPdfTitle}
+                                    </h2>
+                                    <p className="mt-1 text-xs sm:text-sm text-slate-400 font-mono uppercase tracking-widest">
+                                        {selectedLessonResourceId ? `Resource ${selectedLessonResourceId}` : 'Awaiting file selection'}
+                                    </p>
+                                </div>
+                                {numPages && !isResolvingPdf && !resolveError && !viewerError ? (
+                                    <div className="text-[10px] sm:text-xs font-mono uppercase tracking-widest text-slate-500">
+                                        Inline authenticated PDF preview
+                                    </div>
+                                ) : null}
+                            </div>
+
+                            <div
+                                ref={previewPaneRef}
+                                className="flex-1 overflow-auto p-4 md:p-6 flex justify-center items-start bg-[radial-gradient(circle_at_top,_rgba(6,182,212,0.08),_transparent_42%),linear-gradient(to_bottom,_rgba(2,6,23,0.82),_rgba(2,6,23,0.98))] min-h-[420px] lg:min-h-0 lg:max-h-[72vh]"
                             >
-                                <Page
-                                    pageNumber={pageNumber}
-                                    renderTextLayer={false}
-                                    renderAnnotationLayer={false}
-                                    width={pdfWidth}
-                                />
-                            </Document>
-                        </div>
-                    ) : (
-                        <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-xl p-8 text-center text-slate-300">
-                            No lesson PDF is available for this module.
-                        </div>
-                    )}
+                                {isResolvingPdf ? (
+                                    <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-300">
+                                        <Loader2 size={42} className="animate-spin mx-auto mb-3 text-cyan-500" />
+                                        Resolving lesson PDF...
+                                    </div>
+                                ) : resolveError ? (
+                                    <div className="w-full max-w-3xl bg-red-950/40 border border-red-900 rounded-2xl p-8 text-center text-red-200">
+                                        <AlertTriangle size={38} className="mx-auto mb-3" />
+                                        {resolveError}
+                                    </div>
+                                ) : viewerError ? (
+                                    <div className="w-full max-w-3xl bg-red-950/40 border border-red-900 rounded-2xl p-8 text-center text-red-200">
+                                        <AlertTriangle size={38} className="mx-auto mb-3" />
+                                        {viewerError}
+                                    </div>
+                                ) : documentFile ? (
+                                    <div className="bg-white rounded-lg shadow-2xl overflow-hidden border border-slate-800 flex justify-center items-start max-w-full">
+                                        <Document
+                                            file={documentFile}
+                                            onLoadSuccess={onDocumentLoadSuccess}
+                                            onLoadError={(error) => {
+                                                setViewerError(getErrorMessage(error, 'Failed to load PDF document.'));
+                                            }}
+                                            loading={
+                                                <div className="flex flex-col items-center justify-center h-[500px] w-full text-slate-400 p-8 text-center">
+                                                    <Loader2 size={48} className="animate-spin mb-4 text-cyan-500 mx-auto" />
+                                                    <p>Loading lesson PDF...</p>
+                                                </div>
+                                            }
+                                        >
+                                            <Page
+                                                pageNumber={pageNumber}
+                                                renderTextLayer={false}
+                                                renderAnnotationLayer={false}
+                                                width={pdfWidth}
+                                            />
+                                        </Document>
+                                    </div>
+                                ) : (
+                                    <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-300">
+                                        No lesson PDF is available for this module.
+                                    </div>
+                                )}
+                            </div>
+                        </section>
+                    </div>
                 </main>
             </div>
-        </PageTransition>
+        </CyberTransition>
     );
 };
 

@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion';
+import { useEffect } from 'react';
 import type { ReactNode } from 'react';
 
 type CyberTransitionProps = {
@@ -6,15 +7,19 @@ type CyberTransitionProps = {
 };
 
 export default function CyberTransition({ children }: CyberTransitionProps) {
+    useEffect(() => {
+        window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+    }, []);
+
     return (
-        <div className="relative w-full min-h-screen bg-slate-50 dark:bg-[#0B1120] overflow-hidden transition-colors duration-300">
+        <div className="relative w-full min-h-screen bg-slate-50 dark:bg-[#0B1120] overflow-x-hidden transition-colors duration-300">
             {/* The Main Content: Boot-up flash and focus effect */}
             <motion.div
                 initial={{ opacity: 0, filter: "brightness(2.5) blur(8px)", scale: 1.02 }}
                 animate={{ opacity: 1, filter: "brightness(1) blur(0px)", scale: 1 }}
                 exit={{ opacity: 0, filter: "brightness(0) blur(10px)", scale: 0.98 }}
                 transition={{ duration: 0.6, ease: "easeOut", delay: 0.15 }}
-                className="w-full h-full relative z-0"
+                className="w-full min-h-screen relative z-0"
             >
                 {children}
             </motion.div>
