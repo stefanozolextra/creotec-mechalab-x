@@ -26,7 +26,10 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   const [wires, setWires] = useState<Connection[]>([]);
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
+  // Use ref for transient mouse position during drag for performance
   const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const mousePosRef = useRef<{ x: number; y: number } | null>(null);
+  const rafRef = useRef<number | null>(null);
   const [hoveredPin, setHoveredPin] = useState<string | null>(null);
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
 
@@ -60,10 +63,17 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   // WIRING LOGIC
   const handlePortMouseDown = (portId: string) => { if (selectedWireId) { setSelectedWireId(null); return; } setActivePin(portId); setMousePos(RELAY_PORTS[portId]); };
 
+  // Optimized mouse move handler using requestAnimationFrame
   const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
+    if (!activePin) return;
     const pos = e.target.getStage()?.getPointerPosition();
-    if (pos && activePin) {
-      setMousePos({ x: pos.x / canvasScale, y: pos.y / canvasScale });
+    if (!pos) return;
+    mousePosRef.current = { x: pos.x / canvasScale, y: pos.y / canvasScale };
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(() => {
+        setMousePos(mousePosRef.current);
+        rafRef.current = null;
+      });
     }
   };
 
@@ -77,7 +87,6 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
             // FIX: We compute the path exactly ONCE right here when the connection is made.
             const pathPoints = computeOrthogonalPath(activePin, targetPin, RELAY_PORTS, prev.length);
             const flatPoints = pathPoints.flatMap(p => [p.x, p.y]);
-
             const next = [...prev, {
               id: crypto.randomUUID(),
               fromPin: activePin,
@@ -91,7 +100,13 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
           });
         }
       }
-      setActivePin(null); setMousePos(null);
+      setActivePin(null);
+      setMousePos(null);
+      mousePosRef.current = null;
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
     }
   };
 
