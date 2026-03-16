@@ -642,6 +642,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
             </aside>
           </main>
         </div>
+      </CyberTransition>
     </PortraitGuard>
   );
 }
