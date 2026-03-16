@@ -380,7 +380,7 @@ const ModuleView = () => {
                             </div>
                         </aside>
 
-                        <section className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/80 overflow-hidden flex flex-col">
+                        <section className="min-w-0 rounded-2xl border border-slate-800 bg-slate-900/80 flex flex-col">
                             <div className="px-4 sm:px-6 py-4 border-b border-slate-800 bg-slate-900 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
                                 <div className="min-w-0">
                                     <p className="text-[10px] uppercase tracking-[0.28em] text-slate-400 font-black mb-2">
@@ -402,7 +402,7 @@ const ModuleView = () => {
 
                             <div
                                 ref={previewPaneRef}
-                                className="flex-1 overflow-auto p-4 md:p-6 flex justify-center items-start bg-[radial-gradient(circle_at_top,_rgba(6,182,212,0.08),_transparent_42%),linear-gradient(to_bottom,_rgba(2,6,23,0.82),_rgba(2,6,23,0.98))] min-h-[420px] lg:min-h-0 lg:max-h-[72vh]"
+                                className="p-4 md:p-6 flex justify-center items-start bg-[radial-gradient(circle_at_top,_rgba(6,182,212,0.08),_transparent_42%),linear-gradient(to_bottom,_rgba(2,6,23,0.82),_rgba(2,6,23,0.98))] min-h-[420px]"
                             >
                                 {isResolvingPdf ? (
                                     <div className="w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-300">
