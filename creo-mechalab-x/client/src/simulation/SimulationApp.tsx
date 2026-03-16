@@ -11,6 +11,7 @@ import { RelayStaticBackground } from './components/RelayStaticBackground';
 import { computeOrthogonalPath } from './utils/wireRouting';
 import { evaluateActivityAnswer, type ActivityEvaluationResult } from './utils/evaluateActivityAnswer';
 import PortraitGuard from '../components/PortraitGuard';
+import CyberTransition from '../components/CyberTransition'; // <-- Added import
 import buttonDevice from '../assets/devices/button.png';
 import buzzerDevice from '../assets/devices/buzzer.png';
 import counterDevice from '../assets/devices/counter.png';
@@ -57,6 +58,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   const [isCanvasReady, setIsCanvasReady] = useState(false);
 
   useEffect(() => {
+    // Wait 700ms for the CyberTransition to finish before locking CPU with Konva
     const timer = setTimeout(() => setIsCanvasReady(true), 700);
     return () => clearTimeout(timer);
   }, []);
@@ -109,6 +111,14 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
 
   const toggleTheme = () => { const newMode = !isDarkMode; setIsDarkMode(newMode); document.documentElement.classList.toggle('dark', newMode); };
   const handleToggleSwitch = useCallback(() => setIsMainSwitchOn(prev => !prev), []);
+
+  const handleBackNavigation = () => {
+    if (onNavigateBack) {
+      onNavigateBack();
+    } else {
+      window.history.back();
+    }
+  };
 
   const showTooltip = useCallback((x: number, y: number, desc: string) => {
     const normalizedDesc = desc.trim();
@@ -335,7 +345,6 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
             const stage = e.target.getStage();
             if (stage) stage.container().style.cursor = 'crosshair';
 
-            // Teleport the fast hover ring to this port
             if (hoverRingRef.current && !activePin) {
               hoverRingRef.current.position({ x: pos.x, y: pos.y });
               hoverRingRef.current.visible(true);
@@ -348,7 +357,6 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
             const stage = e.target.getStage();
             if (stage) stage.container().style.cursor = 'default';
 
-            // Hide the fast hover ring
             if (hoverRingRef.current) {
               hoverRingRef.current.visible(false);
               hoverRingRef.current.getLayer()?.batchDraw();
@@ -414,220 +422,226 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
 
   return (
     <PortraitGuard>
-      <div className={`flex flex-col h-screen w-screen text-slate-800 dark:text-slate-200 font-sans overflow-hidden select-none transition-colors duration-300 ${isDarkMode ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
-        <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-20 shadow-md relative">
-          <div className="flex items-center gap-4">
-            <button onClick={onNavigateBack} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence"><ArrowLeft size={20} /></button>
-            <div>
-              <h1 className="font-black text-lg text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2"><Play size={16} className="text-cyan-600 dark:text-cyan-500" /> Laboratory Sequence</h1>
-              <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: Electro-Pneumatic Trainer • Task: {routeId || 'Default'}</p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner">
-              <button onClick={deleteSelectedWire} disabled={!selectedWireId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
-              <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
-              <button onClick={handleUndo} disabled={!historyPast.length} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Undo"><Undo2 size={16} /></button>
-              <button onClick={handleRedo} disabled={!historyFuture.length} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Redo"><Redo2 size={16} /></button>
-              <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
-              <div className="px-2 flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full shadow-inner border border-slate-400" style={{ backgroundColor: wireColor }} />
-                <select value={wireColor} onChange={(e) => setWireColor(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1">
-                  <option value="#e74c3c" className="bg-white dark:bg-slate-900">24V Red</option>
-                  <option value="#111827" className="bg-white dark:bg-slate-900">0V Black</option>
-                  <option value="#3498db" className="bg-white dark:bg-slate-900">Signal Blue</option>
-                  <option value="#f1c40f" className="bg-white dark:bg-slate-900">Signal Yellow</option>
-                  <option value="#27ae60" className="bg-white dark:bg-slate-900">Earth Green</option>
-                </select>
+      <CyberTransition>
+        <div className={`flex flex-col h-screen w-screen text-slate-800 dark:text-slate-200 font-sans overflow-hidden select-none transition-colors duration-300 ${isDarkMode ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
+          <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-20 shadow-md relative">
+            <div className="flex items-center gap-4">
+              <button onClick={handleBackNavigation} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence"><ArrowLeft size={20} /></button>
+              <div>
+                <h1 className="font-black text-lg text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2"><Play size={16} className="text-cyan-600 dark:text-cyan-500" /> Laboratory Sequence</h1>
+                <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: Electro-Pneumatic Trainer • Task: {routeId || 'Default'}</p>
               </div>
             </div>
-            <button type="button" onClick={handleResetBoard} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm">
-              <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden xl:inline">Clear Board</span>
-            </button>
-            <button type="button" onClick={toggleTheme} className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm">
-              {isDarkMode ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
-            </button>
-          </div>
-        </header>
-
-        <main className="relative flex-1 flex flex-row w-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-950" ref={containerRef}>
-          <aside className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-800/50">
-              <h2 className="font-black text-slate-900 dark:text-white text-[1.35rem]">Controls</h2>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner">
+                <button onClick={deleteSelectedWire} disabled={!selectedWireId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
+                <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
+                <button onClick={handleUndo} disabled={!historyPast.length} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Undo"><Undo2 size={16} /></button>
+                <button onClick={handleRedo} disabled={!historyFuture.length} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Redo"><Redo2 size={16} /></button>
+                <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
+                <div className="px-2 flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-full shadow-inner border border-slate-400" style={{ backgroundColor: wireColor }} />
+                  <select value={wireColor} onChange={(e) => setWireColor(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1">
+                    <option value="#e74c3c" className="bg-white dark:bg-slate-900">24V Red</option>
+                    <option value="#111827" className="bg-white dark:bg-slate-900">0V Black</option>
+                    <option value="#3498db" className="bg-white dark:bg-slate-900">Signal Blue</option>
+                    <option value="#f1c40f" className="bg-white dark:bg-slate-900">Signal Yellow</option>
+                    <option value="#27ae60" className="bg-white dark:bg-slate-900">Earth Green</option>
+                  </select>
+                </div>
+              </div>
+              <button type="button" onClick={handleResetBoard} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm">
+                <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden xl:inline">Clear Board</span>
+              </button>
+              <button type="button" onClick={toggleTheme} className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm">
+                {isDarkMode ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
+              </button>
             </div>
-            <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3">
-              <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40">
-                <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">List of Devices to Use</h4>
-                <div className="mt-4 space-y-3">
-                  {renderDeviceDropZone('input', 'Input Device')}
-                  {renderDeviceDropZone('output', 'Output/Control Device')}
-                </div>
-              </section>
+          </header>
 
-              <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40 flex flex-col">
-                <div className="flex items-start justify-between gap-4">
-                  <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Ladder Diagram</h4>
-                  <div
-                    className={`inline-flex min-w-[56px] items-center justify-center rounded-xl border px-3 py-2 text-xs font-black ${answerFeedback?.passed
-                      ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
-                      : 'border-rose-200 bg-rose-50 text-rose-500 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300'
-                      }`}
-                  >
-                    {answerPercent}
+          <main className="relative flex-1 flex flex-row w-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-950" ref={containerRef}>
+            <aside className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-800/50">
+                <h2 className="font-black text-slate-900 dark:text-white text-[1.35rem]">Controls</h2>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3">
+                <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40">
+                  <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">List of Devices to Use</h4>
+                  <div className="mt-4 space-y-3">
+                    {renderDeviceDropZone('input', 'Input Device')}
+                    {renderDeviceDropZone('output', 'Output/Control Device')}
                   </div>
-                </div>
+                </section>
 
-                <div className="mt-5 flex flex-col">
-                  <p className="text-base font-black text-slate-900 dark:text-white">{activityPreset.title}</p>
-                  <div className="mt-3 h-[220px] rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                    <img src={activityPreset.diagram} alt={activityPreset.title} className="h-full w-full rounded-xl object-contain" />
+                <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40 flex flex-col">
+                  <div className="flex items-start justify-between gap-4">
+                    <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Ladder Diagram</h4>
+                    <div
+                      className={`inline-flex min-w-[56px] items-center justify-center rounded-xl border px-3 py-2 text-xs font-black ${answerFeedback?.passed
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                        : 'border-rose-200 bg-rose-50 text-rose-500 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300'
+                        }`}
+                    >
+                      {answerPercent}
+                    </div>
                   </div>
-                  <div className="mt-3 flex justify-end">
+
+                  <div className="mt-5 flex flex-col">
+                    <p className="text-base font-black text-slate-900 dark:text-white">{activityPreset.title}</p>
+                    <div className="mt-3 h-[220px] rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                      <img src={activityPreset.diagram} alt={activityPreset.title} className="h-full w-full rounded-xl object-contain" />
+                    </div>
+                    <div className="mt-3 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={handleCheckAnswer}
+                        className="rounded-xl bg-[#223a5a] px-4 py-3 text-sm font-black text-white shadow-sm transition-colors hover:bg-[#1a304d] dark:bg-cyan-600 dark:hover:bg-cyan-500"
+                      >
+                        Check Answer
+                      </button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+            </aside>
+
+            <div className="flex-1 relative flex items-center justify-center p-6">
+              <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
+
+                {!isCanvasReady ? (
+                  <div className="flex flex-col items-center justify-center h-full space-y-4">
+                    <div className="w-10 h-10 border-4 border-slate-300 border-t-cyan-500 rounded-full animate-spin"></div>
+                    <p className="text-sm font-bold text-slate-500 dark:text-slate-400 tracking-widest uppercase animate-pulse">
+                      Mounting Hardware Environment...
+                    </p>
+                  </div>
+                ) : (
+                  <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseLeave={handleStageMouseLeave}>
+                    <RelayStaticBackground BASE_CANVAS_WIDTH={BASE_CANVAS_WIDTH} BASE_CANVAS_HEIGHT={BASE_CANVAS_HEIGHT} canvasScale={canvasScale} isDarkMode={isDarkMode} isMainSwitchOn={isMainSwitchOn} onToggleSwitch={handleToggleSwitch} />
+
+                    <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
+                      {Object.entries(RELAY_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
+
+                      {wires.map((wire) => {
+                        const isSelected = selectedWireId === wire.id;
+                        return (
+                          <Line
+                            key={`wire-${wire.id}`}
+                            points={wire.points}
+                            stroke={wire.color}
+                            strokeWidth={isSelected ? 8 : 5}
+                            hitStrokeWidth={20}
+                            lineCap="round"
+                            lineJoin="round"
+                            shadowColor={isSelected ? '#f1c40f' : 'rgba(0,0,0,0.4)'}
+                            shadowBlur={isSelected ? 8 : 4}
+                            shadowOffsetY={isSelected ? 0 : 4}
+                            onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); }}
+                            onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
+                            onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
+                          />
+                        );
+                      })}
+                    </Layer>
+
+                    {/* LAYER 3: Fast Overlay for Ghost Wire & Imperative Tooltips */}
+                    <Layer scaleX={canvasScale} scaleY={canvasScale} id="overlay-layer" listening={false}>
+                      <Line ref={ghostWireRef} stroke={wireColor} strokeWidth={4} dash={[10, 8]} opacity={0.6} tension={0.4} visible={false} />
+
+                      {/* The Hover Ring trick! Never redraws the heavy layer! */}
+                      <Circle ref={hoverRingRef} radius={9} stroke="#ffffff" strokeWidth={2} visible={false} />
+
+                      <Group ref={tooltipRef} visible={false}>
+                        <Rect ref={tooltipBgRef} height={0} width={0} fill="#1e293b" cornerRadius={4} />
+                        <Text ref={tooltipTextRef} fill="#ffffff" fontSize={11} fontFamily={HW_STYLES.technicalMono} padding={6} />
+                      </Group>
+                    </Layer>
+                  </Stage>
+                )}
+              </div>
+            </div>
+
+            <aside
+              className="absolute inset-y-0 right-0 z-20 border-l border-slate-200 bg-white shadow-[-18px_0_30px_-22px_rgba(15,23,42,0.6)] transition-[width] duration-300 dark:border-slate-800 dark:bg-slate-900"
+              style={{ width: isDeviceDrawerOpen ? DEVICE_DRAWER_OPEN_WIDTH : DEVICE_DRAWER_COLLAPSED_WIDTH }}
+            >
+              {isDeviceDrawerOpen ? (
+                <div className="flex h-full flex-col">
+                  <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/50">
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-[0.32em] text-slate-500 dark:text-cyan-500/70">Device Dock</p>
+                      <h3 className="mt-1 text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">List of Devices</h3>
+                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Quick access to the installed trainer devices.</p>
+                    </div>
                     <button
                       type="button"
-                      onClick={handleCheckAnswer}
-                      className="rounded-xl bg-[#223a5a] px-4 py-3 text-sm font-black text-white shadow-sm transition-colors hover:bg-[#1a304d] dark:bg-cyan-600 dark:hover:bg-cyan-500"
+                      onClick={() => setIsDeviceDrawerOpen(false)}
+                      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      aria-label="Collapse device drawer"
+                      title="Collapse device drawer"
                     >
-                      Check Answer
+                      <ChevronRight size={18} />
                     </button>
                   </div>
-                </div>
-              </section>
-            </div>
-          </aside>
 
-          <div className="flex-1 relative flex items-center justify-center p-6">
-            <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
-
-              {!isCanvasReady ? (
-                <div className="text-slate-500 font-bold animate-pulse">Initializing Board...</div>
-              ) : (
-                <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseLeave={handleStageMouseLeave}>
-                  <RelayStaticBackground BASE_CANVAS_WIDTH={BASE_CANVAS_WIDTH} BASE_CANVAS_HEIGHT={BASE_CANVAS_HEIGHT} canvasScale={canvasScale} isDarkMode={isDarkMode} isMainSwitchOn={isMainSwitchOn} onToggleSwitch={handleToggleSwitch} />
-
-                  <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
-                    {Object.entries(RELAY_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
-
-                    {wires.map((wire) => {
-                      const isSelected = selectedWireId === wire.id;
-                      return (
-                        <Line
-                          key={`wire-${wire.id}`}
-                          points={wire.points}
-                          stroke={wire.color}
-                          strokeWidth={isSelected ? 8 : 5}
-                          hitStrokeWidth={20}
-                          lineCap="round"
-                          lineJoin="round"
-                          shadowColor={isSelected ? '#f1c40f' : 'rgba(0,0,0,0.4)'}
-                          shadowBlur={isSelected ? 8 : 4}
-                          shadowOffsetY={isSelected ? 0 : 4}
-                          onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); }}
-                          onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
-                          onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
-                        />
-                      );
-                    })}
-                  </Layer>
-
-                  {/* LAYER 3: Fast Overlay for Ghost Wire & Imperative Tooltips */}
-                  <Layer scaleX={canvasScale} scaleY={canvasScale} id="overlay-layer" listening={false}>
-                    <Line ref={ghostWireRef} stroke={wireColor} strokeWidth={4} dash={[10, 8]} opacity={0.6} tension={0.4} visible={false} />
-
-                    {/* The Hover Ring trick! Never redraws the heavy layer! */}
-                    <Circle ref={hoverRingRef} radius={9} stroke="#ffffff" strokeWidth={2} visible={false} />
-
-                    <Group ref={tooltipRef} visible={false}>
-                      <Rect ref={tooltipBgRef} height={0} width={0} fill="#1e293b" cornerRadius={4} />
-                      <Text ref={tooltipTextRef} fill="#ffffff" fontSize={11} fontFamily={HW_STYLES.technicalMono} padding={6} />
-                    </Group>
-                  </Layer>
-                </Stage>
-              )}
-            </div>
-          </div>
-
-          <aside
-            className="absolute inset-y-0 right-0 z-20 border-l border-slate-200 bg-white shadow-[-18px_0_30px_-22px_rgba(15,23,42,0.6)] transition-[width] duration-300 dark:border-slate-800 dark:bg-slate-900"
-            style={{ width: isDeviceDrawerOpen ? DEVICE_DRAWER_OPEN_WIDTH : DEVICE_DRAWER_COLLAPSED_WIDTH }}
-          >
-            {isDeviceDrawerOpen ? (
-              <div className="flex h-full flex-col">
-                <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/50">
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-[0.32em] text-slate-500 dark:text-cyan-500/70">Device Dock</p>
-                    <h3 className="mt-1 text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">List of Devices</h3>
-                    <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Quick access to the installed trainer devices.</p>
+                  <div className="flex-1 overflow-y-auto p-4">
+                    <div className="grid grid-cols-3 gap-3">
+                      {DEVICE_LIBRARY.map((device) => (
+                        <button
+                          key={device.name}
+                          type="button"
+                          draggable
+                          onDragStart={(event) => handleDeviceDragStart(device.id, 'library', event)}
+                          onDragEnd={handleDeviceDragEnd}
+                          className="group flex min-h-[108px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-cyan-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-cyan-500/70"
+                        >
+                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 p-2.5 dark:bg-slate-800/80">
+                            <img src={device.image} alt={device.name} className="h-full w-full object-contain" />
+                          </div>
+                          <span className="mt-2.5 text-[10px] font-bold leading-4 text-slate-700 group-hover:text-slate-900 dark:text-slate-200 dark:group-hover:text-white">
+                            {device.name}
+                          </span>
+                          {assignedDeviceIds.has(device.id) ? (
+                            <span className="mt-2 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
+                              In Use
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
                   </div>
+                </div>
+              ) : (
+                <div className="flex h-full flex-col items-center justify-between py-4">
                   <button
                     type="button"
-                    onClick={() => setIsDeviceDrawerOpen(false)}
+                    onClick={() => setIsDeviceDrawerOpen(true)}
                     className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    aria-label="Collapse device drawer"
-                    title="Collapse device drawer"
+                    aria-label="Expand device drawer"
+                    title="Expand device drawer"
                   >
-                    <ChevronRight size={18} />
+                    <ChevronLeft size={18} />
                   </button>
-                </div>
 
-                <div className="flex-1 overflow-y-auto p-4">
-                  <div className="grid grid-cols-3 gap-3">
-                    {DEVICE_LIBRARY.map((device) => (
-                      <button
-                        key={device.name}
-                        type="button"
-                        draggable
-                        onDragStart={(event) => handleDeviceDragStart(device.id, 'library', event)}
-                        onDragEnd={handleDeviceDragEnd}
-                        className="group flex min-h-[108px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-cyan-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-cyan-500/70"
-                      >
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 p-2.5 dark:bg-slate-800/80">
-                          <img src={device.image} alt={device.name} className="h-full w-full object-contain" />
-                        </div>
-                        <span className="mt-2.5 text-[10px] font-bold leading-4 text-slate-700 group-hover:text-slate-900 dark:text-slate-200 dark:group-hover:text-white">
-                          {device.name}
-                        </span>
-                        {assignedDeviceIds.has(device.id) ? (
-                          <span className="mt-2 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
-                            In Use
-                          </span>
-                        ) : null}
-                      </button>
+                  <div
+                    className="text-[10px] font-black uppercase tracking-[0.34em] text-slate-500 dark:text-cyan-500/70"
+                    style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                  >
+                    Devices
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    {DEVICE_LIBRARY.slice(0, 3).map((device) => (
+                      <div key={device.name} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/80">
+                        <img src={device.image} alt={device.name} className="h-full w-full object-contain" />
+                      </div>
                     ))}
                   </div>
                 </div>
-              </div>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-between py-4">
-                <button
-                  type="button"
-                  onClick={() => setIsDeviceDrawerOpen(true)}
-                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                  aria-label="Expand device drawer"
-                  title="Expand device drawer"
-                >
-                  <ChevronLeft size={18} />
-                </button>
-
-                <div
-                  className="text-[10px] font-black uppercase tracking-[0.34em] text-slate-500 dark:text-cyan-500/70"
-                  style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-                >
-                  Devices
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  {DEVICE_LIBRARY.slice(0, 3).map((device) => (
-                    <div key={device.name} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/80">
-                      <img src={device.image} alt={device.name} className="h-full w-full object-contain" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </aside>
-        </main>
-      </div>
+              )}
+            </aside>
+          </main>
+        </div>
     </PortraitGuard>
   );
 }
