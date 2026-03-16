@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 
 import './SimulationApp.css';
+import PortraitGuard from '../components/PortraitGuard';
 
 // --- VISUAL STYLES & HARDWARE REALISM ---
 const HW_STYLES = {
@@ -351,494 +352,496 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     );
 
     return (
-        <div className={`flex flex-col h-screen w-screen text-slate-800 dark:text-slate-200 font-sans overflow-hidden select-none transition-colors duration-300 ${isDarkMode ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
+        <PortraitGuard>
+            <div className={`flex flex-col h-screen w-screen text-slate-800 dark:text-slate-200 font-sans overflow-hidden select-none transition-colors duration-300 ${isDarkMode ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
 
-            <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-20 shadow-md relative">
-                <div className="flex items-center gap-4">
-                    <button onClick={onNavigateBack} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence"><ArrowLeft size={20} /></button>
-                    <div>
-                        <h1 className="font-black text-lg text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2"><Play size={16} className="text-cyan-600 dark:text-cyan-500" /> Laboratory Sequence</h1>
-                        <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: GOTT PLC Trainer • Task: {routeId || 'Default'}</p>
-                    </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner">
-                        <button onClick={deleteSelectedWire} disabled={!selectedWireId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
-                        <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
-                        <button onClick={handleUndo} disabled={!historyPast.length} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Undo"><Undo2 size={16} /></button>
-                        <button onClick={handleRedo} disabled={!historyFuture.length} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Redo"><Redo2 size={16} /></button>
-                        <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
-
-                        <div className="px-2 flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full shadow-inner border border-slate-400" style={{ backgroundColor: wireColor }} />
-                            <select value={wireColor} onChange={(e) => setWireColor(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1" title="Select Patch Cable Color">
-                                <option value="#e74c3c" className="bg-white dark:bg-slate-900">24V Red</option>
-                                <option value="#111827" className="bg-white dark:bg-slate-900">0V Black</option>
-                                <option value="#3498db" className="bg-white dark:bg-slate-900">Signal Blue</option>
-                                <option value="#f1c40f" className="bg-white dark:bg-slate-900">Signal Yellow</option>
-                                <option value="#27ae60" className="bg-white dark:bg-slate-900">Earth Green</option>
-                            </select>
+                <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-20 shadow-md relative">
+                    <div className="flex items-center gap-4">
+                        <button onClick={onNavigateBack} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence"><ArrowLeft size={20} /></button>
+                        <div>
+                            <h1 className="font-black text-lg text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2"><Play size={16} className="text-cyan-600 dark:text-cyan-500" /> Laboratory Sequence</h1>
+                            <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: GOTT PLC Trainer • Task: {routeId || 'Default'}</p>
                         </div>
                     </div>
+                    <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner">
+                            <button onClick={deleteSelectedWire} disabled={!selectedWireId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
+                            <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
+                            <button onClick={handleUndo} disabled={!historyPast.length} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Undo"><Undo2 size={16} /></button>
+                            <button onClick={handleRedo} disabled={!historyFuture.length} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Redo"><Redo2 size={16} /></button>
+                            <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
 
-                    <button type="button" onClick={handleResetBoard} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm">
-                        <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden xl:inline">Clear Board</span>
-                    </button>
-
-                    <button type="button" onClick={toggleTheme} className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm">
-                        {isDarkMode ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
-                    </button>
-                </div>
-            </header>
-
-            <main className="flex-1 flex flex-row w-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-950" ref={containerRef}>
-
-                <aside className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
-                    <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-800/50">
-                        <h3 className="font-black text-slate-800 dark:text-cyan-400 uppercase tracking-widest text-sm">Hardware Guide</h3>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
-                        <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-                            <h4 className="text-sm font-bold text-slate-800 dark:text-white">Active Task: Powering the System</h4>
-                            <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-mono">You must act as the hardware technician to simulate wiring and powering the physical GOTT PLC Trainer.</p>
-                            <ul className="text-[11px] text-slate-600 dark:text-slate-300 space-y-2 list-decimal pl-4 leading-relaxed">
-                                <li>Toggle the physical rocker switch in the **INPUT AC** panel to the ON position. Note the PLC's PWR LED illuminates.</li>
-                                <li>Verify internal power rails by wiring <strong>24V</strong> supply output to PLC Input COM.</li>
-                                <li>Establish safe grounding of the logic rail by wiring PLC Output COM1 to <strong>0V</strong> supply output.</li>
-                            </ul>
-                            <button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-colors shadow-md">Verify Configuration</button>
+                            <div className="px-2 flex items-center gap-2">
+                                <div className="w-3 h-3 rounded-full shadow-inner border border-slate-400" style={{ backgroundColor: wireColor }} />
+                                <select value={wireColor} onChange={(e) => setWireColor(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1" title="Select Patch Cable Color">
+                                    <option value="#e74c3c" className="bg-white dark:bg-slate-900">24V Red</option>
+                                    <option value="#111827" className="bg-white dark:bg-slate-900">0V Black</option>
+                                    <option value="#3498db" className="bg-white dark:bg-slate-900">Signal Blue</option>
+                                    <option value="#f1c40f" className="bg-white dark:bg-slate-900">Signal Yellow</option>
+                                    <option value="#27ae60" className="bg-white dark:bg-slate-900">Earth Green</option>
+                                </select>
+                            </div>
                         </div>
+
+                        <button type="button" onClick={handleResetBoard} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm">
+                            <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden xl:inline">Clear Board</span>
+                        </button>
+
+                        <button type="button" onClick={toggleTheme} className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm">
+                            {isDarkMode ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
+                        </button>
                     </div>
-                </aside>
+                </header>
 
-                <div className="flex-1 relative flex items-center justify-center p-6">
-                    <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
-                        <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseLeave={() => setActiveKnob(null)}>
-                            <Layer scaleX={canvasScale} scaleY={canvasScale} id="board-layer">
+                <main className="flex-1 flex flex-row w-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-950" ref={containerRef}>
 
-                                {/* 1. ENCLOSURE BACKGROUND */}
-                                <Rect width={BASE_CANVAS_WIDTH} height={BASE_CANVAS_HEIGHT} fill="#e2e8f0" id="enclosure-base" />
+                    <aside className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-800/50">
+                            <h3 className="font-black text-slate-800 dark:text-cyan-400 uppercase tracking-widest text-sm">Hardware Guide</h3>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
+                            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
+                                <h4 className="text-sm font-bold text-slate-800 dark:text-white">Active Task: Powering the System</h4>
+                                <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-mono">You must act as the hardware technician to simulate wiring and powering the physical GOTT PLC Trainer.</p>
+                                <ul className="text-[11px] text-slate-600 dark:text-slate-300 space-y-2 list-decimal pl-4 leading-relaxed">
+                                    <li>Toggle the physical rocker switch in the **INPUT AC** panel to the ON position. Note the PLC's PWR LED illuminates.</li>
+                                    <li>Verify internal power rails by wiring <strong>24V</strong> supply output to PLC Input COM.</li>
+                                    <li>Establish safe grounding of the logic rail by wiring PLC Output COM1 to <strong>0V</strong> supply output.</li>
+                                </ul>
+                                <button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-colors shadow-md">Verify Configuration</button>
+                            </div>
+                        </div>
+                    </aside>
 
-                                {/* 2. RENDER TECHNICAL PANELS (1:1 Grid Layout) */}
+                    <div className="flex-1 relative flex items-center justify-center p-6">
+                        <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
+                            <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseLeave={() => setActiveKnob(null)}>
+                                <Layer scaleX={canvasScale} scaleY={canvasScale} id="board-layer">
 
-                                {/* Top Row */}
-                                {renderTechnicalPanel("ac-power", 30, 30, 160, 220, "INPUT AC220V-240V")}
-                                {renderTechnicalPanel("plc", 210, 30, 470, 220, "OMRON SYSMAC CP1E")}
+                                    {/* 1. ENCLOSURE BACKGROUND */}
+                                    <Rect width={BASE_CANVAS_WIDTH} height={BASE_CANVAS_HEIGHT} fill="#e2e8f0" id="enclosure-base" />
 
-                                {/* Middle Row */}
-                                {renderTechnicalPanel("inputs", 30, 270, 420, 180, "INPUT (00CH)")}
-                                {renderTechnicalPanel("reeds", 470, 270, 210, 180, "REED SWITCH")}
+                                    {/* 2. RENDER TECHNICAL PANELS (1:1 Grid Layout) */}
 
-                                {/* Bottom Row */}
-                                {renderTechnicalPanel("relays", 30, 470, 300, 220, "RELAY TYPE OUTPUT (10CH)")}
-                                {renderTechnicalPanel("power", 345, 470, 105, 220, "POWER SUPPLY")}
+                                    {/* Top Row */}
+                                    {renderTechnicalPanel("ac-power", 30, 30, 160, 220, "INPUT AC220V-240V")}
+                                    {renderTechnicalPanel("plc", 210, 30, 470, 220, "OMRON SYSMAC CP1E")}
 
-                                {renderTechnicalPanel("solenoids", 460, 470, 790, 90, "SOLENOID VALVES")}
+                                    {/* Middle Row */}
+                                    {renderTechnicalPanel("inputs", 30, 270, 420, 180, "INPUT (00CH)")}
+                                    {renderTechnicalPanel("reeds", 470, 270, 210, 180, "REED SWITCH")}
 
-                                {/* Solenoid Valve Pair Labels */}
-                                {[
-                                    { label: '3/2 A', x: solPairX(0, true) + SOL_PAIR_INNER_SPACING / 2 },
-                                    { label: '4/2 A-', x: solPairX(1, true) + SOL_PAIR_INNER_SPACING / 2 },
-                                    { label: '4/2A+', x: solPairX(2, true) + SOL_PAIR_INNER_SPACING / 2 },
-                                    { label: '4/3 B-', x: solPairX(3, true) + SOL_PAIR_INNER_SPACING / 2 },
-                                    { label: '4/3B+', x: solPairX(4, true) + SOL_PAIR_INNER_SPACING / 2 },
-                                ].map((pair, i) => (
-                                    <Text
-                                        key={`sol-pair-label-${i}`}
-                                        text={pair.label}
-                                        x={pair.x - SOL_PAIR_INNER_SPACING / 2}
-                                        y={SOL_PAIR_Y - 28}
-                                        fontSize={14}
-                                        fontStyle="bold"
-                                        fill="#1e293b"
-                                        align="center"
-                                        width={SOL_PAIR_INNER_SPACING}
-                                        listening={false}
-                                    />
-                                ))}
-                                {renderTechnicalPanel("buzzer", 460, 575, 140, 115, "BUZZER")}
-                                {renderTechnicalPanel("manual", 615, 575, 635, 115, "MANUAL INPUTS")}
+                                    {/* Bottom Row */}
+                                    {renderTechnicalPanel("relays", 30, 470, 300, 220, "RELAY TYPE OUTPUT (10CH)")}
+                                    {renderTechnicalPanel("power", 345, 470, 105, 220, "POWER SUPPLY")}
 
-                                {/* 3. REVISED HARDWARE DEVICES & DECALS */}
+                                    {renderTechnicalPanel("solenoids", 460, 470, 790, 90, "SOLENOID VALVES")}
 
-                                {/* --- AC POWER SWITCH MODULE --- */}
-                                <Group x={65} y={70} id="ac-switch-group"
-                                    onClick={() => setIsAcPowerOn(prev => !prev)}
-                                    onTap={() => setIsAcPowerOn(prev => !prev)}
-                                    onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
-                                    onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
-                                >
-                                    {/* Hexagonal/Rect Bezel */}
-                                    <Rect width={90} height={130} fill="#1e293b" cornerRadius={8} shadowColor="rgba(0,0,0,0.4)" shadowBlur={4} shadowOffsetY={2} />
-
-                                    {/* AC Receptacle */}
-                                    <Rect width={50} height={35} x={20} y={15} fill="#0f172a" cornerRadius={4} />
-                                    <Rect width={10} height={4} x={30} y={25} fill="#cbd5e1" />
-                                    <Rect width={10} height={4} x={50} y={25} fill="#cbd5e1" />
-                                    <Rect width={10} height={4} x={40} y={35} fill="#cbd5e1" />
-
-                                    {/* Rocker Switch */}
-                                    <Rect width={44} height={54} x={23} y={60} fill="#000000" cornerRadius={4} />
-                                    <Rect width={36} height={23} x={27} y={64}
-                                        fill={isAcPowerOn ? HW_STYLES.switchRedOn : HW_STYLES.switchRedOff}
-                                        cornerRadius={2}
-                                        shadowColor={isAcPowerOn ? HW_STYLES.switchRedOn : 'transparent'} shadowBlur={10}
-                                    />
-                                    <Rect width={36} height={23} x={27} y={87}
-                                        fill={isAcPowerOn ? HW_STYLES.switchRedOff : HW_STYLES.switchRedOn}
-                                        cornerRadius={2}
-                                    />
-                                    <Text text="I" x={42} y={70} fontSize={12} fill="#ffffff" fontStyle="bold" listening={false} />
-                                    <Text text="O" x={40} y={92} fontSize={12} fill="#ffffff" fontStyle="bold" listening={false} />
-
-                                    {/* Power Label */}
-                                    <Text text="POWER" x={25} y={142} fontSize={12} fontStyle="bold" fill="#1e293b" listening={false} />
-                                </Group>
-
-
-                                {/* --- OMRON CP1E PLC FACEPLATE --- */}
-                                <Group x={240} y={80} id="plc-faceplate">
-                                    {/* Main Body */}
-                                    <Rect width={410} height={140} fill={HW_STYLES.omronBody} cornerRadius={4} shadowColor="rgba(0,0,0,0.6)" shadowBlur={12} shadowOffsetY={6} listening={false} />
-
-                                    {/* Branding Column */}
-                                    <Text text="OMRON" x={15} y={15} fill="#ffffff" fontSize={12} fontStyle="bold" fontFamily={HW_STYLES.technicalSans} listening={false} />
-                                    <Text text="SYSMAC" x={15} y={30} fill="#cbd5e1" fontSize={12} fontStyle="bold" fontFamily={HW_STYLES.technicalSans} listening={false} />
-                                    <Text text="CP1E" x={15} y={45} fill="#cbd5e1" fontSize={16} fontStyle="bold" fontFamily={HW_STYLES.technicalSans} listening={false} />
-                                    <Text text="PERIPHERAL" x={15} y={115} fill="#cbd5e1" fontSize={8} fontFamily={HW_STYLES.technicalSans} listening={false} />
-                                    <Rect x={15} y={90} width={40} height={20} fill="#0f172a" cornerRadius={2} listening={false} />
-
-                                    {/* Status LEDs Column */}
-                                    <Group x={110} y={15} id="status-leds">
-                                        <Circle x={10} y={10} radius={4} fill={isAcPowerOn ? HW_STYLES.ledOn : HW_STYLES.ledOff} shadowColor={HW_STYLES.ledOn} shadowBlur={isAcPowerOn ? 5 : 0} listening={false} />
-                                        <Text text="POWER" x={20} y={6} fontSize={8} fill="#cbd5e1" listening={false} />
-
-                                        <Circle x={10} y={25} radius={4} fill={isAcPowerOn ? HW_STYLES.ledOn : HW_STYLES.ledOff} shadowColor={HW_STYLES.ledOn} shadowBlur={isAcPowerOn ? 3 : 0} listening={false} />
-                                        <Text text="RUN" x={20} y={21} fontSize={8} fill="#cbd5e1" listening={false} />
-
-                                        <Circle x={10} y={40} radius={4} fill={HW_STYLES.ledOff} listening={false} />
-                                        <Text text="ERR/ALM" x={20} y={36} fontSize={8} fill="#cbd5e1" listening={false} />
-
-                                        <Circle x={10} y={55} radius={4} fill={HW_STYLES.ledOff} listening={false} />
-                                        <Text text="INH" x={20} y={51} fontSize={8} fill="#cbd5e1" listening={false} />
-
-                                        <Circle x={10} y={70} radius={4} fill={HW_STYLES.ledOff} listening={false} />
-                                        <Text text="PRPHL" x={20} y={66} fontSize={8} fill="#cbd5e1" listening={false} />
-
-                                        <Circle x={10} y={85} radius={4} fill={HW_STYLES.ledOff} listening={false} />
-                                        <Text text="BKUP" x={20} y={81} fontSize={8} fill="#cbd5e1" listening={false} />
-                                    </Group>
-
-                                    {/* Inputs LEDs Area */}
-                                    <Group x={190} y={15} id="input-led-grid">
-                                        <Rect width={205} height={50} fill="#0f172a" cornerRadius={4} opacity={0.3} listening={false} />
-                                        <Text text="IN  CH00" x={5} y={5} fontSize={10} fontStyle="bold" fill="#ffffff" listening={false} />
-                                        {[...Array(12)].map((_, i) => (
-                                            <Group key={`in-led-group-${i}`} x={10 + (i % 6) * 32} y={20 + Math.floor(i / 6) * 18}>
-                                                <Circle radius={3} fill={HW_STYLES.ledOff} listening={false} />
-                                                <Text text={(i).toString().padStart(2, '0')} x={-5} y={6} fontSize={8} fill="#cbd5e1" listening={false} />
-                                            </Group>
-                                        ))}
-                                    </Group>
-
-                                    {/* Outputs LEDs Area */}
-                                    <Group x={190} y={75} id="output-led-grid">
-                                        <Rect width={205} height={50} fill="#0f172a" cornerRadius={4} opacity={0.3} listening={false} />
-                                        <Text text="OUT CH10" x={5} y={5} fontSize={10} fontStyle="bold" fill="#ffffff" listening={false} />
-                                        {[...Array(8)].map((_, i) => (
-                                            <Group key={`out-led-group-${i}`} x={10 + (i % 6) * 32} y={20 + Math.floor(i / 6) * 18}>
-                                                <Circle radius={3} fill={HW_STYLES.ledOff} listening={false} />
-                                                <Text text={(i).toString().padStart(2, '0')} x={-5} y={6} fontSize={8} fill="#cbd5e1" listening={false} />
-                                            </Group>
-                                        ))}
-                                    </Group>
-                                </Group>
-
-                                {/* First Row Input 00CH */}
-                                {[...Array(6)].map((_, i) => (
-                                    <Group
-                                        key={`knob-${i}`}
-                                        x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING}
-                                        y={MIDDLE_ROW_Y}
-                                        onMouseDown={() => setActiveKnob(`input-${i}`)}
-                                        onMouseUp={() => setActiveKnob(null)}
-                                        onTouchStart={() => setActiveKnob(`input-${i}`)}
-                                        onTouchEnd={() => setActiveKnob(null)}
-                                        onMouseEnter={(e) => {
-                                            const container = e.target.getStage()?.container();
-                                            if (container) container.style.cursor = 'grab';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            const container = e.target.getStage()?.container();
-                                            if (container) container.style.cursor = 'default';
-                                        }}
-                                    >
-                                        <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
-                                        <Group rotation={inputKnobAngles[i]} listening={false}>
-                                            <Line points={[0, 0, 0, -9]} stroke="#cbd5e1" strokeWidth={2} lineCap="round" />
-                                            <Circle y={-9} radius={2.5} fill="#cbd5e1" />
-                                        </Group>
-                                    </Group>
-                                ))}
-
-                                {/* Second Row Input 00CH */}
-                                {[...Array(6)].map((_, i) => (
-                                    <Group
-                                        key={`knob-second-${i}`}
-                                        x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING}
-                                        y={SECOND_ROW_Y}
-                                        onMouseDown={() => setActiveKnob(`input-${i + 6}`)}
-                                        onMouseUp={() => setActiveKnob(null)}
-                                        onTouchStart={() => setActiveKnob(`input-${i + 6}`)}
-                                        onTouchEnd={() => setActiveKnob(null)}
-                                        onMouseEnter={(e) => {
-                                            const container = e.target.getStage()?.container();
-                                            if (container) container.style.cursor = 'grab';
-                                        }}
-                                        onMouseLeave={(e) => {
-                                            const container = e.target.getStage()?.container();
-                                            if (container) container.style.cursor = 'default';
-                                        }}
-                                    >
-                                        <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
-                                        <Group rotation={inputKnobAngles[i + 6]} listening={false}>
-                                            <Line points={[0, 0, 0, -9]} stroke="#cbd5e1" strokeWidth={2} lineCap="round" />
-                                            <Circle y={-9} radius={2.5} fill="#cbd5e1" />
-                                        </Group>
-                                    </Group>
-                                ))}
-
-                                {/* Buzzer Visual*/}
-                                {[...Array(1)].map((_, i) => (
-                                    <Group key={`buzzer-${i}`} x={BUZZER_VISUAL_X} y={BUZZER_VISUAL_Y}>
-                                        <Circle radius={18} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
-                                        <Circle radius={5} fill="#ef4444" listening={false} />
-                                    </Group>
-                                ))}
-
-                                {/* Reed switch pairs with border container */}
-                                {[
-                                    // Each pair: [retId, extId]
-                                    ['reed_ret_1.1', 'reed_ext_1.2'],
-                                    ['reed_ret_2.1', 'reed_ext_2.2'],
-                                    ['reed_ret_3.1', 'reed_ext_3.2'],
-                                ].map((pair, i) => {
-                                    const ret = GOTT_TRAINER_PORTS[pair[0]];
-                                    const ext = GOTT_TRAINER_PORTS[pair[1]];
-                                    if (!ret || !ext) return null;
-                                    // Light and jack visual radius + stroke: 16+4=20 for light, 11 for jack outer
-                                    const lightRadius = 16;
-                                    const lightStroke = 4;
-                                    const jackRadius = 11;
-                                    // Get all x/y for both lights and jacks
-                                    const points = [
-                                        { x: ret.x, y: ret.y },
-                                        { x: ext.x, y: ext.y },
-                                        { x: ret.x, y: ret.y + REED_LIGHT_OFFSET_Y },
-                                        { x: ext.x, y: ext.y + REED_LIGHT_OFFSET_Y },
-                                    ];
-                                    // Compute min/max for all points
-                                    const minX = Math.min(...points.map(p => p.x - Math.max(lightRadius + lightStroke, jackRadius)));
-                                    const maxX = Math.max(...points.map(p => p.x + Math.max(lightRadius + lightStroke, jackRadius)));
-                                    const minY = Math.min(...points.map(p => p.y - Math.max(lightRadius + lightStroke, jackRadius)));
-                                    const maxY = Math.max(...points.map(p => p.y + Math.max(lightRadius + lightStroke, jackRadius)));
-                                    const width = maxX - minX;
-                                    const height = maxY - minY;
-                                    return (
-                                        <Group key={`reed-pair-border-${i}`}>
-                                            {/* Border container */}
-                                            <Rect
-                                                x={minX}
-                                                y={minY}
-                                                width={width}
-                                                height={height}
-                                                stroke="#111827"
-                                                strokeWidth={3}
-                                                cornerRadius={20}
-                                                fillEnabled={false}
-                                                listening={false}
-                                            />
-                                            {/* Lights for this pair */}
-                                            {[0, 1].map(j => {
-                                                const jack = GOTT_TRAINER_PORTS[pair[j]];
-                                                return (
-                                                    <Circle
-                                                        key={`reed-light-${pair[j]}`}
-                                                        x={jack.x}
-                                                        y={jack.y + REED_LIGHT_OFFSET_Y}
-                                                        radius={lightRadius}
-                                                        fill={HW_STYLES.switchRedOff}
-                                                        stroke="#cbd5e1"
-                                                        strokeWidth={lightStroke}
-                                                        listening={false}
-                                                    />
-                                                );
-                                            })}
-                                        </Group>
-                                    );
-                                })}
-                                {[...Array(4)].map((_, i) => (
-                                    <Circle key={`relay-light-${i}`} x={UPPER_RELAY_LIGHT_START_X + i * UPPER_RELAY_LIGHT_SPACING} y={UPPER_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
-                                ))}
-
-                                {/* Bottom Row Relay Type Light */}
-                                {[...Array(4)].map((_, i) => (
-                                    <Circle key={`relay-light-bottom-${i}`} x={BOTTOM_RELAY_LIGHT_START_X + i * BOTTOM_RELAY_LIGHT_SPACING} y={BOTTOM_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
-                                ))}
-
-                                <Group
-                                    x={START_BUTTON_X}
-                                    y={START_BUTTON_Y}
-                                    onMouseDown={() => setIsStartPressed(true)}
-                                    onMouseUp={() => setIsStartPressed(false)}
-                                    onMouseLeave={() => setIsStartPressed(false)}
-                                    onTouchStart={() => setIsStartPressed(true)}
-                                    onTouchEnd={() => setIsStartPressed(false)}
-                                    onMouseEnter={(e) => {
-                                        const container = e.target.getStage()?.container();
-                                        if (container) container.style.cursor = 'pointer';
-                                    }}
-                                >
-                                    <Group y={isStartPressed ? 2 : 0}>
-                                        <Circle radius={16} fill={isStartPressed ? '#0f766e' : '#10b981'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
-                                        <Circle radius={11} fill={isStartPressed ? '#10b981' : '#34d399'} />
-                                    </Group>
-                                    <Text text="START" x={START_TEXT_X} y={START_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
-                                </Group>
-                                <Group
-                                    x={STOP_BUTTON_X}
-                                    y={STOP_BUTTON_Y}
-                                    onMouseDown={() => setIsStopPressed(true)}
-                                    onMouseUp={() => setIsStopPressed(false)}
-                                    onMouseLeave={() => setIsStopPressed(false)}
-                                    onTouchStart={() => setIsStopPressed(true)}
-                                    onTouchEnd={() => setIsStopPressed(false)}
-                                    onMouseEnter={(e) => {
-                                        const container = e.target.getStage()?.container();
-                                        if (container) container.style.cursor = 'pointer';
-                                    }}
-                                >
-                                    <Group y={isStopPressed ? 2 : 0}>
-                                        <Circle radius={16} fill={isStopPressed ? '#b91c1c' : '#ef4444'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
-                                        <Circle radius={11} fill={isStopPressed ? '#ef4444' : '#f87171'} />
-                                    </Group>
-                                    <Text text="STOP" x={STOP_TEXT_X} y={STOP_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
-                                </Group>
-
-                                <Group
-                                    x={SELECTOR_KNOB_X}
-                                    y={SELECTOR_KNOB_Y}
-                                    onMouseDown={() => setActiveKnob('selector')}
-                                    onMouseUp={() => setActiveKnob(null)}
-                                    onTouchStart={() => setActiveKnob('selector')}
-                                    onTouchEnd={() => setActiveKnob(null)}
-                                    onMouseEnter={(e) => {
-                                        const container = e.target.getStage()?.container();
-                                        if (container) container.style.cursor = 'grab';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        const container = e.target.getStage()?.container();
-                                        if (container) container.style.cursor = 'default';
-                                    }}
-                                >
-                                    <Circle radius={15} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
-                                    <Group rotation={selectorAngle} listening={false}>
-                                        <Line points={[0, 0, 0, -9]} stroke="#cbd5e1" strokeWidth={2} lineCap="round" />
-                                        <Circle y={-9} radius={2.5} fill="#cbd5e1" />
-                                    </Group>
-                                    <Text text="SELECTOR" x={-26} y={22} fontSize={10} fontStyle="bold" fill="#1e293b" listening={false} />
-                                </Group>
-
-                                <Group
-                                    x={EMO_KNOB_X}
-                                    y={EMO_KNOB_Y}
-                                    onMouseDown={() => setActiveKnob('emo')}
-                                    onMouseUp={() => setActiveKnob(null)}
-                                    onTouchStart={() => setActiveKnob('emo')}
-                                    onTouchEnd={() => setActiveKnob(null)}
-                                    onMouseEnter={(e) => {
-                                        const container = e.target.getStage()?.container();
-                                        if (container) container.style.cursor = 'grab';
-                                    }}
-                                    onMouseLeave={(e) => {
-                                        const container = e.target.getStage()?.container();
-                                        if (container) container.style.cursor = 'default';
-                                    }}
-                                >
-                                    <Circle radius={15} fill="#b91c1c" stroke="#cbd5e1" strokeWidth={2} />
-                                    <Group rotation={emoAngle} listening={false}>
-                                        <Line points={[0, 0, 0, -9]} stroke="#fca5a5" strokeWidth={2} lineCap="round" />
-                                        <Circle y={-9} radius={2.5} fill="#fca5a5" />
-                                    </Group>
-                                    <Text text="EMO" x={-12} y={22} fontSize={10} fontStyle="bold" fill="#7f1d1d" listening={false} />
-                                </Group>
-
-                                <Group x={690} y={30} listening={false}>
-                                    <Rect width={560} height={420} fill="#e2e8f0" cornerRadius={6} />
-                                    <Rect width={560} height={24} fill="#cbd5e1" cornerRadius={6} />
-                                    <Text text="PNEUMATIC ACTUATORS (HARDWARE MODULE)" x={10} y={8} fill="#475569" fontSize={12} fontStyle="bold" />
-                                    <Rect x={50} y={80} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
-                                    <Rect x={250} y={90} width={120} height={20} fill="#cbd5e1" cornerRadius={4} />
-                                    <Rect x={50} y={200} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
-                                    <Rect x={180} y={210} width={190} height={20} fill="#cbd5e1" cornerRadius={4} />
-                                </Group>
-
-                                {/* 4. RENDER PATCH PORTS */}
-                                {Object.entries(GOTT_TRAINER_PORTS).map(([id]) => {
-                                    const isHovered = hoveredPin === id;
-                                    const isActive = activePin === id;
-                                    return renderHardwareJack(id, isHovered, isActive);
-                                })}
-
-                                {/* 5. RENDER WIRES */}
-                                {wires.map((wire) => {
-                                    const startPos = GOTT_TRAINER_PORTS[wire.fromPin];
-                                    const endPos = GOTT_TRAINER_PORTS[wire.toPin];
-                                    if (!startPos || !endPos) return null;
-                                    const isSelected = selectedWireId === wire.id;
-
-                                    const distance = Math.sqrt(Math.pow(endPos.x - startPos.x, 2) + Math.pow(endPos.y - startPos.y, 2));
-                                    const droopAmount = Math.min(250, distance * 0.45);
-                                    const controlPointX = (startPos.x + endPos.x) / 2;
-                                    const controlPointY = Math.max(startPos.y, endPos.y) + droopAmount;
-
-                                    return (
-                                        <Line
-                                            key={`wire-${wire.id}`}
-                                            points={[startPos.x, startPos.y, controlPointX, controlPointY, endPos.x, endPos.y]}
-                                            tension={0.65}
-                                            stroke={wire.color}
-                                            strokeWidth={isSelected ? 10 : 8}
-                                            hitStrokeWidth={20}
-                                            lineCap="round"
-                                            shadowColor={isSelected ? '#f1c40f' : 'rgba(0,0,0,0.5)'}
-                                            shadowBlur={isSelected ? 15 : 6}
-                                            shadowOffsetY={isSelected ? 0 : 8}
-                                            onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); }}
-                                            onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
-                                            onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
+                                    {/* Solenoid Valve Pair Labels */}
+                                    {[
+                                        { label: '3/2 A', x: solPairX(0, true) + SOL_PAIR_INNER_SPACING / 2 },
+                                        { label: '4/2 A-', x: solPairX(1, true) + SOL_PAIR_INNER_SPACING / 2 },
+                                        { label: '4/2A+', x: solPairX(2, true) + SOL_PAIR_INNER_SPACING / 2 },
+                                        { label: '4/3 B-', x: solPairX(3, true) + SOL_PAIR_INNER_SPACING / 2 },
+                                        { label: '4/3B+', x: solPairX(4, true) + SOL_PAIR_INNER_SPACING / 2 },
+                                    ].map((pair, i) => (
+                                        <Text
+                                            key={`sol-pair-label-${i}`}
+                                            text={pair.label}
+                                            x={pair.x - SOL_PAIR_INNER_SPACING / 2}
+                                            y={SOL_PAIR_Y - 28}
+                                            fontSize={14}
+                                            fontStyle="bold"
+                                            fill="#1e293b"
+                                            align="center"
+                                            width={SOL_PAIR_INNER_SPACING}
+                                            listening={false}
                                         />
-                                    );
-                                })}
+                                    ))}
+                                    {renderTechnicalPanel("buzzer", 460, 575, 140, 115, "BUZZER")}
+                                    {renderTechnicalPanel("manual", 615, 575, 635, 115, "MANUAL INPUTS")}
 
-                                {/* LIVE GHOST WIRE */}
-                                {activePin && mousePos && (
-                                    <Line points={[GOTT_TRAINER_PORTS[activePin].x, GOTT_TRAINER_PORTS[activePin].y, mousePos.x, mousePos.y]} stroke={wireColor} strokeWidth={6} dash={[10, 8]} opacity={0.7} tension={0.5} listening={false} />
-                                )}
+                                    {/* 3. REVISED HARDWARE DEVICES & DECALS */}
 
-                                {/* PORT HOVER TOOLTIP */}
-                                {hoveredPin && !activePin && (
-                                    <Group x={GOTT_TRAINER_PORTS[hoveredPin].x + 20} y={GOTT_TRAINER_PORTS[hoveredPin].y - 30} listening={false}>
-                                        <Rect height={24} width={140} fill="#1e293b" cornerRadius={4} />
-                                        <Text text={GOTT_TRAINER_PORTS[hoveredPin].desc} fill="#ffffff" fontSize={11} fontFamily={HW_STYLES.technicalMono} padding={6} />
+                                    {/* --- AC POWER SWITCH MODULE --- */}
+                                    <Group x={65} y={70} id="ac-switch-group"
+                                        onClick={() => setIsAcPowerOn(prev => !prev)}
+                                        onTap={() => setIsAcPowerOn(prev => !prev)}
+                                        onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
+                                        onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
+                                    >
+                                        {/* Hexagonal/Rect Bezel */}
+                                        <Rect width={90} height={130} fill="#1e293b" cornerRadius={8} shadowColor="rgba(0,0,0,0.4)" shadowBlur={4} shadowOffsetY={2} />
+
+                                        {/* AC Receptacle */}
+                                        <Rect width={50} height={35} x={20} y={15} fill="#0f172a" cornerRadius={4} />
+                                        <Rect width={10} height={4} x={30} y={25} fill="#cbd5e1" />
+                                        <Rect width={10} height={4} x={50} y={25} fill="#cbd5e1" />
+                                        <Rect width={10} height={4} x={40} y={35} fill="#cbd5e1" />
+
+                                        {/* Rocker Switch */}
+                                        <Rect width={44} height={54} x={23} y={60} fill="#000000" cornerRadius={4} />
+                                        <Rect width={36} height={23} x={27} y={64}
+                                            fill={isAcPowerOn ? HW_STYLES.switchRedOn : HW_STYLES.switchRedOff}
+                                            cornerRadius={2}
+                                            shadowColor={isAcPowerOn ? HW_STYLES.switchRedOn : 'transparent'} shadowBlur={10}
+                                        />
+                                        <Rect width={36} height={23} x={27} y={87}
+                                            fill={isAcPowerOn ? HW_STYLES.switchRedOff : HW_STYLES.switchRedOn}
+                                            cornerRadius={2}
+                                        />
+                                        <Text text="I" x={42} y={70} fontSize={12} fill="#ffffff" fontStyle="bold" listening={false} />
+                                        <Text text="O" x={40} y={92} fontSize={12} fill="#ffffff" fontStyle="bold" listening={false} />
+
+                                        {/* Power Label */}
+                                        <Text text="POWER" x={25} y={142} fontSize={12} fontStyle="bold" fill="#1e293b" listening={false} />
                                     </Group>
-                                )}
 
-                            </Layer>
-                        </Stage>
+
+                                    {/* --- OMRON CP1E PLC FACEPLATE --- */}
+                                    <Group x={240} y={80} id="plc-faceplate">
+                                        {/* Main Body */}
+                                        <Rect width={410} height={140} fill={HW_STYLES.omronBody} cornerRadius={4} shadowColor="rgba(0,0,0,0.6)" shadowBlur={12} shadowOffsetY={6} listening={false} />
+
+                                        {/* Branding Column */}
+                                        <Text text="OMRON" x={15} y={15} fill="#ffffff" fontSize={12} fontStyle="bold" fontFamily={HW_STYLES.technicalSans} listening={false} />
+                                        <Text text="SYSMAC" x={15} y={30} fill="#cbd5e1" fontSize={12} fontStyle="bold" fontFamily={HW_STYLES.technicalSans} listening={false} />
+                                        <Text text="CP1E" x={15} y={45} fill="#cbd5e1" fontSize={16} fontStyle="bold" fontFamily={HW_STYLES.technicalSans} listening={false} />
+                                        <Text text="PERIPHERAL" x={15} y={115} fill="#cbd5e1" fontSize={8} fontFamily={HW_STYLES.technicalSans} listening={false} />
+                                        <Rect x={15} y={90} width={40} height={20} fill="#0f172a" cornerRadius={2} listening={false} />
+
+                                        {/* Status LEDs Column */}
+                                        <Group x={110} y={15} id="status-leds">
+                                            <Circle x={10} y={10} radius={4} fill={isAcPowerOn ? HW_STYLES.ledOn : HW_STYLES.ledOff} shadowColor={HW_STYLES.ledOn} shadowBlur={isAcPowerOn ? 5 : 0} listening={false} />
+                                            <Text text="POWER" x={20} y={6} fontSize={8} fill="#cbd5e1" listening={false} />
+
+                                            <Circle x={10} y={25} radius={4} fill={isAcPowerOn ? HW_STYLES.ledOn : HW_STYLES.ledOff} shadowColor={HW_STYLES.ledOn} shadowBlur={isAcPowerOn ? 3 : 0} listening={false} />
+                                            <Text text="RUN" x={20} y={21} fontSize={8} fill="#cbd5e1" listening={false} />
+
+                                            <Circle x={10} y={40} radius={4} fill={HW_STYLES.ledOff} listening={false} />
+                                            <Text text="ERR/ALM" x={20} y={36} fontSize={8} fill="#cbd5e1" listening={false} />
+
+                                            <Circle x={10} y={55} radius={4} fill={HW_STYLES.ledOff} listening={false} />
+                                            <Text text="INH" x={20} y={51} fontSize={8} fill="#cbd5e1" listening={false} />
+
+                                            <Circle x={10} y={70} radius={4} fill={HW_STYLES.ledOff} listening={false} />
+                                            <Text text="PRPHL" x={20} y={66} fontSize={8} fill="#cbd5e1" listening={false} />
+
+                                            <Circle x={10} y={85} radius={4} fill={HW_STYLES.ledOff} listening={false} />
+                                            <Text text="BKUP" x={20} y={81} fontSize={8} fill="#cbd5e1" listening={false} />
+                                        </Group>
+
+                                        {/* Inputs LEDs Area */}
+                                        <Group x={190} y={15} id="input-led-grid">
+                                            <Rect width={205} height={50} fill="#0f172a" cornerRadius={4} opacity={0.3} listening={false} />
+                                            <Text text="IN  CH00" x={5} y={5} fontSize={10} fontStyle="bold" fill="#ffffff" listening={false} />
+                                            {[...Array(12)].map((_, i) => (
+                                                <Group key={`in-led-group-${i}`} x={10 + (i % 6) * 32} y={20 + Math.floor(i / 6) * 18}>
+                                                    <Circle radius={3} fill={HW_STYLES.ledOff} listening={false} />
+                                                    <Text text={(i).toString().padStart(2, '0')} x={-5} y={6} fontSize={8} fill="#cbd5e1" listening={false} />
+                                                </Group>
+                                            ))}
+                                        </Group>
+
+                                        {/* Outputs LEDs Area */}
+                                        <Group x={190} y={75} id="output-led-grid">
+                                            <Rect width={205} height={50} fill="#0f172a" cornerRadius={4} opacity={0.3} listening={false} />
+                                            <Text text="OUT CH10" x={5} y={5} fontSize={10} fontStyle="bold" fill="#ffffff" listening={false} />
+                                            {[...Array(8)].map((_, i) => (
+                                                <Group key={`out-led-group-${i}`} x={10 + (i % 6) * 32} y={20 + Math.floor(i / 6) * 18}>
+                                                    <Circle radius={3} fill={HW_STYLES.ledOff} listening={false} />
+                                                    <Text text={(i).toString().padStart(2, '0')} x={-5} y={6} fontSize={8} fill="#cbd5e1" listening={false} />
+                                                </Group>
+                                            ))}
+                                        </Group>
+                                    </Group>
+
+                                    {/* First Row Input 00CH */}
+                                    {[...Array(6)].map((_, i) => (
+                                        <Group
+                                            key={`knob-${i}`}
+                                            x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING}
+                                            y={MIDDLE_ROW_Y}
+                                            onMouseDown={() => setActiveKnob(`input-${i}`)}
+                                            onMouseUp={() => setActiveKnob(null)}
+                                            onTouchStart={() => setActiveKnob(`input-${i}`)}
+                                            onTouchEnd={() => setActiveKnob(null)}
+                                            onMouseEnter={(e) => {
+                                                const container = e.target.getStage()?.container();
+                                                if (container) container.style.cursor = 'grab';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                const container = e.target.getStage()?.container();
+                                                if (container) container.style.cursor = 'default';
+                                            }}
+                                        >
+                                            <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
+                                            <Group rotation={inputKnobAngles[i]} listening={false}>
+                                                <Line points={[0, 0, 0, -9]} stroke="#cbd5e1" strokeWidth={2} lineCap="round" />
+                                                <Circle y={-9} radius={2.5} fill="#cbd5e1" />
+                                            </Group>
+                                        </Group>
+                                    ))}
+
+                                    {/* Second Row Input 00CH */}
+                                    {[...Array(6)].map((_, i) => (
+                                        <Group
+                                            key={`knob-second-${i}`}
+                                            x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING}
+                                            y={SECOND_ROW_Y}
+                                            onMouseDown={() => setActiveKnob(`input-${i + 6}`)}
+                                            onMouseUp={() => setActiveKnob(null)}
+                                            onTouchStart={() => setActiveKnob(`input-${i + 6}`)}
+                                            onTouchEnd={() => setActiveKnob(null)}
+                                            onMouseEnter={(e) => {
+                                                const container = e.target.getStage()?.container();
+                                                if (container) container.style.cursor = 'grab';
+                                            }}
+                                            onMouseLeave={(e) => {
+                                                const container = e.target.getStage()?.container();
+                                                if (container) container.style.cursor = 'default';
+                                            }}
+                                        >
+                                            <Circle radius={14} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
+                                            <Group rotation={inputKnobAngles[i + 6]} listening={false}>
+                                                <Line points={[0, 0, 0, -9]} stroke="#cbd5e1" strokeWidth={2} lineCap="round" />
+                                                <Circle y={-9} radius={2.5} fill="#cbd5e1" />
+                                            </Group>
+                                        </Group>
+                                    ))}
+
+                                    {/* Buzzer Visual*/}
+                                    {[...Array(1)].map((_, i) => (
+                                        <Group key={`buzzer-${i}`} x={BUZZER_VISUAL_X} y={BUZZER_VISUAL_Y}>
+                                            <Circle radius={18} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} listening={false} />
+                                            <Circle radius={5} fill="#ef4444" listening={false} />
+                                        </Group>
+                                    ))}
+
+                                    {/* Reed switch pairs with border container */}
+                                    {[
+                                        // Each pair: [retId, extId]
+                                        ['reed_ret_1.1', 'reed_ext_1.2'],
+                                        ['reed_ret_2.1', 'reed_ext_2.2'],
+                                        ['reed_ret_3.1', 'reed_ext_3.2'],
+                                    ].map((pair, i) => {
+                                        const ret = GOTT_TRAINER_PORTS[pair[0]];
+                                        const ext = GOTT_TRAINER_PORTS[pair[1]];
+                                        if (!ret || !ext) return null;
+                                        // Light and jack visual radius + stroke: 16+4=20 for light, 11 for jack outer
+                                        const lightRadius = 16;
+                                        const lightStroke = 4;
+                                        const jackRadius = 11;
+                                        // Get all x/y for both lights and jacks
+                                        const points = [
+                                            { x: ret.x, y: ret.y },
+                                            { x: ext.x, y: ext.y },
+                                            { x: ret.x, y: ret.y + REED_LIGHT_OFFSET_Y },
+                                            { x: ext.x, y: ext.y + REED_LIGHT_OFFSET_Y },
+                                        ];
+                                        // Compute min/max for all points
+                                        const minX = Math.min(...points.map(p => p.x - Math.max(lightRadius + lightStroke, jackRadius)));
+                                        const maxX = Math.max(...points.map(p => p.x + Math.max(lightRadius + lightStroke, jackRadius)));
+                                        const minY = Math.min(...points.map(p => p.y - Math.max(lightRadius + lightStroke, jackRadius)));
+                                        const maxY = Math.max(...points.map(p => p.y + Math.max(lightRadius + lightStroke, jackRadius)));
+                                        const width = maxX - minX;
+                                        const height = maxY - minY;
+                                        return (
+                                            <Group key={`reed-pair-border-${i}`}>
+                                                {/* Border container */}
+                                                <Rect
+                                                    x={minX}
+                                                    y={minY}
+                                                    width={width}
+                                                    height={height}
+                                                    stroke="#111827"
+                                                    strokeWidth={3}
+                                                    cornerRadius={20}
+                                                    fillEnabled={false}
+                                                    listening={false}
+                                                />
+                                                {/* Lights for this pair */}
+                                                {[0, 1].map(j => {
+                                                    const jack = GOTT_TRAINER_PORTS[pair[j]];
+                                                    return (
+                                                        <Circle
+                                                            key={`reed-light-${pair[j]}`}
+                                                            x={jack.x}
+                                                            y={jack.y + REED_LIGHT_OFFSET_Y}
+                                                            radius={lightRadius}
+                                                            fill={HW_STYLES.switchRedOff}
+                                                            stroke="#cbd5e1"
+                                                            strokeWidth={lightStroke}
+                                                            listening={false}
+                                                        />
+                                                    );
+                                                })}
+                                            </Group>
+                                        );
+                                    })}
+                                    {[...Array(4)].map((_, i) => (
+                                        <Circle key={`relay-light-${i}`} x={UPPER_RELAY_LIGHT_START_X + i * UPPER_RELAY_LIGHT_SPACING} y={UPPER_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
+                                    ))}
+
+                                    {/* Bottom Row Relay Type Light */}
+                                    {[...Array(4)].map((_, i) => (
+                                        <Circle key={`relay-light-bottom-${i}`} x={BOTTOM_RELAY_LIGHT_START_X + i * BOTTOM_RELAY_LIGHT_SPACING} y={BOTTOM_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
+                                    ))}
+
+                                    <Group
+                                        x={START_BUTTON_X}
+                                        y={START_BUTTON_Y}
+                                        onMouseDown={() => setIsStartPressed(true)}
+                                        onMouseUp={() => setIsStartPressed(false)}
+                                        onMouseLeave={() => setIsStartPressed(false)}
+                                        onTouchStart={() => setIsStartPressed(true)}
+                                        onTouchEnd={() => setIsStartPressed(false)}
+                                        onMouseEnter={(e) => {
+                                            const container = e.target.getStage()?.container();
+                                            if (container) container.style.cursor = 'pointer';
+                                        }}
+                                    >
+                                        <Group y={isStartPressed ? 2 : 0}>
+                                            <Circle radius={16} fill={isStartPressed ? '#0f766e' : '#10b981'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
+                                            <Circle radius={11} fill={isStartPressed ? '#10b981' : '#34d399'} />
+                                        </Group>
+                                        <Text text="START" x={START_TEXT_X} y={START_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
+                                    </Group>
+                                    <Group
+                                        x={STOP_BUTTON_X}
+                                        y={STOP_BUTTON_Y}
+                                        onMouseDown={() => setIsStopPressed(true)}
+                                        onMouseUp={() => setIsStopPressed(false)}
+                                        onMouseLeave={() => setIsStopPressed(false)}
+                                        onTouchStart={() => setIsStopPressed(true)}
+                                        onTouchEnd={() => setIsStopPressed(false)}
+                                        onMouseEnter={(e) => {
+                                            const container = e.target.getStage()?.container();
+                                            if (container) container.style.cursor = 'pointer';
+                                        }}
+                                    >
+                                        <Group y={isStopPressed ? 2 : 0}>
+                                            <Circle radius={16} fill={isStopPressed ? '#b91c1c' : '#ef4444'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
+                                            <Circle radius={11} fill={isStopPressed ? '#ef4444' : '#f87171'} />
+                                        </Group>
+                                        <Text text="STOP" x={STOP_TEXT_X} y={STOP_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
+                                    </Group>
+
+                                    <Group
+                                        x={SELECTOR_KNOB_X}
+                                        y={SELECTOR_KNOB_Y}
+                                        onMouseDown={() => setActiveKnob('selector')}
+                                        onMouseUp={() => setActiveKnob(null)}
+                                        onTouchStart={() => setActiveKnob('selector')}
+                                        onTouchEnd={() => setActiveKnob(null)}
+                                        onMouseEnter={(e) => {
+                                            const container = e.target.getStage()?.container();
+                                            if (container) container.style.cursor = 'grab';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            const container = e.target.getStage()?.container();
+                                            if (container) container.style.cursor = 'default';
+                                        }}
+                                    >
+                                        <Circle radius={15} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
+                                        <Group rotation={selectorAngle} listening={false}>
+                                            <Line points={[0, 0, 0, -9]} stroke="#cbd5e1" strokeWidth={2} lineCap="round" />
+                                            <Circle y={-9} radius={2.5} fill="#cbd5e1" />
+                                        </Group>
+                                        <Text text="SELECTOR" x={-26} y={22} fontSize={10} fontStyle="bold" fill="#1e293b" listening={false} />
+                                    </Group>
+
+                                    <Group
+                                        x={EMO_KNOB_X}
+                                        y={EMO_KNOB_Y}
+                                        onMouseDown={() => setActiveKnob('emo')}
+                                        onMouseUp={() => setActiveKnob(null)}
+                                        onTouchStart={() => setActiveKnob('emo')}
+                                        onTouchEnd={() => setActiveKnob(null)}
+                                        onMouseEnter={(e) => {
+                                            const container = e.target.getStage()?.container();
+                                            if (container) container.style.cursor = 'grab';
+                                        }}
+                                        onMouseLeave={(e) => {
+                                            const container = e.target.getStage()?.container();
+                                            if (container) container.style.cursor = 'default';
+                                        }}
+                                    >
+                                        <Circle radius={15} fill="#b91c1c" stroke="#cbd5e1" strokeWidth={2} />
+                                        <Group rotation={emoAngle} listening={false}>
+                                            <Line points={[0, 0, 0, -9]} stroke="#fca5a5" strokeWidth={2} lineCap="round" />
+                                            <Circle y={-9} radius={2.5} fill="#fca5a5" />
+                                        </Group>
+                                        <Text text="EMO" x={-12} y={22} fontSize={10} fontStyle="bold" fill="#7f1d1d" listening={false} />
+                                    </Group>
+
+                                    <Group x={690} y={30} listening={false}>
+                                        <Rect width={560} height={420} fill="#e2e8f0" cornerRadius={6} />
+                                        <Rect width={560} height={24} fill="#cbd5e1" cornerRadius={6} />
+                                        <Text text="PNEUMATIC ACTUATORS (HARDWARE MODULE)" x={10} y={8} fill="#475569" fontSize={12} fontStyle="bold" />
+                                        <Rect x={50} y={80} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
+                                        <Rect x={250} y={90} width={120} height={20} fill="#cbd5e1" cornerRadius={4} />
+                                        <Rect x={50} y={200} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
+                                        <Rect x={180} y={210} width={190} height={20} fill="#cbd5e1" cornerRadius={4} />
+                                    </Group>
+
+                                    {/* 4. RENDER PATCH PORTS */}
+                                    {Object.entries(GOTT_TRAINER_PORTS).map(([id]) => {
+                                        const isHovered = hoveredPin === id;
+                                        const isActive = activePin === id;
+                                        return renderHardwareJack(id, isHovered, isActive);
+                                    })}
+
+                                    {/* 5. RENDER WIRES */}
+                                    {wires.map((wire) => {
+                                        const startPos = GOTT_TRAINER_PORTS[wire.fromPin];
+                                        const endPos = GOTT_TRAINER_PORTS[wire.toPin];
+                                        if (!startPos || !endPos) return null;
+                                        const isSelected = selectedWireId === wire.id;
+
+                                        const distance = Math.sqrt(Math.pow(endPos.x - startPos.x, 2) + Math.pow(endPos.y - startPos.y, 2));
+                                        const droopAmount = Math.min(250, distance * 0.45);
+                                        const controlPointX = (startPos.x + endPos.x) / 2;
+                                        const controlPointY = Math.max(startPos.y, endPos.y) + droopAmount;
+
+                                        return (
+                                            <Line
+                                                key={`wire-${wire.id}`}
+                                                points={[startPos.x, startPos.y, controlPointX, controlPointY, endPos.x, endPos.y]}
+                                                tension={0.65}
+                                                stroke={wire.color}
+                                                strokeWidth={isSelected ? 10 : 8}
+                                                hitStrokeWidth={20}
+                                                lineCap="round"
+                                                shadowColor={isSelected ? '#f1c40f' : 'rgba(0,0,0,0.5)'}
+                                                shadowBlur={isSelected ? 15 : 6}
+                                                shadowOffsetY={isSelected ? 0 : 8}
+                                                onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); }}
+                                                onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
+                                                onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
+                                            />
+                                        );
+                                    })}
+
+                                    {/* LIVE GHOST WIRE */}
+                                    {activePin && mousePos && (
+                                        <Line points={[GOTT_TRAINER_PORTS[activePin].x, GOTT_TRAINER_PORTS[activePin].y, mousePos.x, mousePos.y]} stroke={wireColor} strokeWidth={6} dash={[10, 8]} opacity={0.7} tension={0.5} listening={false} />
+                                    )}
+
+                                    {/* PORT HOVER TOOLTIP */}
+                                    {hoveredPin && !activePin && (
+                                        <Group x={GOTT_TRAINER_PORTS[hoveredPin].x + 20} y={GOTT_TRAINER_PORTS[hoveredPin].y - 30} listening={false}>
+                                            <Rect height={24} width={140} fill="#1e293b" cornerRadius={4} />
+                                            <Text text={GOTT_TRAINER_PORTS[hoveredPin].desc} fill="#ffffff" fontSize={11} fontFamily={HW_STYLES.technicalMono} padding={6} />
+                                        </Group>
+                                    )}
+
+                                </Layer>
+                            </Stage>
+                        </div>
                     </div>
-                </div>
-            </main>
-        </div>
+                </main>
+            </div>
+        </PortraitGuard>
     );
 }
