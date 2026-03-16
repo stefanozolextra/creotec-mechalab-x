@@ -106,7 +106,7 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={305} y={230} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="V- (0VDC)" x={305} y={215} fontSize={11} fill={textFill} fontStyle="bold" />
                 <Rect x={550} y={230} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="SIGNALS (X1/X2)" x={550} y={215} fontSize={11} fill={textFill} fontStyle="bold" />
+                <Text text="LIGHTS AND BUZZER (X1/X2)" x={550} y={215} fontSize={11} fill={textFill} fontStyle="bold" />
 
                 <Rect x={50} y={495} width={730} height={30} fill={isDarkMode ? '#334155' : '#e2e8f0'} stroke={isDarkMode ? '#475569' : '#cbd5e1'} strokeWidth={1} cornerRadius={2} />
                 <Line points={[50, 510, 780, 510]} stroke={isDarkMode ? '#1e293b' : '#94a3b8'} strokeWidth={2} dash={[10, 10]} />
@@ -116,14 +116,14 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={305} y={380} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="TERMINALS (RELAY 2)" x={305} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
                 <Rect x={550} y={380} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (TIMER/CTR)" x={550} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Text text="TERMINALS (RELAY 3)" x={550} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
 
                 <Rect x={60} y={610} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (RELAY 1)" x={60} y={595} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Text text="BUTTON" x={60} y={595} fontSize={10} fontStyle="bold" fill={textFill} />
                 <Rect x={305} y={610} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (RELAY 2)" x={305} y={595} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Text text="COUNTER" x={305} y={595} fontSize={10} fontStyle="bold" fill={textFill} />
                 <Rect x={550} y={610} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (TIMER/CTR)" x={550} y={595} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Text text="TIMER" x={550} y={595} fontSize={10} fontStyle="bold" fill={textFill} />
 
                 <Rect x={830} y={100} width={45} height={220} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="SOLENOID 1" x={830} y={85} fontSize={11} fontStyle="bold" fill={textFill} />
