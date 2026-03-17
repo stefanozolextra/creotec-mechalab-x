@@ -7,6 +7,7 @@ import ReactAntiCapture from '../components/AntiCapture';
 import { API_BASE_URL } from '../api/http';
 import { getTraineeDashboard } from '../api/trainees';
 import { getAuthToken } from '../utils/auth';
+import { setNativeSecureScreen } from '../utils/nativeSecureScreen';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -72,6 +73,13 @@ const ModuleView = () => {
 
     const authToken = getAuthToken();
     const previewPaneRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        setNativeSecureScreen(true);
+        return () => {
+            setNativeSecureScreen(false);
+        };
+    }, []);
 
     useEffect(() => {
         const node = previewPaneRef.current;

@@ -10,6 +10,7 @@ interface ReactAntiCaptureProps {
 
 const CAPTURE_BLOCK_MS = 2200;
 const CAPTURE_SHORTCUT_BLOCK_MS = 15000;
+const MOBILE_CAPTURE_GESTURE_TOUCHES = 3;
 
 const captureHintPressed = (event: KeyboardEvent) => {
   const key = event.key.toLowerCase();
@@ -95,6 +96,11 @@ export default function ReactAntiCapture({
       showShield(CAPTURE_SHORTCUT_BLOCK_MS);
     };
 
+    const handleTouchStart = (event: TouchEvent) => {
+      if (event.touches.length < MOBILE_CAPTURE_GESTURE_TOUCHES) return;
+      showShield(CAPTURE_SHORTCUT_BLOCK_MS);
+    };
+
     const handleVisibilityChange = () => {
       if (document.hidden) {
         setIsFocusBlocked(true);
@@ -127,19 +133,28 @@ export default function ReactAntiCapture({
       setIsFocusBlocked(false);
     };
 
+    const handlePageHide = () => {
+      setIsFocusBlocked(true);
+      showShield(2600);
+    };
+
     window.addEventListener('keydown', handleKeyDown, true);
+    window.addEventListener('touchstart', handleTouchStart, { passive: true, capture: true });
     window.addEventListener('blur', handleWindowBlur);
     window.addEventListener('focus', handleWindowFocus);
     window.addEventListener('beforeprint', handleBeforePrint);
     window.addEventListener('afterprint', handleAfterPrint);
+    window.addEventListener('pagehide', handlePageHide);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
+      window.removeEventListener('touchstart', handleTouchStart, true);
       window.removeEventListener('blur', handleWindowBlur);
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('beforeprint', handleBeforePrint);
       window.removeEventListener('afterprint', handleAfterPrint);
+      window.removeEventListener('pagehide', handlePageHide);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearShieldTimer();
     };
@@ -182,6 +197,14 @@ export default function ReactAntiCapture({
         ._anticapture-blur-page_o02wf_61 {
           filter: blur(6px);
           pointer-events: none;
+        }
+
+        .react-anti-capture-content,
+        .react-anti-capture-content * {
+          -webkit-touch-callout: none !important;
+          -webkit-user-select: none !important;
+          user-select: none !important;
+          -webkit-user-drag: none !important;
         }
 
         @media print {
