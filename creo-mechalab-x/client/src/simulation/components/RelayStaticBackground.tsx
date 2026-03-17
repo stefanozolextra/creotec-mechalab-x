@@ -8,6 +8,7 @@ interface RelayStaticBackgroundProps {
     canvasScale: number;
     isDarkMode: boolean;
     isMainSwitchOn: boolean;
+    isGreenLampOn: boolean;
     onToggleSwitch: () => void;
 }
 
@@ -17,6 +18,7 @@ export const RelayStaticBackground = React.memo(({
     canvasScale,
     isDarkMode,
     isMainSwitchOn,
+    isGreenLampOn,
     onToggleSwitch
 }: RelayStaticBackgroundProps) => {
 
@@ -54,6 +56,27 @@ export const RelayStaticBackground = React.memo(({
         </Group>
     );
 
+    const renderIndicatorLamp = (
+        x: number,
+        label: string,
+        activeFill: string,
+        activeStroke: string,
+        isLit: boolean,
+    ) => (
+        <Group x={x} y={130} listening={false}>
+            <Circle radius={26} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
+            <Circle
+                radius={18}
+                fill={isLit ? activeFill : HW_STYLES.ledOff}
+                stroke={isLit ? activeStroke : "#334155"}
+                strokeWidth={1}
+                shadowColor={isLit ? activeFill : "transparent"}
+                shadowBlur={isLit ? 16 : 0}
+            />
+            <Text text={label} x={-28} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
+        </Group>
+    );
+
     return (
         <Layer scaleX={canvasScale} scaleY={canvasScale} id="static-hardware-layer">
             <Rect width={BASE_CANVAS_WIDTH} height={BASE_CANVAS_HEIGHT} fill="#cbd5e1" listening={false} />
@@ -77,21 +100,9 @@ export const RelayStaticBackground = React.memo(({
             </Group>
 
             {/* Static Indicators */}
-            <Group x={280} y={130} listening={false}>
-                <Circle radius={26} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
-                <Circle radius={18} fill="#22c55e" stroke="#16a34a" strokeWidth={1} />
-                <Text text="LAMP 1 (G)" x={-28} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
-            </Group>
-            <Group x={425} y={130} listening={false}>
-                <Circle radius={26} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
-                <Circle radius={18} fill="#eab308" stroke="#ca8a04" strokeWidth={1} />
-                <Text text="LAMP 2 (Y)" x={-28} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
-            </Group>
-            <Group x={570} y={130} listening={false}>
-                <Circle radius={26} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
-                <Circle radius={18} fill="#ef4444" stroke="#dc2626" strokeWidth={1} />
-                <Text text="LAMP 3 (R)" x={-28} y={35} fontSize={10} fill={isDarkMode ? '#94a3b8' : '#64748b'} fontStyle="bold" />
-            </Group>
+            {renderIndicatorLamp(280, "LAMP 1 (G)", HW_STYLES.ledOn, "#16a34a", isGreenLampOn)}
+            {renderIndicatorLamp(425, "LAMP 2 (Y)", "#eab308", "#ca8a04", false)}
+            {renderIndicatorLamp(570, "LAMP 3 (R)", "#ef4444", "#dc2626", false)}
             <Group x={715} y={130} listening={false}>
                 <Circle radius={26} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
                 <Circle radius={18} fill="#1e293b" />

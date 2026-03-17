@@ -46,6 +46,14 @@ const isDeviceId = (value: string): value is DeviceId =>
 const getDeviceById = (deviceId: DeviceId) =>
   DEVICE_LIBRARY.find((device) => device.id === deviceId) ?? DEVICE_LIBRARY[0];
 
+const toWireKey = (fromPin: string, toPin: string) =>
+  [fromPin, toPin].sort().join('|');
+
+const isWireIssue = (issue: string) =>
+  issue.startsWith('Add at least ')
+  || issue.startsWith('Missing required connection:')
+  || issue.startsWith('Missing one required connection option:');
+
 export default function SimulationApp({ routeId, onNavigateBack }: SimulationAppProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
@@ -230,6 +238,24 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     setSelectedWireId(null);
   }, [selectedWireId]);
 
+  const handleWireColorChange = useCallback((nextColor: string) => {
+    setWireColor(nextColor);
+    if (!selectedWireId) return;
+
+    setWires((prevWires) => {
+      const targetWire = prevWires.find((wire) => wire.id === selectedWireId);
+      if (!targetWire || targetWire.color === nextColor) {
+        return prevWires;
+      }
+
+      setHistoryPast((hp) => [...hp, prevWires].slice(-50));
+      setHistoryFuture([]);
+      return prevWires.map((wire) =>
+        wire.id === selectedWireId ? { ...wire, color: nextColor } : wire,
+      );
+    });
+  }, [selectedWireId]);
+
   const handleUndo = () => { if (!historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
   const handleRedo = () => { if (!historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
   const handleResetBoard = () => { setHistoryPast(prev => [...prev, wires].slice(-50)); setHistoryFuture([]); setWires([]); setSelectedWireId(null); setActivePin(null); setIsMainSwitchOn(false); };
@@ -257,6 +283,41 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   const answerFeedback =
     answerFeedbackState?.signature === answerSignature ? answerFeedbackState.result : null;
   const answerPercent = answerFeedback?.passed ? '100%' : '0%';
+  const wrongWireKeySet = useMemo(
+    () => new Set((answerFeedback?.wrongConnections ?? []).map(({ fromPin, toPin }) => toWireKey(fromPin, toPin))),
+    [answerFeedback],
+  );
+  const isActivity1GreenLampOn = useMemo(() => {
+    if (!isMainSwitchOn || activityPreset.routeId !== '1') {
+      return false;
+    }
+
+    return evaluateActivityAnswer(activityPreset, {
+      inputDeviceIds: ['push-button'],
+      outputDeviceIds: ['relay-module', 'light-indicator'],
+      wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
+    }).passed;
+  }, [activityPreset, isMainSwitchOn, wires]);
+  const hasNoSelectedDevices =
+    !assignedDevices.input.length
+    && !assignedDevices.output.length;
+  const shouldShowOnlyNoDeviceMessage = Boolean(
+    answerFeedback && !answerFeedback.passed && hasNoSelectedDevices,
+  );
+  const shouldShowOnlyWrongWireMessage = Boolean(
+    answerFeedback
+    && !answerFeedback.passed
+    && !shouldShowOnlyNoDeviceMessage
+    && answerFeedback.wrongConnections.length,
+  );
+  const shouldShowOnlyMissingWireMessage = Boolean(
+    answerFeedback
+    && !answerFeedback.passed
+    && !shouldShowOnlyNoDeviceMessage
+    && !shouldShowOnlyWrongWireMessage
+    && answerFeedback.issues.length
+    && answerFeedback.issues.every(isWireIssue),
+  );
 
   const placeDeviceInZone = useCallback((deviceId: DeviceId, zone: DeviceZone) => {
     setAssignedDevices((previous) => {
@@ -441,7 +502,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                 <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
                 <div className="px-2 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full shadow-inner border border-slate-400" style={{ backgroundColor: wireColor }} />
-                  <select value={wireColor} onChange={(e) => setWireColor(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1">
+                  <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1">
                     <option value="#e74c3c" className="bg-white dark:bg-slate-900">24V Red</option>
                     <option value="#111827" className="bg-white dark:bg-slate-900">0V Black</option>
                     <option value="#3498db" className="bg-white dark:bg-slate-900">Signal Blue</option>
@@ -500,6 +561,38 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                         Check Answer
                       </button>
                     </div>
+                    {answerFeedback ? (
+                      <div className={`mt-3 rounded-2xl border px-4 py-3 text-sm shadow-sm ${answerFeedback.passed
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200'
+                        : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200'
+                        }`}>
+                        <p className="font-black">
+                          {answerFeedback.passed ? 'Answer is correct.' : 'Answer is incorrect.'}
+                        </p>
+                        {shouldShowOnlyNoDeviceMessage ? (
+                          <p className="mt-1 text-xs font-semibold text-rose-500 dark:text-rose-300">
+                            No input and output devices.
+                          </p>
+                        ) : null}
+                        {!shouldShowOnlyNoDeviceMessage && !answerFeedback.passed && answerFeedback.wrongConnections.length ? (
+                          <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-rose-500 dark:text-rose-300">
+                            Red dashed wires are wrong connections.
+                          </p>
+                        ) : null}
+                        {shouldShowOnlyMissingWireMessage ? (
+                          <p className="mt-1 text-xs font-semibold text-rose-500 dark:text-rose-300">
+                            Missing wires.
+                          </p>
+                        ) : null}
+                        {answerFeedback.issues.length && !shouldShowOnlyWrongWireMessage && !shouldShowOnlyNoDeviceMessage && !shouldShowOnlyMissingWireMessage ? (
+                          <div className="mt-3 space-y-1.5 text-xs leading-5">
+                            {answerFeedback.issues.map((issue) => (
+                              <p key={issue}>{issue}</p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </section>
               </div>
@@ -517,26 +610,28 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                   </div>
                 ) : (
                   <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseLeave={handleStageMouseLeave}>
-                    <RelayStaticBackground BASE_CANVAS_WIDTH={BASE_CANVAS_WIDTH} BASE_CANVAS_HEIGHT={BASE_CANVAS_HEIGHT} canvasScale={canvasScale} isDarkMode={isDarkMode} isMainSwitchOn={isMainSwitchOn} onToggleSwitch={handleToggleSwitch} />
+                    <RelayStaticBackground BASE_CANVAS_WIDTH={BASE_CANVAS_WIDTH} BASE_CANVAS_HEIGHT={BASE_CANVAS_HEIGHT} canvasScale={canvasScale} isDarkMode={isDarkMode} isMainSwitchOn={isMainSwitchOn} isGreenLampOn={isActivity1GreenLampOn} onToggleSwitch={handleToggleSwitch} />
 
                     <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
                       {Object.entries(RELAY_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
 
                       {wires.map((wire) => {
                         const isSelected = selectedWireId === wire.id;
+                        const isWrong = wrongWireKeySet.has(toWireKey(wire.fromPin, wire.toPin));
                         return (
                           <Line
                             key={`wire-${wire.id}`}
                             points={wire.points}
-                            stroke={wire.color}
-                            strokeWidth={isSelected ? 8 : 5}
+                            stroke={isWrong ? '#ef4444' : wire.color}
+                            strokeWidth={isSelected ? 8 : isWrong ? 6 : 5}
                             hitStrokeWidth={20}
                             lineCap="round"
                             lineJoin="round"
-                            shadowColor={isSelected ? '#f1c40f' : 'rgba(0,0,0,0.4)'}
-                            shadowBlur={isSelected ? 8 : 4}
+                            dash={isWrong ? [14, 8] : undefined}
+                            shadowColor={isSelected ? '#f1c40f' : isWrong ? 'rgba(239,68,68,0.8)' : 'rgba(0,0,0,0.4)'}
+                            shadowBlur={isSelected ? 8 : isWrong ? 10 : 4}
                             shadowOffsetY={isSelected ? 0 : 4}
-                            onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); }}
+                            onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); setWireColor(wire.color); }}
                             onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
                             onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
                           />

@@ -15,6 +15,19 @@ export interface ActivityEvaluationResult {
   passed: boolean;
   feedback: string;
   issues: string[];
+  wrongConnections: Array<{ fromPin: string; toPin: string }>;
+}
+
+interface ResolvedConnectionOption {
+  originalFromPin: string;
+  originalToPin: string;
+  resolvedFromPin: string;
+  resolvedToPin: string;
+}
+
+interface ResolvedCustomConnections {
+  issues: string[];
+  requirements: ResolvedConnectionOption[][];
 }
 
 const DEVICE_RULE_KEY_BY_ID: Record<string, string> = {
@@ -87,18 +100,25 @@ const resolvePortId = (portId: string) => {
 const toWireKey = (fromPin: string, toPin: string) =>
   [fromPin, toPin].sort().join('|');
 
+const describePin = (pinId: string) => {
+  const pin = RELAY_PORTS[pinId];
+  const label = pin?.desc?.trim() || pin?.label?.trim();
+  return label ? `${pinId} (${label})` : pinId;
+};
+
 const isAlternativeConnectionGroup = (
   connection: ActivityCustomConnection,
 ): connection is ActivityConnectionPair[] => Array.isArray(connection[0]);
 
-const evaluateCustomConnections = (
+const resolveCustomConnections = (
   customConnections: ActivityCustomConnection[] | undefined,
-  wires: Array<{ fromPin: string; toPin: string }>,
-) => {
-  if (!customConnections?.length) return [];
+): ResolvedCustomConnections => {
+  if (!customConnections?.length) {
+    return { issues: [], requirements: [] };
+  }
 
   const issues: string[] = [];
-  const wireSet = new Set(wires.map((wire) => toWireKey(wire.fromPin, wire.toPin)));
+  const requirements: ResolvedConnectionOption[][] = [];
 
   for (const requirement of customConnections) {
     const options = isAlternativeConnectionGroup(requirement) ? requirement : [requirement];
@@ -121,25 +141,17 @@ const evaluateCustomConnections = (
       continue;
     }
 
-    const hasMatchingConnection = resolvedOptions.some((option) =>
-      wireSet.has(toWireKey(option.resolvedFromPin!, option.resolvedToPin!)),
+    requirements.push(
+      resolvedOptions.map((option) => ({
+        originalFromPin: option.originalFromPin,
+        originalToPin: option.originalToPin,
+        resolvedFromPin: option.resolvedFromPin!,
+        resolvedToPin: option.resolvedToPin!,
+      })),
     );
-
-    if (hasMatchingConnection) continue;
-
-    if (resolvedOptions.length === 1) {
-      const [option] = resolvedOptions;
-      issues.push(`Missing required connection: ${option.originalFromPin} <-> ${option.originalToPin}`);
-      continue;
-    }
-
-    const labels = resolvedOptions
-      .map((option) => `${option.originalFromPin} <-> ${option.originalToPin}`)
-      .join(' OR ');
-    issues.push(`Missing one required connection option: ${labels}`);
   }
 
-  return issues;
+  return { issues, requirements };
 };
 
 export const evaluateActivityAnswer = (
@@ -162,18 +174,83 @@ export const evaluateActivityAnswer = (
     ...collectMissingCounts(activity.rule.requiredOutputDevices, outputDeviceCounts, 'Output device list missing'),
     ...collectMissingCounts(activity.rule.requiredComponents, componentCounts, 'Required components missing'),
   ];
+  const resolvedCustomConnections = resolveCustomConnections(activity.rule.customConnections);
+  issues.push(...resolvedCustomConnections.issues);
 
   if (activity.rule.minWires && context.wires.length < activity.rule.minWires) {
     issues.push(`Add at least ${activity.rule.minWires} wire connection(s).`);
   }
 
-  issues.push(...evaluateCustomConnections(activity.rule.customConnections, context.wires));
+  const normalizedWires = context.wires.flatMap((wire) => {
+    const resolvedFromPin = resolvePortId(wire.fromPin);
+    const resolvedToPin = resolvePortId(wire.toPin);
+    if (!resolvedFromPin || !resolvedToPin) return [];
+
+    return [{
+      fromPin: wire.fromPin,
+      toPin: wire.toPin,
+      resolvedFromPin,
+      resolvedToPin,
+      key: toWireKey(resolvedFromPin, resolvedToPin),
+    }];
+  });
+  const wireSet = new Set(normalizedWires.map((wire) => wire.key));
+
+  for (const requirement of resolvedCustomConnections.requirements) {
+    const hasMatchingConnection = requirement.some((option) =>
+      wireSet.has(toWireKey(option.resolvedFromPin, option.resolvedToPin)),
+    );
+
+    if (hasMatchingConnection) continue;
+
+    if (requirement.length === 1) {
+      const [option] = requirement;
+      issues.push(`Missing required connection: ${option.originalFromPin} <-> ${option.originalToPin}`);
+      continue;
+    }
+
+    const labels = requirement
+      .map((option) => `${option.originalFromPin} <-> ${option.originalToPin}`)
+      .join(' OR ');
+    issues.push(`Missing one required connection option: ${labels}`);
+  }
+
+  const validConnectionKeys = new Set(
+    resolvedCustomConnections.requirements.flatMap((requirement) =>
+      requirement.map((option) => toWireKey(option.resolvedFromPin, option.resolvedToPin)),
+    ),
+  );
+  const answerPins = new Set(
+    resolvedCustomConnections.requirements.flatMap((requirement) =>
+      requirement.flatMap((option) => [option.resolvedFromPin, option.resolvedToPin]),
+    ),
+  );
+  const hasCompleteConnectionMap = Boolean(
+    activity.rule.customConnections?.length &&
+    (!activity.rule.minWires || activity.rule.customConnections.length >= activity.rule.minWires),
+  );
+  const wrongConnections = normalizedWires
+    .filter((wire) => {
+      if (validConnectionKeys.has(wire.key)) return false;
+      return hasCompleteConnectionMap
+        || answerPins.has(wire.resolvedFromPin)
+        || answerPins.has(wire.resolvedToPin);
+    })
+    .map(({ fromPin, toPin }) => ({ fromPin, toPin }));
+
+  issues.push(
+    ...wrongConnections.map(
+      ({ fromPin, toPin }) =>
+        `Wrong connection: ${describePin(fromPin)} <-> ${describePin(toPin)}`,
+    ),
+  );
 
   if (!issues.length) {
     return {
       passed: true,
       feedback: 'Correct setup. Activity passed.',
       issues: [],
+      wrongConnections: [],
     };
   }
 
@@ -181,5 +258,6 @@ export const evaluateActivityAnswer = (
     passed: false,
     feedback: issues.join('\n'),
     issues,
+    wrongConnections,
   };
 };
