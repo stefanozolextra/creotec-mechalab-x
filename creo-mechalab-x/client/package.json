@@ -16,6 +16,7 @@
     "lucide-react": "^0.574.0",
     "pdfjs-dist": "^5.4.624",
     "react": "^19.2.0",
+    "react-anticapture": "^0.1.5",
     "react-dom": "^19.2.0",
     "react-konva": "^19.2.3",
     "react-pdf": "^10.3.0",
