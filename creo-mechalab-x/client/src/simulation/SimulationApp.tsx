@@ -21,6 +21,7 @@ import relayModuleDevice from '../assets/devices/relay-module.png';
 import rollerLeverDevice from '../assets/devices/roller-lever.png';
 import solenoidValveDevice from '../assets/devices/solenoid-valve.png';
 import { getActivityAnswerByRouteId } from './constants/activityAnswers';
+// import ReactAntiCapture from '../components/AntiCapture';
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
 interface SimulationAppProps { routeId?: string; onNavigateBack?: () => void; }
