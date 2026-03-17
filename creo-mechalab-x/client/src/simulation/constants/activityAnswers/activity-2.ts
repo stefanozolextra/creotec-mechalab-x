@@ -3,7 +3,7 @@ import type { ActivityAnswerDefinition } from './types';
 
 export const activity2Answer: ActivityAnswerDefinition = {
   routeId: '2',
-  title: 'Start-Stop Control Unit',
+  title: 'Start-Stop Latching Conrtol Unit',
   diagram: activity1Diagram,
   rule: {
     requiredInputDevices: { button: 1 },
@@ -11,7 +11,7 @@ export const activity2Answer: ActivityAnswerDefinition = {
     requiredComponents: { battery: 1, relayModule: 1, lightIndicator: 1 },
     minWires: 7,
     customConnections: [
-      ['lights_2', 'relay1_6'],
+      ['lights_5', 'lights1_1'],
       [
         ['lights_1', 'vminus_1'],
         ['lights_1', 'vminus_2'],
@@ -54,6 +54,23 @@ export const activity2Answer: ActivityAnswerDefinition = {
         ['relay1_9', 'vplus_11'],
         ['relay1_9', 'vplus_12'],
       ],
+      [
+        ['relay1_10', 'vplus_1'],
+        ['relay1_10', 'vplus_2'],
+        ['relay1_10', 'vplus_3'],
+        ['relay1_10', 'vplus_4'],
+        ['relay1_10', 'vplus_5'],
+        ['relay1_10', 'vplus_6'],
+        ['relay1_10', 'vplus_7'],
+        ['relay1_10', 'vplus_8'],
+        ['relay1_10', 'vplus_9'],
+        ['relay1_10', 'vplus_10'],
+        ['relay1_10', 'vplus_11'],
+        ['relay1_10', 'vplus_12'],
+      ],
+      ['lights_2', 'relay1_7'],
+      ['lights_6', 'relay1_4'],
+      ['relay1_6', 'counter_4'],
       [
         ['counter_3', 'vplus_1'],
         ['counter_3', 'vplus_2'],

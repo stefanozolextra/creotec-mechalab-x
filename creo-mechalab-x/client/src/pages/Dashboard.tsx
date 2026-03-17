@@ -309,6 +309,16 @@ const Dashboard = () => {
 
     const selectedSimulationId =
         selectedLevel !== null ? nextSimulationByModuleId.get(selectedLevel) ?? null : null;
+    const selectedSimulation = useMemo(() => {
+        const simulations = dashboardState.data?.moduleContent.simulations ?? [];
+        if (!selectedSimulationId) return null;
+
+        return (
+            simulations.find(
+                (simulation) => toNumber(simulation.simulation_id) === selectedSimulationId
+            ) ?? null
+        );
+    }, [dashboardState.data, selectedSimulationId]);
     const selectedModuleLessons = useMemo(() => {
         if (selectedLevel === null) return [];
         return lessonsByModuleId.get(selectedLevel) ?? [];
@@ -372,7 +382,11 @@ const Dashboard = () => {
 
     const handleStartSimulation = () => {
         if (!selectedSimulationId) return;
-        navigate(`/simulation/${selectedSimulationId}`);
+        navigate(`/simulation/${selectedSimulationId}`, {
+            state: {
+                simulationOrderNo: selectedSimulation?.order_no ?? null,
+            },
+        });
     };
 
     const handleViewModule = () => {
