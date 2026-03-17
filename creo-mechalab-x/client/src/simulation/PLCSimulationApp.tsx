@@ -8,110 +8,8 @@ import PortraitGuard from '../components/PortraitGuard';
 import CyberTransition from '../components/CyberTransition';
 
 import { computePLCWirePath } from './utils/plcWireRouting';
-
-const HW_STYLES = {
-    panelBg: '#f8fafc',
-    panelBorder: '#cbd5e1',
-    frameSilver: '#94a3b8',
-    jackRed: '#e74c3c',
-    jackBlack: '#111827',
-    jackBlue: '#3498db',
-    jackYellow: '#f1c40f',
-    labelYellow: '#f1c40f',
-    switchRedOff: '#7f1d1d',
-    switchRedOn: '#ef4444',
-    ledOff: '#475569',
-    ledOn: '#22c55e',
-    ledRed: '#ef4444',
-    omronBody: '#1e293b',
-    technicalMono: 'Consolas, monaco, monospace',
-    technicalSans: 'Inter, system-ui, sans-serif'
-};
-
-const SOL_PAIR_START_X = 535;
-const SOL_PAIR_Y = 535;
-const SOL_PAIR_INNER_SPACING = 40;
-const SOL_PAIR_OUTER_SPACING = 150;
-const solPairX = (pairIdx: number, isPlus: boolean) =>
-    SOL_PAIR_START_X + pairIdx * SOL_PAIR_OUTER_SPACING + (isPlus ? 0 : SOL_PAIR_INNER_SPACING);
-
-const GOTT_TRAINER_PORTS: Record<string, { x: number; y: number; color: string; label: string; desc: string }> = {
-    '24v_1': { x: 377, y: 530, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
-    '24v_2': { x: 420, y: 530, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
-    '24v_3': { x: 377, y: 570, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
-    '24v_4': { x: 420, y: 570, color: HW_STYLES.jackRed, label: '24V', desc: '+24VDC Supply' },
-    '0v_1': { x: 377, y: 620, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
-    '0v_2': { x: 420, y: 620, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
-    '0v_3': { x: 377, y: 660, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
-    '0v_4': { x: 420, y: 660, color: HW_STYLES.jackBlack, label: '0V', desc: '0VDC Supply' },
-
-    'plc_com_in': { x: 60, y: 370, color: HW_STYLES.jackRed, label: 'COM', desc: 'Input COM' },
-    'plc_in_00': { x: 110, y: 350, color: HW_STYLES.jackYellow, label: '00', desc: 'Input 0.00' },
-    'plc_in_01': { x: 170, y: 350, color: HW_STYLES.jackYellow, label: '01', desc: 'Input 0.01' },
-    'plc_in_02': { x: 230, y: 350, color: HW_STYLES.jackYellow, label: '02', desc: 'Input 0.02' },
-    'plc_in_03': { x: 290, y: 350, color: HW_STYLES.jackYellow, label: '03', desc: 'Input 0.03' },
-    'plc_in_04': { x: 350, y: 350, color: HW_STYLES.jackYellow, label: '04', desc: 'Input 0.04' },
-    'plc_in_05': { x: 410, y: 350, color: HW_STYLES.jackYellow, label: '05', desc: 'Input 0.05' },
-    'plc_in_06': { x: 111, y: 420, color: HW_STYLES.jackYellow, label: '06', desc: 'Input 0.06' },
-    'plc_in_07': { x: 170, y: 420, color: HW_STYLES.jackYellow, label: '07', desc: 'Input 0.07' },
-    'plc_in_08': { x: 230, y: 420, color: HW_STYLES.jackYellow, label: '08', desc: 'Input 0.08' },
-    'plc_in_09': { x: 290, y: 420, color: HW_STYLES.jackYellow, label: '09', desc: 'Input 0.09' },
-    'plc_in_10': { x: 350, y: 420, color: HW_STYLES.jackYellow, label: '10', desc: 'Input 0.10' },
-    'plc_in_11': { x: 410, y: 420, color: HW_STYLES.jackYellow, label: '11', desc: 'Input 0.11' },
-
-    'plc_com_out_1': { x: 55, y: 570, color: HW_STYLES.jackBlack, label: 'COM1', desc: 'Output COM 1' },
-    'plc_out_00': { x: 85, y: 570, color: HW_STYLES.jackBlue, label: '00', desc: 'Output 10.00' },
-    'plc_com_out_2': { x: 130, y: 570, color: HW_STYLES.jackBlack, label: 'COM2', desc: 'Output COM 2' },
-    'plc_out_01': { x: 160, y: 570, color: HW_STYLES.jackBlue, label: '01', desc: 'Output 10.01' },
-    'plc_com_out_3': { x: 205, y: 570, color: HW_STYLES.jackBlack, label: 'COM3', desc: 'Output COM 3' },
-    'plc_out_02': { x: 235, y: 570, color: HW_STYLES.jackBlue, label: '02', desc: 'Output 10.02' },
-    'plc_out_03': { x: 295, y: 570, color: HW_STYLES.jackBlue, label: '03', desc: 'Output 10.03' },
-    'plc_com_out_4': { x: 55, y: 655, color: HW_STYLES.jackBlack, label: 'COM4', desc: 'Output COM 4' },
-    'plc_out_04': { x: 95, y: 655, color: HW_STYLES.jackBlue, label: '04', desc: 'Output 10.04' },
-    'plc_out_05': { x: 160, y: 655, color: HW_STYLES.jackBlue, label: '05', desc: 'Output 10.05' },
-    'plc_out_06': { x: 225, y: 655, color: HW_STYLES.jackBlue, label: '06', desc: 'Output 10.06' },
-    'plc_out_07': { x: 290, y: 655, color: HW_STYLES.jackBlue, label: '07', desc: 'Output 10.07' },
-
-    'start_nc_in': { x: 710, y: 625, color: HW_STYLES.jackBlue, label: 'Nc', desc: 'Start (NC) In' },
-    'start_nc_out': { x: 750, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Start (NC) Out' },
-    'start_no_in': { x: 710, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) In' },
-    'start_no_out': { x: 750, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Start (NO) Out' },
-    'stop_nc_in': { x: 860, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Stop (NC) In' },
-    'stop_nc_out': { x: 900, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Stop (NC) Out' },
-    'stop_no_in': { x: 860, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Stop (NO) In' },
-    'stop_no_out': { x: 900, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Stop (NO) Out' },
-    'selector_nc_in': { x: 1010, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Selector (NC) In' },
-    'selector_nc_out': { x: 1050, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'Selector (NC) Out' },
-    'selector_no_in': { x: 1010, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Selector (NO) In' },
-    'selector_no_out': { x: 1050, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'Selector (NO) Out' },
-    'emo_nc_in': { x: 1160, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'EMO (NC) In' },
-    'emo_nc_out': { x: 1200, y: 625, color: HW_STYLES.jackBlue, label: 'NC', desc: 'EMO (NC) Out' },
-    'emo_no_in': { x: 1160, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'EMO (NO) In' },
-    'emo_no_out': { x: 1200, y: 660, color: HW_STYLES.jackYellow, label: 'NO', desc: 'EMO (NO) Out' },
-
-    'sol3/2_a_plus': { x: solPairX(0, true), y: SOL_PAIR_Y, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
-    'sol3/2_a_minus': { x: solPairX(0, false), y: SOL_PAIR_Y, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
-    'sol4/2_a_plus': { x: solPairX(1, true), y: SOL_PAIR_Y, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
-    'sol4/2_a_minus': { x: solPairX(1, false), y: SOL_PAIR_Y, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
-    'sol4/2_b_plus': { x: solPairX(2, true), y: SOL_PAIR_Y, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
-    'sol4/2_b_minus': { x: solPairX(2, false), y: SOL_PAIR_Y, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
-    'sol4/3_a_plus': { x: solPairX(3, true), y: SOL_PAIR_Y, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
-    'sol4/3_a_minus': { x: solPairX(3, false), y: SOL_PAIR_Y, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
-    'sol4/3_b_plus': { x: solPairX(4, true), y: SOL_PAIR_Y, color: HW_STYLES.jackRed, label: 'A+', desc: 'Valve A+' },
-    'sol4/3_b_minus': { x: solPairX(4, false), y: SOL_PAIR_Y, color: HW_STYLES.jackBlack, label: 'A-', desc: 'Valve A-' },
-
-    'buzzer_plus': { x: 495, y: 665, color: HW_STYLES.jackRed, label: '+', desc: 'Buzzer Positive (+)' },
-    'buzzer_minus': { x: 560, y: 665, color: HW_STYLES.jackBlack, label: '-', desc: 'Buzzer Negative (-)' },
-
-    'reed_ret_1.1': { x: 495, y: 360, color: HW_STYLES.jackYellow, label: 'RET', desc: 'Cyl Retracted' },
-    'reed_ext_1.2': { x: 535, y: 360, color: HW_STYLES.jackBlue, label: 'EXT', desc: 'Cyl Extended' },
-    'reed_ret_2.1': { x: 615, y: 360, color: HW_STYLES.jackYellow, label: 'RET', desc: 'Cyl Retracted' },
-    'reed_ext_2.2': { x: 655, y: 360, color: HW_STYLES.jackBlue, label: 'EXT', desc: 'Cyl Extended' },
-    'reed_ret_3.1': { x: 555, y: 430, color: HW_STYLES.jackYellow, label: 'RET', desc: 'Cyl Retracted' },
-    'reed_ext_3.2': { x: 595, y: 430, color: HW_STYLES.jackBlue, label: 'EXT', desc: 'Cyl Extended' },
-};
-
-const REED_LIGHT_OFFSET_Y = -38;
+import { HW_STYLES, GOTT_TRAINER_PORTS, PLC_SOLENOID_LABELS, REED_LIGHT_OFFSET_Y, type PlcPortConfig } from './config/plcBoardLayout';
+import { PlcPanelBackground, PlcPanelText, PlcHardwareJack } from './components/plcBoardUI';
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
 interface PLCSimulationAppProps { routeId?: string; onNavigateBack?: () => void; }
@@ -225,7 +123,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
         }
     }, []);
 
-    const handlePortMouseDown = (portId: string) => {
+    const handlePortMouseDown = useCallback((portId: string) => {
         if (selectedWireId) { setSelectedWireId(null); return; }
         setActivePin(portId);
         hideTooltip();
@@ -240,7 +138,32 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
             ghostWireRef.current.visible(true);
             ghostWireRef.current.getLayer().batchDraw();
         }
-    };
+    }, [hideTooltip, selectedWireId]);
+
+    const handlePortMouseEnter = useCallback((e: KonvaEventObject<MouseEvent>, _Id: string, config: PlcPortConfig) => {
+        const stage = e.target.getStage();
+        if (stage) stage.container().style.cursor = 'crosshair';
+
+        if (hoverRingRef.current && !activePin) {
+            hoverRingRef.current.position({ x: config.x, y: config.y });
+            hoverRingRef.current.visible(true);
+            hoverRingRef.current.getLayer()?.batchDraw();
+        }
+
+        if (!activePin) showTooltip(config.x, config.y, config.desc);
+    }, [activePin, showTooltip]);
+
+    const handlePortMouseLeave = useCallback((e: KonvaEventObject<MouseEvent>) => {
+        const stage = e.target.getStage();
+        if (stage) stage.container().style.cursor = 'default';
+
+        if (hoverRingRef.current) {
+            hoverRingRef.current.visible(false);
+            hoverRingRef.current.getLayer()?.batchDraw();
+        }
+
+        hideTooltip();
+    }, [hideTooltip]);
 
     const handleMouseMove = (e: KonvaEventObject<MouseEvent>) => {
         const pos = e.target.getStage()?.getPointerPosition();
@@ -346,6 +269,24 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
         setSelectedWireId(null);
     }, [selectedWireId]);
 
+    const handleWireColorChange = useCallback((nextColor: string) => {
+        setWireColor(nextColor);
+        if (!selectedWireId) return;
+
+        setWires((prevWires) => {
+            const targetWire = prevWires.find((wire) => wire.id === selectedWireId);
+            if (!targetWire || targetWire.color === nextColor) {
+                return prevWires;
+            }
+
+            setHistoryPast((hp) => [...hp, prevWires].slice(-50));
+            setHistoryFuture([]);
+            return prevWires.map((wire) =>
+                wire.id === selectedWireId ? { ...wire, color: nextColor } : wire,
+            );
+        });
+    }, [selectedWireId]);
+
     const handleUndo = () => { if (!historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
     const handleRedo = () => { if (!historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
     const handleResetBoard = () => { setHistoryPast(prev => [...prev, wires].slice(-50)); setHistoryFuture([]); setWires([]); setSelectedWireId(null); setActivePin(null); setIsAcPowerOn(false); };
@@ -355,63 +296,6 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [deleteSelectedWire]);
-
-    const renderHardwareJack = (portId: string, isActive: boolean) => {
-        const pos = GOTT_TRAINER_PORTS[portId];
-        const isReed = portId.startsWith('reed_ret_') || portId.startsWith('reed_ext_');
-        return (
-            <Group key={`jack-${portId}`} x={pos.x} y={pos.y}>
-                {isReed && <Text text={pos.label} x={-15} y={-18} width={30} fontSize={9} fontFamily={HW_STYLES.technicalMono} fontStyle="bold" align="center" fill="#000000" listening={false} />}
-                <Circle radius={11} fill={HW_STYLES.labelYellow} listening={false} />
-                {!isReed && <Text text={pos.label} x={-15} y={11} width={30} fontSize={9} fontFamily={HW_STYLES.technicalMono} fontStyle="bold" align="center" fill="#000000" listening={false} />}
-                <Circle radius={7} fill="#bdc3c7" stroke="#34495e" strokeWidth={1} listening={false} />
-                <Circle
-                    id={portId}
-                    radius={8}
-                    fill={pos.color}
-                    stroke={isActive ? '#ffffff' : '#000000'}
-                    strokeWidth={isActive ? 2 : 1}
-                    shadowColor="rgba(0,0,0,0.4)" shadowBlur={3} shadowOffsetY={2}
-                    onMouseDown={() => handlePortMouseDown(portId)}
-                    onMouseEnter={(e) => {
-                        const stage = e.target.getStage();
-                        if (stage) stage.container().style.cursor = 'crosshair';
-
-                        if (hoverRingRef.current && !activePin) {
-                            hoverRingRef.current.position({ x: pos.x, y: pos.y });
-                            hoverRingRef.current.visible(true);
-                            hoverRingRef.current.getLayer()?.batchDraw();
-                        }
-
-                        if (!activePin) showTooltip(pos.x, pos.y, pos.desc);
-                    }}
-                    onMouseLeave={(e) => {
-                        const stage = e.target.getStage();
-                        if (stage) stage.container().style.cursor = 'default';
-
-                        if (hoverRingRef.current) {
-                            hoverRingRef.current.visible(false);
-                            hoverRingRef.current.getLayer()?.batchDraw();
-                        }
-
-                        hideTooltip();
-                    }}
-                />
-                <Circle radius={4} fill="#000000" listening={false} />
-            </Group>
-        );
-    };
-
-    const renderPanelBg = (id: string, x: number, y: number, width: number, height: number) => (
-        <Group key={`panel-bg-${id}`} x={x} y={y} listening={false}>
-            <Rect width={width} height={height} fill={HW_STYLES.panelBg} stroke={HW_STYLES.panelBorder} strokeWidth={2} cornerRadius={4} shadowColor="rgba(0,0,0,0.15)" shadowBlur={6} shadowOffsetY={3} />
-            <Rect width={width} height={28} fill="#e2e8f0" stroke={HW_STYLES.panelBorder} strokeWidth={1} cornerRadius={4} />
-        </Group>
-    );
-
-    const renderPanelText = (id: string, x: number, y: number, title: string) => (
-        <Text key={`panel-text-${id}`} text={title} x={x + 10} y={y + 8} fontSize={13} fontStyle="bold" fill="#1e293b" listening={false} />
-    );
 
     return (
         <PortraitGuard>
@@ -435,7 +319,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                 <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
                                 <div className="px-2 flex items-center gap-2">
                                     <div className="w-3 h-3 rounded-full shadow-inner border border-slate-400" style={{ backgroundColor: wireColor }} />
-                                    <select value={wireColor} onChange={(e) => setWireColor(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1">
+                                    <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1">
                                         <option value="#e74c3c" className="bg-white dark:bg-slate-900">24V Red</option>
                                         <option value="#111827" className="bg-white dark:bg-slate-900">0V Black</option>
                                         <option value="#3498db" className="bg-white dark:bg-slate-900">Signal Blue</option>
@@ -445,7 +329,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                 </div>
                             </div>
                             <button type="button" onClick={handleResetBoard} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm">
-                                <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden inline">Clear Board</span>
+                                <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden sm:inline-block">Clear Board</span>
                             </button>
                             <button type="button" onClick={toggleTheme} className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm">
                                 {isDarkMode ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
@@ -489,15 +373,15 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                         <Layer scaleX={canvasScale} scaleY={canvasScale} id="static-bg-layer" listening={false}>
                                             <Rect width={BASE_CANVAS_WIDTH} height={BASE_CANVAS_HEIGHT} fill="#e2e8f0" id="enclosure-base" />
 
-                                            {renderPanelBg("ac-power", 30, 30, 160, 220)}
-                                            {renderPanelBg("plc", 210, 30, 470, 220)}
-                                            {renderPanelBg("inputs", 30, 270, 420, 180)}
-                                            {renderPanelBg("reeds", 470, 270, 210, 180)}
-                                            {renderPanelBg("relays", 30, 470, 300, 220)}
-                                            {renderPanelBg("power", 345, 470, 105, 220)}
-                                            {renderPanelBg("solenoids", 460, 470, 790, 90)}
-                                            {renderPanelBg("buzzer", 460, 575, 140, 115)}
-                                            {renderPanelBg("manual", 615, 575, 635, 115)}
+                                            <PlcPanelBackground id="ac-power" x={30} y={30} width={160} height={220} />
+                                            <PlcPanelBackground id="plc" x={210} y={30} width={470} height={220} />
+                                            <PlcPanelBackground id="inputs" x={30} y={270} width={420} height={180} />
+                                            <PlcPanelBackground id="reeds" x={470} y={270} width={210} height={180} />
+                                            <PlcPanelBackground id="relays" x={30} y={470} width={300} height={220} />
+                                            <PlcPanelBackground id="power" x={345} y={470} width={105} height={220} />
+                                            <PlcPanelBackground id="solenoids" x={460} y={470} width={790} height={90} />
+                                            <PlcPanelBackground id="buzzer" x={460} y={575} width={140} height={115} />
+                                            <PlcPanelBackground id="manual" x={615} y={575} width={635} height={115} />
 
                                             <Group x={690} y={30}>
                                                 <Rect width={560} height={420} fill="#e2e8f0" cornerRadius={6} />
@@ -519,7 +403,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                         points={wire.points}
                                                         stroke={wire.color}
                                                         strokeWidth={isSelected ? 10 : 8}
-                                                        opacity={isSelected ? 1 : 0.85} // Wires are slightly transparent so text can be read through them
+                                                        opacity={isSelected ? 1 : 0.85}
                                                         hitStrokeWidth={20}
                                                         lineCap="round"
                                                         lineJoin="round"
@@ -538,26 +422,20 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                         <Layer scaleX={canvasScale} scaleY={canvasScale} id="hardware-components-layer">
 
                                             {/* Panel Texts */}
-                                            {renderPanelText("ac-power", 30, 30, "INPUT AC220V-240V")}
-                                            {renderPanelText("plc", 210, 30, "OMRON SYSMAC CP1E")}
-                                            {renderPanelText("inputs", 30, 270, "INPUT (00CH)")}
-                                            {renderPanelText("reeds", 470, 270, "REED SWITCH")}
-                                            {renderPanelText("relays", 30, 470, "RELAY TYPE OUTPUT (10CH)")}
-                                            {renderPanelText("power", 345, 470, "POWER SUPPLY")}
-                                            {renderPanelText("solenoids", 460, 470, "SOLENOID VALVES")}
-                                            {renderPanelText("buzzer", 460, 575, "BUZZER")}
-                                            {renderPanelText("manual", 615, 575, "MANUAL INPUTS")}
+                                            <PlcPanelText id="ac-power" x={30} y={30} title="INPUT AC220V-240V" />
+                                            <PlcPanelText id="plc" x={210} y={30} title="OMRON SYSMAC CP1E" />
+                                            <PlcPanelText id="inputs" x={30} y={270} title="INPUT (00CH)" />
+                                            <PlcPanelText id="reeds" x={470} y={270} title="REED SWITCH" />
+                                            <PlcPanelText id="relays" x={30} y={470} title="RELAY TYPE OUTPUT (10CH)" />
+                                            <PlcPanelText id="power" x={345} y={470} title="POWER SUPPLY" />
+                                            <PlcPanelText id="solenoids" x={460} y={470} title="SOLENOID VALVES" />
+                                            <PlcPanelText id="buzzer" x={460} y={575} title="BUZZER" />
+                                            <PlcPanelText id="manual" x={615} y={575} title="MANUAL INPUTS" />
                                             <Text text="PNEUMATIC ACTUATORS (HARDWARE MODULE)" x={700} y={38} fill="#475569" fontSize={12} fontStyle="bold" listening={false} />
 
                                             {/* Solenoid Text Labels */}
-                                            {[
-                                                { label: '3/2 A', x: solPairX(0, true) + SOL_PAIR_INNER_SPACING / 2 },
-                                                { label: '4/2 A-', x: solPairX(1, true) + SOL_PAIR_INNER_SPACING / 2 },
-                                                { label: '4/2A+', x: solPairX(2, true) + SOL_PAIR_INNER_SPACING / 2 },
-                                                { label: '4/3 B-', x: solPairX(3, true) + SOL_PAIR_INNER_SPACING / 2 },
-                                                { label: '4/3B+', x: solPairX(4, true) + SOL_PAIR_INNER_SPACING / 2 },
-                                            ].map((pair, i) => (
-                                                <Text key={`sol-pair-label-${i}`} text={pair.label} x={pair.x - SOL_PAIR_INNER_SPACING / 2} y={SOL_PAIR_Y - 28} fontSize={14} fontStyle="bold" fill="#1e293b" align="center" width={SOL_PAIR_INNER_SPACING} listening={false} />
+                                            {PLC_SOLENOID_LABELS.map((pair, i) => (
+                                                <Text key={`sol-pair-label-${i}`} text={pair.label} x={pair.x - 40 / 2} y={535 - 28} fontSize={14} fontStyle="bold" fill="#1e293b" align="center" width={40} listening={false} />
                                             ))}
 
                                             {/* Switch Group */}
@@ -662,7 +540,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                 <Circle radius={5} fill="#ef4444" />
                                             </Group>
 
-                                            {/* Reed Lights (No Black Border) */}
+                                            {/* Reed Lights (No Rect outline) */}
                                             {[
                                                 ['reed_ret_1.1', 'reed_ext_1.2'],
                                                 ['reed_ret_2.1', 'reed_ext_2.2'],
@@ -674,7 +552,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                 const lightRadius = 16;
                                                 const lightStroke = 4;
                                                 return (
-                                                    <Group key={`reed-pair-${i}`} listening={false}>
+                                                    <Group key={`reed-pair-border-${i}`} listening={false}>
                                                         {[0, 1].map(j => (
                                                             <Circle key={`reed-light-${pair[j]}`} x={GOTT_TRAINER_PORTS[pair[j]].x} y={GOTT_TRAINER_PORTS[pair[j]].y + REED_LIGHT_OFFSET_Y} radius={lightRadius} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={lightStroke} />
                                                         ))}
@@ -743,13 +621,22 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                             </Group>
 
                                             {/* ALL PORTS (Drawn LAST so they sit perfectly on top of wires) */}
-                                            {Object.entries(GOTT_TRAINER_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
-
+                                            {Object.entries(GOTT_TRAINER_PORTS).map(([id]) => (
+                                                <PlcHardwareJack
+                                                    key={id}
+                                                    portId={id}
+                                                    isActive={activePin === id}
+                                                    config={GOTT_TRAINER_PORTS[id]}
+                                                    onPointerDown={handlePortMouseDown}
+                                                    onPointerEnter={handlePortMouseEnter}
+                                                    onPointerLeave={handlePortMouseLeave}
+                                                />
+                                            ))}
                                         </Layer>
 
                                         {/* LAYER 4: Fast Overlay for Ghost Wire & Imperative Tooltips */}
                                         <Layer scaleX={canvasScale} scaleY={canvasScale} id="overlay-layer" listening={false}>
-                                            <Line ref={ghostWireRef} stroke={wireColor} strokeWidth={8} opacity={0.8} lineJoin="round" visible={false} />
+                                            <Line ref={ghostWireRef} stroke={wireColor} strokeWidth={6} dash={[10, 8]} opacity={0.7} lineJoin="round" visible={false} />
                                             <Circle ref={hoverRingRef} radius={9} stroke="#ffffff" strokeWidth={2} visible={false} />
 
                                             <Group ref={tooltipRef} visible={false}>
