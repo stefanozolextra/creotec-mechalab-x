@@ -1,6 +1,8 @@
 import { getAuthToken } from "../utils/auth";
 
-const DEFAULT_API_BASE_URL = "http://localhost:4000";
+// In local Vite dev, use same-origin `/api` requests so mobile devices can
+// reach the app through the Vite server and let the dev proxy forward to the API.
+const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "" : "http://localhost:4000";
 
 // NOTE: The backend API must run from server/index.js.
 // server/package.json currently points "start" to server.js (empty file).
@@ -46,7 +48,7 @@ const parseResponseBody = async (response: Response): Promise<unknown> => {
 const buildUrl = (path: string): string => {
     if (path.startsWith("http://") || path.startsWith("https://")) return path;
     const normalizedPath = path.startsWith("/") ? path : `/${path}`;
-    return `${API_BASE_URL}${normalizedPath}`;
+    return API_BASE_URL ? `${API_BASE_URL}${normalizedPath}` : normalizedPath;
 };
 
 export const requestJson = async <T>(path: string, options: ApiRequestOptions = {}): Promise<T> => {
