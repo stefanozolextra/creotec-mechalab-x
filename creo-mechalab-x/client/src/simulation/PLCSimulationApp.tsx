@@ -252,8 +252,6 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                 rafRef.current = requestAnimationFrame(() => {
                     const currentPos = mousePosRef.current;
                     if (currentPos) {
-                        // LIVE DIJKSTRA PREVIEW!
-                        // The ghost wire now runs the exact same algorithm as the final wire!
                         const points = computePLCWirePath(activePin, currentPos, GOTT_TRAINER_PORTS, wires.length);
                         ghostWireRef.current.points(points);
                         ghostWireRef.current.getLayer().batchDraw();
@@ -263,7 +261,6 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
             }
         }
 
-        // Knob dragging logic
         if (activeKnob) {
             const pointerX = pos.x / canvasScale;
             const pointerY = pos.y / canvasScale;
@@ -349,24 +346,6 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
         setSelectedWireId(null);
     }, [selectedWireId]);
 
-    const handleWireColorChange = useCallback((nextColor: string) => {
-        setWireColor(nextColor);
-        if (!selectedWireId) return;
-
-        setWires((prevWires) => {
-            const targetWire = prevWires.find((wire) => wire.id === selectedWireId);
-            if (!targetWire || targetWire.color === nextColor) {
-                return prevWires;
-            }
-
-            setHistoryPast((hp) => [...hp, prevWires].slice(-50));
-            setHistoryFuture([]);
-            return prevWires.map((wire) =>
-                wire.id === selectedWireId ? { ...wire, color: nextColor } : wire,
-            );
-        });
-    }, [selectedWireId]);
-
     const handleUndo = () => { if (!historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
     const handleRedo = () => { if (!historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
     const handleResetBoard = () => { setHistoryPast(prev => [...prev, wires].slice(-50)); setHistoryFuture([]); setWires([]); setSelectedWireId(null); setActivePin(null); setIsAcPowerOn(false); };
@@ -423,12 +402,15 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
         );
     };
 
-    const renderTechnicalPanel = (id: string, x: number, y: number, width: number, height: number, title: string) => (
-        <Group key={`panel-${id}`} x={x} y={y} listening={false}>
+    const renderPanelBg = (id: string, x: number, y: number, width: number, height: number) => (
+        <Group key={`panel-bg-${id}`} x={x} y={y} listening={false}>
             <Rect width={width} height={height} fill={HW_STYLES.panelBg} stroke={HW_STYLES.panelBorder} strokeWidth={2} cornerRadius={4} shadowColor="rgba(0,0,0,0.15)" shadowBlur={6} shadowOffsetY={3} />
             <Rect width={width} height={28} fill="#e2e8f0" stroke={HW_STYLES.panelBorder} strokeWidth={1} cornerRadius={4} />
-            <Text text={title} x={10} y={8} fontSize={13} fontStyle="bold" fill="#1e293b" />
         </Group>
+    );
+
+    const renderPanelText = (id: string, x: number, y: number, title: string) => (
+        <Text key={`panel-text-${id}`} text={title} x={x + 10} y={y + 8} fontSize={13} fontStyle="bold" fill="#1e293b" listening={false} />
     );
 
     return (
@@ -453,7 +435,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                 <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
                                 <div className="px-2 flex items-center gap-2">
                                     <div className="w-3 h-3 rounded-full shadow-inner border border-slate-400" style={{ backgroundColor: wireColor }} />
-                                    <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1">
+                                    <select value={wireColor} onChange={(e) => setWireColor(e.target.value)} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1">
                                         <option value="#e74c3c" className="bg-white dark:bg-slate-900">24V Red</option>
                                         <option value="#111827" className="bg-white dark:bg-slate-900">0V Black</option>
                                         <option value="#3498db" className="bg-white dark:bg-slate-900">Signal Blue</option>
@@ -463,7 +445,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                 </div>
                             </div>
                             <button type="button" onClick={handleResetBoard} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm">
-                                <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden-inline">Clear Board</span>
+                                <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden inline">Clear Board</span>
                             </button>
                             <button type="button" onClick={toggleTheme} className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm">
                                 {isDarkMode ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
@@ -503,18 +485,71 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                 ) : (
                                     <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseLeave={handleStageMouseLeave}>
 
-                                        {/* LAYER 1: Memoized background graphics */}
-                                        <Layer scaleX={canvasScale} scaleY={canvasScale} id="board-layer">
-                                            <Rect width={BASE_CANVAS_WIDTH} height={BASE_CANVAS_HEIGHT} fill="#e2e8f0" id="enclosure-base" listening={false} />
+                                        {/* LAYER 1: STATIC BACKGROUND PANELS (BOTTOM) */}
+                                        <Layer scaleX={canvasScale} scaleY={canvasScale} id="static-bg-layer" listening={false}>
+                                            <Rect width={BASE_CANVAS_WIDTH} height={BASE_CANVAS_HEIGHT} fill="#e2e8f0" id="enclosure-base" />
 
-                                            {renderTechnicalPanel("ac-power", 30, 30, 160, 220, "INPUT AC220V-240V")}
-                                            {renderTechnicalPanel("plc", 210, 30, 470, 220, "OMRON SYSMAC CP1E")}
-                                            {renderTechnicalPanel("inputs", 30, 270, 420, 180, "INPUT (00CH)")}
-                                            {renderTechnicalPanel("reeds", 470, 270, 210, 180, "REED SWITCH")}
-                                            {renderTechnicalPanel("relays", 30, 470, 300, 220, "RELAY TYPE OUTPUT (10CH)")}
-                                            {renderTechnicalPanel("power", 345, 470, 105, 220, "POWER SUPPLY")}
-                                            {renderTechnicalPanel("solenoids", 460, 470, 790, 90, "SOLENOID VALVES")}
+                                            {renderPanelBg("ac-power", 30, 30, 160, 220)}
+                                            {renderPanelBg("plc", 210, 30, 470, 220)}
+                                            {renderPanelBg("inputs", 30, 270, 420, 180)}
+                                            {renderPanelBg("reeds", 470, 270, 210, 180)}
+                                            {renderPanelBg("relays", 30, 470, 300, 220)}
+                                            {renderPanelBg("power", 345, 470, 105, 220)}
+                                            {renderPanelBg("solenoids", 460, 470, 790, 90)}
+                                            {renderPanelBg("buzzer", 460, 575, 140, 115)}
+                                            {renderPanelBg("manual", 615, 575, 635, 115)}
 
+                                            <Group x={690} y={30}>
+                                                <Rect width={560} height={420} fill="#e2e8f0" cornerRadius={6} />
+                                                <Rect width={560} height={24} fill="#cbd5e1" cornerRadius={6} />
+                                                <Rect x={50} y={80} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
+                                                <Rect x={250} y={90} width={120} height={20} fill="#cbd5e1" cornerRadius={4} />
+                                                <Rect x={50} y={200} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
+                                                <Rect x={180} y={210} width={190} height={20} fill="#cbd5e1" cornerRadius={4} />
+                                            </Group>
+                                        </Layer>
+
+                                        {/* LAYER 2: WIRES (MIDDLE - Drawn OVER backgrounds, but UNDER text and ports!) */}
+                                        <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
+                                            {wires.map((wire) => {
+                                                const isSelected = selectedWireId === wire.id;
+                                                return (
+                                                    <Line
+                                                        key={`wire-${wire.id}`}
+                                                        points={wire.points}
+                                                        stroke={wire.color}
+                                                        strokeWidth={isSelected ? 10 : 8}
+                                                        opacity={isSelected ? 1 : 0.85} // Wires are slightly transparent so text can be read through them
+                                                        hitStrokeWidth={20}
+                                                        lineCap="round"
+                                                        lineJoin="round"
+                                                        shadowColor={isSelected ? '#f1c40f' : 'rgba(0,0,0,0.5)'}
+                                                        shadowBlur={isSelected ? 15 : 6}
+                                                        shadowOffsetY={isSelected ? 0 : 8}
+                                                        onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); setWireColor(wire.color); }}
+                                                        onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
+                                                        onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
+                                                    />
+                                                );
+                                            })}
+                                        </Layer>
+
+                                        {/* LAYER 3: HARDWARE COMPONENTS & TEXT (TOP - Drawn OVER Wires!) */}
+                                        <Layer scaleX={canvasScale} scaleY={canvasScale} id="hardware-components-layer">
+
+                                            {/* Panel Texts */}
+                                            {renderPanelText("ac-power", 30, 30, "INPUT AC220V-240V")}
+                                            {renderPanelText("plc", 210, 30, "OMRON SYSMAC CP1E")}
+                                            {renderPanelText("inputs", 30, 270, "INPUT (00CH)")}
+                                            {renderPanelText("reeds", 470, 270, "REED SWITCH")}
+                                            {renderPanelText("relays", 30, 470, "RELAY TYPE OUTPUT (10CH)")}
+                                            {renderPanelText("power", 345, 470, "POWER SUPPLY")}
+                                            {renderPanelText("solenoids", 460, 470, "SOLENOID VALVES")}
+                                            {renderPanelText("buzzer", 460, 575, "BUZZER")}
+                                            {renderPanelText("manual", 615, 575, "MANUAL INPUTS")}
+                                            <Text text="PNEUMATIC ACTUATORS (HARDWARE MODULE)" x={700} y={38} fill="#475569" fontSize={12} fontStyle="bold" listening={false} />
+
+                                            {/* Solenoid Text Labels */}
                                             {[
                                                 { label: '3/2 A', x: solPairX(0, true) + SOL_PAIR_INNER_SPACING / 2 },
                                                 { label: '4/2 A-', x: solPairX(1, true) + SOL_PAIR_INNER_SPACING / 2 },
@@ -525,9 +560,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                 <Text key={`sol-pair-label-${i}`} text={pair.label} x={pair.x - SOL_PAIR_INNER_SPACING / 2} y={SOL_PAIR_Y - 28} fontSize={14} fontStyle="bold" fill="#1e293b" align="center" width={SOL_PAIR_INNER_SPACING} listening={false} />
                                             ))}
 
-                                            {renderTechnicalPanel("buzzer", 460, 575, 140, 115, "BUZZER")}
-                                            {renderTechnicalPanel("manual", 615, 575, 635, 115, "MANUAL INPUTS")}
-
+                                            {/* Switch Group */}
                                             <Group x={65} y={70} id="ac-switch-group"
                                                 onClick={() => setIsAcPowerOn(prev => !prev)}
                                                 onTap={() => setIsAcPowerOn(prev => !prev)}
@@ -547,6 +580,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                 <Text text="POWER" x={25} y={142} fontSize={12} fontStyle="bold" fill="#1e293b" listening={false} />
                                             </Group>
 
+                                            {/* PLC Faceplate */}
                                             <Group x={240} y={80} id="plc-faceplate" listening={false}>
                                                 <Rect width={410} height={140} fill={HW_STYLES.omronBody} cornerRadius={4} shadowColor="rgba(0,0,0,0.6)" shadowBlur={12} shadowOffsetY={6} />
                                                 <Text text="OMRON" x={15} y={15} fill="#ffffff" fontSize={12} fontStyle="bold" fontFamily={HW_STYLES.technicalSans} />
@@ -593,6 +627,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                 </Group>
                                             </Group>
 
+                                            {/* Knobs */}
                                             {[...Array(6)].map((_, i) => (
                                                 <Group key={`knob-${i}`} x={MIDDLE_ROW_START_X + i * MIDDLE_ROW_SPACING} y={MIDDLE_ROW_Y}
                                                     onMouseDown={() => setActiveKnob(`input-${i}`)} onMouseUp={() => setActiveKnob(null)}
@@ -621,11 +656,13 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                 </Group>
                                             ))}
 
+                                            {/* Buzzer Visual */}
                                             <Group x={BUZZER_VISUAL_X} y={BUZZER_VISUAL_Y} listening={false}>
                                                 <Circle radius={18} fill="#1e293b" stroke="#cbd5e1" strokeWidth={2} />
                                                 <Circle radius={5} fill="#ef4444" />
                                             </Group>
 
+                                            {/* Reed Lights (No Black Border) */}
                                             {[
                                                 ['reed_ret_1.1', 'reed_ext_1.2'],
                                                 ['reed_ret_2.1', 'reed_ext_2.2'],
@@ -636,32 +673,24 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                 if (!ret || !ext) return null;
                                                 const lightRadius = 16;
                                                 const lightStroke = 4;
-                                                const jackRadius = 11;
-                                                const points = [
-                                                    { x: ret.x, y: ret.y }, { x: ext.x, y: ext.y },
-                                                    { x: ret.x, y: ret.y + REED_LIGHT_OFFSET_Y }, { x: ext.x, y: ext.y + REED_LIGHT_OFFSET_Y },
-                                                ];
-                                                const minX = Math.min(...points.map(p => p.x - Math.max(lightRadius + lightStroke, jackRadius)));
-                                                const maxX = Math.max(...points.map(p => p.x + Math.max(lightRadius + lightStroke, jackRadius)));
-                                                const minY = Math.min(...points.map(p => p.y - Math.max(lightRadius + lightStroke, jackRadius)));
-                                                const maxY = Math.max(...points.map(p => p.y + Math.max(lightRadius + lightStroke, jackRadius)));
                                                 return (
-                                                    <Group key={`reed-pair-border-${i}`} listening={false}>
-                                                        <Rect x={minX} y={minY} width={maxX - minX} height={maxY - minY} stroke="#111827" strokeWidth={3} cornerRadius={20} fillEnabled={false} />
+                                                    <Group key={`reed-pair-${i}`} listening={false}>
                                                         {[0, 1].map(j => (
                                                             <Circle key={`reed-light-${pair[j]}`} x={GOTT_TRAINER_PORTS[pair[j]].x} y={GOTT_TRAINER_PORTS[pair[j]].y + REED_LIGHT_OFFSET_Y} radius={lightRadius} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={lightStroke} />
                                                         ))}
                                                     </Group>
                                                 );
                                             })}
+
+                                            {/* Relay Lights */}
                                             {[...Array(4)].map((_, i) => (
                                                 <Circle key={`relay-light-${i}`} x={UPPER_RELAY_LIGHT_START_X + i * UPPER_RELAY_LIGHT_SPACING} y={UPPER_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
                                             ))}
-
                                             {[...Array(4)].map((_, i) => (
                                                 <Circle key={`relay-light-bottom-${i}`} x={BOTTOM_RELAY_LIGHT_START_X + i * BOTTOM_RELAY_LIGHT_SPACING} y={BOTTOM_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
                                             ))}
 
+                                            {/* Start Button */}
                                             <Group x={START_BUTTON_X} y={START_BUTTON_Y}
                                                 onMouseDown={() => setIsStartPressed(true)} onMouseUp={() => setIsStartPressed(false)} onMouseLeave={() => setIsStartPressed(false)}
                                                 onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
@@ -670,9 +699,10 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                     <Circle radius={16} fill={isStartPressed ? '#0f766e' : '#10b981'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
                                                     <Circle radius={11} fill={isStartPressed ? '#10b981' : '#34d399'} />
                                                 </Group>
-                                                <Text text="START" x={START_TEXT_X} y={START_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
+                                                <Text text="START" x={START_TEXT_X} y={START_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" listening={false} />
                                             </Group>
 
+                                            {/* Stop Button */}
                                             <Group x={STOP_BUTTON_X} y={STOP_BUTTON_Y}
                                                 onMouseDown={() => setIsStopPressed(true)} onMouseUp={() => setIsStopPressed(false)} onMouseLeave={() => setIsStopPressed(false)}
                                                 onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
@@ -681,9 +711,10 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                     <Circle radius={16} fill={isStopPressed ? '#b91c1c' : '#ef4444'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
                                                     <Circle radius={11} fill={isStopPressed ? '#ef4444' : '#f87171'} />
                                                 </Group>
-                                                <Text text="STOP" x={STOP_TEXT_X} y={STOP_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" />
+                                                <Text text="STOP" x={STOP_TEXT_X} y={STOP_TEXT_Y} fontSize={11} fontStyle="bold" fill="#1e293b" listening={false} />
                                             </Group>
 
+                                            {/* Selector Knob */}
                                             <Group x={SELECTOR_KNOB_X} y={SELECTOR_KNOB_Y}
                                                 onMouseDown={() => setActiveKnob('selector')} onMouseUp={() => setActiveKnob(null)}
                                                 onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'grab'; }}
@@ -697,6 +728,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                 <Text text="SELECTOR" x={-26} y={22} fontSize={10} fontStyle="bold" fill="#1e293b" listening={false} />
                                             </Group>
 
+                                            {/* EMO Knob */}
                                             <Group x={EMO_KNOB_X} y={EMO_KNOB_Y}
                                                 onMouseDown={() => setActiveKnob('emo')} onMouseUp={() => setActiveKnob(null)}
                                                 onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'grab'; }}
@@ -710,52 +742,14 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                                 <Text text="EMO" x={-12} y={22} fontSize={10} fontStyle="bold" fill="#7f1d1d" listening={false} />
                                             </Group>
 
-                                            <Group x={690} y={30} listening={false}>
-                                                <Rect width={560} height={420} fill="#e2e8f0" cornerRadius={6} />
-                                                <Rect width={560} height={24} fill="#cbd5e1" cornerRadius={6} />
-                                                <Text text="PNEUMATIC ACTUATORS (HARDWARE MODULE)" x={10} y={8} fill="#475569" fontSize={12} fontStyle="bold" />
-                                                <Rect x={50} y={80} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
-                                                <Rect x={250} y={90} width={120} height={20} fill="#cbd5e1" cornerRadius={4} />
-                                                <Rect x={50} y={200} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
-                                                <Rect x={180} y={210} width={190} height={20} fill="#cbd5e1" cornerRadius={4} />
-                                            </Group>
-                                        </Layer>
-
-                                        {/* LAYER 2: INTERACTIVE ELEMENTS (Wires placed FIRST so they hide behind ports) */}
-                                        <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
-
-                                            {wires.map((wire) => {
-                                                const isSelected = selectedWireId === wire.id;
-
-                                                return (
-                                                    <Line
-                                                        key={`wire-${wire.id}`}
-                                                        points={wire.points} // Now completely uses orthogonal points!
-                                                        stroke={wire.color}
-                                                        strokeWidth={isSelected ? 10 : 8}
-                                                        hitStrokeWidth={20}
-                                                        lineCap="round"
-                                                        lineJoin="round"
-                                                        // REMOVED tension=0.15 to ensure perfectly straight lines
-                                                        shadowColor={isSelected ? '#f1c40f' : 'rgba(0,0,0,0.5)'}
-                                                        shadowBlur={isSelected ? 15 : 6}
-                                                        shadowOffsetY={isSelected ? 0 : 8}
-                                                        onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); setWireColor(wire.color); }}
-                                                        onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
-                                                        onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
-                                                    />
-                                                );
-                                            })}
-
+                                            {/* ALL PORTS (Drawn LAST so they sit perfectly on top of wires) */}
                                             {Object.entries(GOTT_TRAINER_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
 
                                         </Layer>
 
-                                        {/* LAYER 3: Fast Overlay for Ghost Wire & Imperative Tooltips */}
+                                        {/* LAYER 4: Fast Overlay for Ghost Wire & Imperative Tooltips */}
                                         <Layer scaleX={canvasScale} scaleY={canvasScale} id="overlay-layer" listening={false}>
-                                            <Line ref={ghostWireRef} stroke={wireColor} strokeWidth={6} dash={[10, 8]} opacity={0.7} lineJoin="round" visible={false} />
-
-                                            {/* The Hover Ring trick! Never redraws the heavy layer! */}
+                                            <Line ref={ghostWireRef} stroke={wireColor} strokeWidth={8} opacity={0.8} lineJoin="round" visible={false} />
                                             <Circle ref={hoverRingRef} radius={9} stroke="#ffffff" strokeWidth={2} visible={false} />
 
                                             <Group ref={tooltipRef} visible={false}>

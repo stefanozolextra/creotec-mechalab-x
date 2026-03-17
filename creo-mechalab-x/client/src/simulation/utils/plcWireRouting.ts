@@ -3,71 +3,6 @@ export interface WireRoutingPoint {
     y: number;
 }
 
-type NodeKey = string;
-
-const manhattan = (a: WireRoutingPoint, b: WireRoutingPoint) =>
-    Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-
-function keyOf(p: WireRoutingPoint): NodeKey {
-    return `${Math.round(p.x * 10) / 10},${Math.round(p.y * 10) / 10}`;
-}
-
-// ---------------------------------------------------------
-// DIJKSTRA SHORTEST PATH FINDER
-// ---------------------------------------------------------
-function dijkstra(
-    startKey: NodeKey,
-    endKey: NodeKey,
-    nodes: Record<NodeKey, WireRoutingPoint>,
-    edges: Record<NodeKey, NodeKey[]>
-): NodeKey[] {
-    const dist: Record<NodeKey, number> = {};
-    const prev: Record<NodeKey, NodeKey | null> = {};
-    const unvisited = new Set<NodeKey>(Object.keys(nodes));
-
-    for (const k of unvisited) {
-        dist[k] = Infinity;
-        prev[k] = null;
-    }
-    dist[startKey] = 0;
-
-    while (unvisited.size > 0) {
-        let u: NodeKey | null = null;
-        let best = Infinity;
-
-        for (const k of unvisited) {
-            if (dist[k] < best) {
-                best = dist[k];
-                u = k;
-            }
-        }
-
-        if (!u || u === endKey || best === Infinity) break;
-        unvisited.delete(u);
-
-        for (const v of edges[u] ?? []) {
-            if (!unvisited.has(v)) continue;
-            const alt = dist[u] + manhattan(nodes[u], nodes[v]);
-            if (alt < dist[v]) {
-                dist[v] = alt;
-                prev[v] = u;
-            }
-        }
-    }
-
-    const path: NodeKey[] = [];
-    let cur: NodeKey | null = endKey;
-    while (cur) {
-        path.push(cur);
-        cur = prev[cur];
-    }
-    path.reverse();
-    return path.length > 0 && path[0] === startKey ? path : [];
-}
-
-// ---------------------------------------------------------
-// MAIN ROUTING GENERATOR
-// ---------------------------------------------------------
 export const computePLCWirePath = (
     fromPin: string,
     toPinOrPos: string | { x: number; y: number },
@@ -75,174 +10,85 @@ export const computePLCWirePath = (
     wireIndex: number
 ): number[] => {
     const start = ports[fromPin];
-    // Determine if the destination is a physical pin ID or a floating mouse coordinate
-    const end = typeof toPinOrPos === 'string' ? ports[toPinOrPos] : toPinOrPos;
+    const isDragging = typeof toPinOrPos !== 'string';
+    const end = isDragging ? (toPinOrPos as { x: number; y: number }) : ports[toPinOrPos as string];
 
     if (!start || !end) return [];
 
-    // Spread overlapping wires slightly so they don't perfectly hide each other
-    const slotOffset = ((wireIndex % 5) - 2) * 4;
-
-    // --- 1. GLOBAL GRID ROUTING (SAFE ZONES) ---
-    // Denser array of safe horizontal/vertical paths (gutters) between panels.
-    const hLines = [
-        15 + slotOffset,
-        250 + slotOffset,  // Gutter above Inputs
-        370 + slotOffset,  // *FIXED*: Gutter safely between Input row 1 jacks and Input row 2 knobs
-        450 + slotOffset,  // Gutter below Inputs
-        505 + slotOffset,  // Gutter above Solenoids
-        568 + slotOffset,  // Gutter above Manual Inputs
-        612 + slotOffset,  // Gutter between Relay rows
-        705 + slotOffset   // Gutter at the very bottom
-    ];
-
-    const vLines = [
-        15 + slotOffset,
-        200 + slotOffset,
-        338 + slotOffset,
-        460 + slotOffset,
-        505 + slotOffset,  // Mid-Reeds
-        608 + slotOffset,
-        700 + slotOffset,  // Mid-Manual
-        835 + slotOffset,  // Mid-Manual
-        985 + slotOffset,  // Mid-Manual
-        1135 + slotOffset, // Mid-Manual
-        1265 + slotOffset
-    ];
+    // Spread overlapping wires slightly (-6px to +6px) so they don't perfectly hide each other
+    const slotOffset = ((wireIndex % 5) - 2) * 3;
 
     const dx = Math.abs(start.x - end.x);
     const dy = Math.abs(start.y - end.y);
 
-    // --- 2. SMART LOCAL JUMPER BYPASS ---
-    // If ports are horizontally close, draw a U-Shape locked into the nearest safe hLine
-    if (dy < 30 && dx < 150) {
-        let nearestH = hLines[0];
-        let minDist = Math.abs(start.y - hLines[0]);
-        for (const h of hLines) {
-            if (Math.abs(start.y - h) < minDist) {
-                minDist = Math.abs(start.y - h);
-                nearestH = h;
-            }
-        }
-        return [start.x, start.y, start.x, nearestH, end.x, nearestH, end.x, end.y];
+    // --- RULE 1: PERFECT VERTICALS ---
+    // If they are in the exact same column, just draw a straight vertical line!
+    if (dx < 5) {
+        return [start.x, start.y, end.x, end.y];
     }
 
-    // If ports are vertically close, draw a C-Shape locked into the nearest safe vLine
-    if (dx < 30 && dy < 150) {
-        let nearestV = vLines[0];
-        let minDist = Math.abs(start.x - vLines[0]);
-        for (const v of vLines) {
-            if (Math.abs(start.x - v) < minDist) {
-                minDist = Math.abs(start.x - v);
-                nearestV = v;
-            }
-        }
-        return [start.x, start.y, nearestV, start.y, nearestV, end.y, end.x, end.y];
+    // --- RULE 2: THE "SMART JOG" (Fix for Image 1: Reed to Solenoid) ---
+    // If they are slightly offset vertically, dropping to a main gutter looks like an ugly Z-shape.
+    // Instead, we just draw a clean, neat S-curve exactly halfway between them in the empty space.
+    if (dx < 30) {
+        const midY = (start.y + end.y) / 2;
+        return [
+            start.x, start.y,
+            start.x, midY,
+            end.x, midY,
+            end.x, end.y
+        ];
     }
 
-    // --- 3. DIJKSTRA PATHFINDING ---
-    const nodes: Record<NodeKey, WireRoutingPoint> = {};
-    const edges: Record<NodeKey, NodeKey[]> = {};
-    const addNode = (p: WireRoutingPoint) => {
-        const k = keyOf(p);
-        if (!nodes[k]) nodes[k] = p;
-        if (!edges[k]) edges[k] = [];
-        return k;
-    };
-
-    // Build Grid
-    const gridKeys: NodeKey[][] = [];
-    for (let yi = 0; yi < hLines.length; yi++) {
-        const row: NodeKey[] = [];
-        for (let xi = 0; xi < vLines.length; xi++) {
-            row.push(addNode({ x: vLines[xi], y: hLines[yi] }));
-        }
-        gridKeys.push(row);
+    // --- RULE 3: DIRECT NEIGHBOR BYPASS (Fix for horizontal neighbors) ---
+    // If ports are on the same row AND right next to each other, draw a straight line!
+    if (dy < 10 && dx < 100) {
+        const directY = ((start.y + end.y) / 2) + (slotOffset * 0.5);
+        return [
+            start.x, start.y,
+            start.x, directY,
+            end.x, directY,
+            end.x, end.y
+        ];
     }
 
-    // Connect Grid Vertices
-    for (let yi = 0; yi < hLines.length; yi++) {
-        for (let xi = 0; xi < vLines.length; xi++) {
-            if (xi < vLines.length - 1) {
-                edges[gridKeys[yi][xi]].push(gridKeys[yi][xi + 1]);
-                edges[gridKeys[yi][xi + 1]].push(gridKeys[yi][xi]);
-            }
-            if (yi < hLines.length - 1) {
-                edges[gridKeys[yi][xi]].push(gridKeys[yi + 1][xi]);
-                edges[gridKeys[yi + 1][xi]].push(gridKeys[yi][xi]);
-            }
-        }
+    // --- RULE 4: LONG DISTANCE & U-SHAPES ---
+    // Component-free horizontal zones (gutters) meticulously mapped to the panel gaps
+    const horizontalGutters = [
+        255, // Gap above Inputs
+        370, // Gap between Input row 1 jacks and Input row 2 knobs
+        450, // Gap below Inputs
+        495, // Gap safely above Solenoid text
+        552, // Gap between Solenoids and Relay Row 1
+        612, // Gap between Relay Row 1 and Relay Row 2
+        690  // Safely below the entire board
+    ];
+
+    const minY = Math.min(start.y, end.y);
+    const maxY = Math.max(start.y, end.y);
+
+    // Find all gutters that exist perfectly BETWEEN the two ports
+    const validGutters = horizontalGutters.filter(g => g > minY + 15 && g < maxY - 15);
+
+    let routeY;
+    if (validGutters.length > 0) {
+        // If there are safe gutters between them, pick the one closest to the middle (Classic S-Curve)
+        const midY = (start.y + end.y) / 2;
+        routeY = validGutters.reduce((prev, curr) => Math.abs(curr - midY) < Math.abs(prev - midY) ? curr : prev);
+    } else {
+        // If there are NO gutters between them (they are on the same row, but far apart)
+        // Pick the nearest safe gutter outside of them to form a perfect U-shape.
+        const midY = (start.y + end.y) / 2;
+        routeY = horizontalGutters.reduce((prev, curr) => Math.abs(curr - midY) < Math.abs(prev - midY) ? curr : prev);
     }
 
-    // Helper to drop pin/mouse to the nearest horizontal gutter
-    const getExitPoint = (p: WireRoutingPoint) => {
-        let nearestH = hLines[0];
-        let minDist = Math.abs(p.y - hLines[0]);
-        for (const h of hLines) {
-            if (Math.abs(p.y - h) < minDist) {
-                minDist = Math.abs(p.y - h);
-                nearestH = h;
-            }
-        }
-        return { x: p.x, y: nearestH };
-    };
+    // Apply the offset so multiple wires in the same gutter stack neatly like a ribbon cable
+    routeY += slotOffset;
 
-    const startExit = getExitPoint(start);
-    const endEntry = getExitPoint(end);
-
-    // Tie exit points to nearest vertical grid lines
-    const attachToGraph = (p: WireRoutingPoint) => {
-        const pk = addNode(p);
-        let leftV = vLines[0];
-        let rightV = vLines[vLines.length - 1];
-
-        for (const v of vLines) {
-            if (v <= p.x) leftV = v;
-            if (v >= p.x && rightV === vLines[vLines.length - 1]) rightV = v;
-        }
-
-        const cLeft = { x: leftV, y: p.y };
-        const cRight = { x: rightV, y: p.y };
-
-        [cLeft, cRight].forEach(c => {
-            const ck = addNode(c);
-            edges[pk].push(ck);
-            edges[ck].push(pk);
-        });
-        return pk;
-    };
-
-    const startK = attachToGraph(startExit);
-    const endK = attachToGraph(endEntry);
-
-    // Run Dijkstra
-    const pathKeys = dijkstra(startK, endK, nodes, edges);
-
-    // Fallback if dragging completely out of bounds
-    if (!pathKeys.length) return [start.x, start.y, end.x, end.y];
-
-    // Assemble full path
-    const fullPath = [start, startExit, ...pathKeys.map(k => nodes[k]), endEntry, end];
-
-    // Clean up redundant straight lines
-    const cleanPath: WireRoutingPoint[] = [];
-    for (let i = 0; i < fullPath.length; i++) {
-        const p = fullPath[i];
-        if (cleanPath.length < 2) {
-            cleanPath.push(p);
-            continue;
-        }
-        const prev1 = cleanPath[cleanPath.length - 1];
-        const prev2 = cleanPath[cleanPath.length - 2];
-
-        const isHorizontal = Math.abs(p.y - prev1.y) < 1 && Math.abs(prev1.y - prev2.y) < 1;
-        const isVertical = Math.abs(p.x - prev1.x) < 1 && Math.abs(prev1.x - prev2.x) < 1;
-
-        if (isHorizontal || isVertical) {
-            cleanPath.pop(); // Remove redundant middle point
-        }
-        cleanPath.push(p);
-    }
-
-    return cleanPath.flatMap(p => [p.x, p.y]);
+    return [
+        start.x, start.y,
+        start.x, routeY,
+        end.x, routeY,
+        end.x, end.y
+    ];
 };
