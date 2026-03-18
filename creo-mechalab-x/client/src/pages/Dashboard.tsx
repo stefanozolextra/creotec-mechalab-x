@@ -241,21 +241,45 @@ const Dashboard = () => {
         const data = dashboardState.data;
         if (!data) return [];
 
-        return [...data.moduleContent.modules]
-            .sort((a, b) => toNumber(a.order_no) - toNumber(b.order_no))
-            .map((module) => {
-                const moduleId = toNumber(module.module_id);
-                const moduleStatus = moduleStatusByModuleId.get(moduleId);
+        // 1. Sort the modules first so we know their exact sequence
+        const sortedModules = [...data.moduleContent.modules].sort(
+            (a, b) => toNumber(a.order_no) - toNumber(b.order_no)
+        );
 
-                return {
-                    id: moduleId,
-                    title: module.title,
-                    moduleCode: module.module_code,
-                    description: module.description,
-                    status: getLevelStatus(moduleStatus?.module_status),
-                    score: getScorePercent(moduleStatus),
-                };
-            });
+        // 2. Map through them and apply the smart unlock logic
+        return sortedModules.map((module, index) => {
+            const moduleId = toNumber(module.module_id);
+            const moduleStatus = moduleStatusByModuleId.get(moduleId);
+
+            // Get the raw status from the database
+            let status = getLevelStatus(moduleStatus?.module_status);
+
+            // --- SMART UNLOCK LOGIC ---
+            // If the database says it's locked, we evaluate if it should be unlocked by default
+            if (status === 'locked') {
+                if (index === 0) {
+                    // Rule 1: The very first module is ALWAYS unlocked for new users
+                    status = 'unlocked';
+                } else {
+                    // Rule 2: Unlock this module automatically if the PREVIOUS module is completed
+                    const prevModuleId = toNumber(sortedModules[index - 1].module_id);
+                    const prevStatus = getLevelStatus(moduleStatusByModuleId.get(prevModuleId)?.module_status);
+
+                    if (prevStatus === 'completed') {
+                        status = 'unlocked';
+                    }
+                }
+            }
+
+            return {
+                id: moduleId,
+                title: module.title,
+                moduleCode: module.module_code,
+                description: module.description,
+                status, // Passes the new smart status to the UI
+                score: getScorePercent(moduleStatus),
+            };
+        });
     }, [dashboardState.data, moduleStatusByModuleId]);
 
     const nextSimulationByModuleId = useMemo(() => {
@@ -339,10 +363,10 @@ const Dashboard = () => {
             url: absoluteUrl,
             ...(shouldAttachAuthHeader && authToken
                 ? {
-                      httpHeaders: {
-                          Authorization: `Bearer ${authToken}`,
-                      },
-                  }
+                    httpHeaders: {
+                        Authorization: `Bearer ${authToken}`,
+                    },
+                }
                 : {}),
         };
     }, [authToken, selectedPrimaryLesson]);
