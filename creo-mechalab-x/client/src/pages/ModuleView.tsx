@@ -3,7 +3,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Loader2, Moon, Sun, Target, CheckCircle2, Lock } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import CyberTransition from '../components/CyberTransition';
-import ReactAntiCapture from '../components/AntiCapture';
+// import ReactAntiCapture from '../components/AntiCapture';
 import { API_BASE_URL } from '../api/http';
 import { getTraineeDashboard } from '../api/trainees';
 import { getAuthToken } from '../utils/auth';
@@ -71,6 +71,9 @@ const ModuleView = () => {
     const [lessonOptions, setLessonOptions] = useState<ModuleLessonOption[]>([]);
     const [selectedLessonResourceId, setSelectedLessonResourceId] = useState<number | null>(hintedLessonResourceId);
 
+    // --- SEQUENTIAL UNLOCK STATE ---
+    const [highestUnlockedIndex, setHighestUnlockedIndex] = useState<number>(0);
+
     const authToken = getAuthToken();
     const previewPaneRef = useRef<HTMLDivElement | null>(null);
 
@@ -96,7 +99,8 @@ const ModuleView = () => {
     // ----------------------------------
 
     useEffect(() => {
-        setNativeSecureScreen(true);
+        // setNativeSecureScreen(true);
+        setNativeSecureScreen(false);
         return () => {
             setNativeSecureScreen(false);
         };
@@ -135,6 +139,7 @@ const ModuleView = () => {
         setNumPages(null);
         setPageNumber(1);
         setLessonOptions([]);
+        setHighestUnlockedIndex(0); // Reset progress on module load
 
         if (!hasValidModuleId) {
             setResolveError('Invalid module id.');
@@ -254,6 +259,20 @@ const ModuleView = () => {
         setPageNumber(1);
     }, [isResolvingPdf, lessonOptions, moduleId, moduleTitle, selectedLessonResourceId]);
 
+    // --- NEW: PROGRESSION UNLOCK EFFECT ---
+    useEffect(() => {
+        // When the user reaches the last page of the currently selected document
+        if (numPages !== null && pageNumber === numPages) {
+            const currentIndex = lessonOptions.findIndex(opt => opt.resourceId === selectedLessonResourceId);
+
+            // If they just finished their highest unlocked lesson, unlock the next one!
+            if (currentIndex !== -1 && currentIndex === highestUnlockedIndex) {
+                setHighestUnlockedIndex(prev => prev + 1);
+            }
+        }
+    }, [pageNumber, numPages, selectedLessonResourceId, lessonOptions, highestUnlockedIndex]);
+    // --------------------------------------
+
     const documentFile = useMemo(() => {
         if (!resolvedPdfUrl) return null;
         const absoluteUrl = toAbsoluteUrl(resolvedPdfUrl);
@@ -325,177 +344,181 @@ const ModuleView = () => {
                     </div>
                 </header>
 
-                <ReactAntiCapture
+                {/* <ReactAntiCapture
                     className="max-w-[1600px] mx-auto w-full"
                     title="Module capture blocked"
                     message="Screenshots and print-screen attempts are blocked on this module."
-                >
-                    <main className="flex-1 flex flex-col lg:flex-row gap-6 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full relative z-10">
+                > */}
+                <main className="flex-1 flex flex-col lg:flex-row gap-6 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full relative z-10">
 
-                        {/* Sidebar - Module List */}
-                        <aside className="w-full lg:w-[360px] flex-shrink-0 flex flex-col lg:h-[calc(100vh-140px)]">
-                            <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
-                                {/* Corner Accents */}
-                                <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
-                                <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />
+                    {/* Sidebar - Module List */}
+                    <aside className="w-full lg:w-[360px] flex-shrink-0 flex flex-col lg:h-[calc(100vh-140px)]">
+                        <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
+                            {/* Corner Accents */}
+                            <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
+                            <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />
 
-                                <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center gap-3 shrink-0 transition-colors duration-300">
-                                    <FileText size={18} className="text-slate-700 dark:text-cyan-500" strokeWidth={2.5} />
-                                    <h2 className="font-black text-slate-800 dark:text-white tracking-widest uppercase text-sm">MODULE LIST</h2>
-                                </div>
+                            <div className="px-6 py-5 border-b border-slate-100 dark:border-slate-800/80 flex items-center gap-3 shrink-0 transition-colors duration-300">
+                                <FileText size={18} className="text-slate-700 dark:text-cyan-500" strokeWidth={2.5} />
+                                <h2 className="font-black text-slate-800 dark:text-white tracking-widest uppercase text-sm">MODULE LIST</h2>
+                            </div>
 
-                                <div className="p-6 flex flex-col gap-4 overflow-y-auto custom-scrollbar">
-                                    {isResolvingPdf ? (
-                                        <div className="flex flex-col items-center justify-center p-6 text-slate-400 dark:text-slate-500">
-                                            <Loader2 size={24} className="animate-spin mb-2 text-cyan-500" />
-                                            <p className="text-[10px] font-mono uppercase tracking-widest font-bold">Syncing files...</p>
-                                        </div>
-                                    ) : lessonOptions.length > 0 ? (
-                                        lessonOptions.map((option, index) => {
-                                            const isSelected = option.resourceId === selectedLessonResourceId;
-                                            const activeIndex = lessonOptions.findIndex(opt => opt.resourceId === selectedLessonResourceId);
-                                            const isCompleted = index < activeIndex;
-                                            const isLocked = index > activeIndex;
+                            <div className="p-6 flex flex-col gap-4 overflow-y-auto custom-scrollbar">
+                                {isResolvingPdf ? (
+                                    <div className="flex flex-col items-center justify-center p-6 text-slate-400 dark:text-slate-500">
+                                        <Loader2 size={24} className="animate-spin mb-2 text-cyan-500" />
+                                        <p className="text-[10px] font-mono uppercase tracking-widest font-bold">Syncing files...</p>
+                                    </div>
+                                ) : lessonOptions.length > 0 ? (
+                                    lessonOptions.map((option, index) => {
+                                        const isSelected = option.resourceId === selectedLessonResourceId;
 
-                                            return (
-                                                <div
-                                                    key={option.resourceId}
-                                                    onClick={() => !isLocked && setSelectedLessonResourceId(option.resourceId)}
-                                                    className={`relative p-5 border transition-all bg-white dark:bg-[#0B0F19]
+                                        // NEW SEQUENTIAL LOGIC
+                                        const isLocked = index > highestUnlockedIndex;
+                                        const isCompleted = index < highestUnlockedIndex;
+
+                                        return (
+                                            <div
+                                                key={option.resourceId}
+                                                onClick={() => !isLocked && setSelectedLessonResourceId(option.resourceId)}
+                                                className={`relative p-5 border transition-all bg-white dark:bg-[#0B0F19]
                                                         ${isSelected ? 'border-cyan-200 dark:border-cyan-500/30 border-l-[3px] border-l-cyan-400 dark:border-l-cyan-500 dark:bg-[#162133] shadow-[0_4px_20px_-5px_rgba(34,211,238,0.15)] cursor-pointer' : ''}
                                                         ${isLocked ? 'opacity-50 grayscale cursor-not-allowed border-slate-100 dark:border-slate-800/40' : ''}
                                                         ${!isSelected && !isLocked ? 'border-slate-100 dark:border-slate-800/60 hover:border-slate-200 dark:hover:border-slate-700 cursor-pointer' : ''}
                                                     `}
-                                                >
-                                                    <div className="flex justify-between items-start">
-                                                        <div className="min-w-0 pr-2">
-                                                            <p className={`text-[10px] font-bold tracking-widest uppercase mb-1.5 ${isSelected ? 'text-cyan-500 dark:text-cyan-400' : 'text-slate-400 dark:text-slate-500'}`}>
-                                                                FILE_{String(index + 1).padStart(2, '0')}
-                                                            </p>
-                                                            <h3 className={`font-extrabold tracking-wide uppercase text-sm truncate ${isSelected ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
-                                                                {option.title}
-                                                            </h3>
-                                                        </div>
-                                                        {isCompleted && <CheckCircle2 size={18} className="text-emerald-500 mt-1 shrink-0" />}
-                                                        {isSelected && <div className="w-2 h-2 rounded-full bg-cyan-400 mt-2 shrink-0 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />}
-                                                        {isLocked && <Lock size={16} className="text-slate-300 dark:text-slate-600 mt-1 shrink-0" />}
+                                            >
+                                                <div className="flex justify-between items-start">
+                                                    <div className="min-w-0 pr-2">
+                                                        <p className={`text-[10px] font-bold tracking-widest uppercase mb-1.5 ${isSelected ? 'text-cyan-500 dark:text-cyan-400' : 'text-slate-400 dark:text-slate-500'}`}>
+                                                            FILE_{String(index + 1).padStart(2, '0')}
+                                                        </p>
+                                                        <h3 className={`font-extrabold tracking-wide uppercase text-sm truncate ${isSelected ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300'}`}>
+                                                            {option.title}
+                                                        </h3>
                                                     </div>
+                                                    {isCompleted && <CheckCircle2 size={18} className="text-emerald-500 mt-1 shrink-0" />}
+                                                    {isSelected && <div className="w-2 h-2 rounded-full bg-cyan-400 mt-2 shrink-0 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />}
+                                                    {isLocked && <Lock size={16} className="text-slate-300 dark:text-slate-600 mt-1 shrink-0" />}
                                                 </div>
-                                            );
-                                        })
-                                    ) : (
-                                        <div className="p-6 text-center text-slate-400 dark:text-slate-600">
-                                            <FileText size={22} className="mx-auto mb-2 opacity-30" />
-                                            <p className="text-xs font-semibold uppercase tracking-widest">No files found</p>
-                                        </div>
-                                    )}
-                                </div>
+                                            </div>
+                                        );
+                                    })
+                                ) : (
+                                    <div className="p-6 text-center text-slate-400 dark:text-slate-600">
+                                        <FileText size={22} className="mx-auto mb-2 opacity-30" />
+                                        <p className="text-xs font-semibold uppercase tracking-widest">No files found</p>
+                                    </div>
+                                )}
                             </div>
-                        </aside>
+                        </div>
+                    </aside>
 
-                        {/* Main Content Area */}
-                        <section className="flex-1 flex flex-col h-[600px] lg:h-[calc(100vh-140px)]">
-                            <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
-                                {/* Corner Accents */}
-                                <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
-                                <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />
+                    {/* Main Content Area */}
+                    <section className="flex-1 flex flex-col h-[600px] lg:h-[calc(100vh-140px)]">
+                        <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
+                            {/* Corner Accents */}
+                            <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
+                            <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />
 
-                                {numPages && !isResolvingPdf && !resolveError && !viewerError ? (
-                                    <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 bg-slate-50/50 dark:bg-transparent transition-colors duration-300">
-                                        <div className="min-w-0">
-                                            <h2 className="text-lg font-black text-slate-800 dark:text-white truncate">
-                                                {resolvedPdfTitle}
-                                            </h2>
-                                            {selectedLessonResourceId && (
-                                                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono uppercase tracking-widest mt-0.5">
-                                                    Resource ID: {selectedLessonResourceId}
-                                                </p>
-                                            )}
-                                        </div>
-                                        <div className="flex items-center gap-3 bg-white dark:bg-[#0B0F19] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm shrink-0 transition-colors duration-300">
-                                            <button
-                                                disabled={pageNumber <= 1}
-                                                onClick={() => changePage(-1)}
-                                                className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 transition"
-                                            >
-                                                <ChevronLeft size={18} />
-                                            </button>
-                                            <span className="text-xs font-mono text-slate-600 dark:text-slate-400 uppercase tracking-widest font-bold">
-                                                PG {pageNumber}/{numPages}
-                                            </span>
-                                            <button
-                                                disabled={pageNumber >= numPages}
-                                                onClick={() => changePage(1)}
-                                                className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 transition"
-                                            >
-                                                <ChevronRight size={18} />
-                                            </button>
+                            {numPages && !isResolvingPdf && !resolveError && !viewerError ? (
+                                <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shrink-0 bg-slate-50/50 dark:bg-transparent transition-colors duration-300">
+                                    <div className="min-w-0">
+                                        <h2 className="text-lg font-black text-slate-800 dark:text-white truncate">
+                                            {resolvedPdfTitle}
+                                        </h2>
+                                        {selectedLessonResourceId && (
+                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono uppercase tracking-widest mt-0.5">
+                                                Resource ID: {selectedLessonResourceId}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="flex items-center gap-3 bg-white dark:bg-[#0B0F19] px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm shrink-0 transition-colors duration-300">
+                                        <button
+                                            disabled={pageNumber <= 1}
+                                            onClick={() => changePage(-1)}
+                                            className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 transition"
+                                        >
+                                            <ChevronLeft size={18} />
+                                        </button>
+                                        <span className="text-xs font-mono text-slate-600 dark:text-slate-400 uppercase tracking-widest font-bold">
+                                            PG {pageNumber}/{numPages}
+                                        </span>
+                                        <button
+                                            disabled={pageNumber >= numPages}
+                                            onClick={() => changePage(1)}
+                                            className="text-slate-400 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 disabled:opacity-30 transition"
+                                        >
+                                            <ChevronRight size={18} />
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : null}
+
+                            {/* PDF Viewer / Error States */}
+                            <div
+                                ref={previewPaneRef}
+                                className="flex-1 overflow-auto p-4 sm:p-6 lg:p-10 flex items-start justify-center bg-slate-50/30 dark:bg-[#0A0E17] relative transition-colors duration-300"
+                            >
+                                {isResolvingPdf ? (
+                                    <div className="flex flex-col items-center justify-center h-full w-full text-slate-400 dark:text-slate-500">
+                                        <Loader2 size={42} className="animate-spin mb-4 text-cyan-500" />
+                                        <p className="text-xs font-mono uppercase tracking-widest font-bold">Resolving Document...</p>
+                                    </div>
+                                ) : resolveError || viewerError ? (
+                                    <div className="flex flex-col items-center justify-center w-full h-full p-4">
+                                        <div className="bg-white dark:bg-[#2a1115] border border-slate-100 dark:border-red-900/50 shadow-xl dark:shadow-2xl w-full max-w-lg p-10 flex flex-col items-center justify-center gap-6 transition-colors duration-300 rounded-lg">
+                                            <Target size={56} className="text-red-400 dark:hidden" strokeWidth={1} />
+                                            <AlertTriangle size={42} className="hidden dark:block mx-auto text-red-200 opacity-80" strokeWidth={1.5} />
+
+                                            <p className="text-red-500 dark:text-red-200 font-bold dark:font-medium tracking-widest dark:tracking-wide text-xs dark:text-sm uppercase text-center font-mono dark:font-sans">
+                                                {(resolveError || viewerError || "FILE CORRUPTED OR MISSING").toUpperCase()}
+                                            </p>
                                         </div>
                                     </div>
-                                ) : null}
+                                ) : documentFile ? (
+                                    /* NEW LAYOUT FIX: Removed background block, let the Page component define the bounds */
+                                    <div className="flex justify-center w-full max-w-full">
+                                        <Document
+                                            file={documentFile}
+                                            className="flex justify-center"
+                                            onLoadSuccess={onDocumentLoadSuccess}
+                                            onLoadError={(error) => {
+                                                setViewerError(getErrorMessage(error, 'FILE CORRUPTED OR MISSING'));
+                                            }}
+                                            loading={
+                                                <div className="flex flex-col items-center justify-center h-[500px] w-full text-slate-400 dark:text-slate-500 p-8 text-center">
+                                                    <Loader2 size={48} className="animate-spin mb-4 text-cyan-500 mx-auto" />
+                                                    <p className="text-xs font-mono uppercase tracking-widest font-bold">Loading Data Array...</p>
+                                                </div>
+                                            }
+                                        >
+                                            <Page
+                                                pageNumber={pageNumber}
+                                                renderTextLayer={false}
+                                                renderAnnotationLayer={false}
+                                                width={pdfWidth}
+                                                // Border and shadow applied directly to the page canvas so it snaps to aspect ratio
+                                                className="shadow-2xl border border-slate-200 dark:border-slate-800"
+                                            />
+                                        </Document>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center w-full h-full p-4">
+                                        <div className="bg-white dark:bg-[#2a1115] border border-slate-100 dark:border-red-900/50 shadow-xl dark:shadow-2xl w-full max-w-lg p-10 flex flex-col items-center justify-center gap-6 transition-colors duration-300 rounded-lg">
+                                            <Target size={56} className="text-slate-300 dark:hidden" strokeWidth={1} />
+                                            <AlertTriangle size={42} className="hidden dark:block mx-auto text-red-200 opacity-80" strokeWidth={1.5} />
 
-                                {/* PDF Viewer / Error States */}
-                                <div
-                                    ref={previewPaneRef}
-                                    className="flex-1 overflow-auto p-4 sm:p-6 flex items-center justify-center bg-slate-50/30 dark:bg-[#0A0E17] relative transition-colors duration-300"
-                                >
-                                    {isResolvingPdf ? (
-                                        <div className="flex flex-col items-center justify-center h-full w-full text-slate-400 dark:text-slate-500">
-                                            <Loader2 size={42} className="animate-spin mb-4 text-cyan-500" />
-                                            <p className="text-xs font-mono uppercase tracking-widest font-bold">Resolving Document...</p>
+                                            <p className="text-slate-400 dark:text-red-200 font-bold dark:font-medium tracking-widest dark:tracking-wide text-xs dark:text-sm uppercase text-center font-mono dark:font-sans">
+                                                ERROR: FILE CORRUPTED OR MISSING
+                                            </p>
                                         </div>
-                                    ) : resolveError || viewerError ? (
-                                        <div className="flex flex-col items-center justify-center w-full h-full p-4">
-                                            <div className="bg-white dark:bg-[#2a1115] border border-slate-100 dark:border-red-900/50 shadow-xl dark:shadow-2xl w-full max-w-lg p-10 flex flex-col items-center justify-center gap-6 transition-colors duration-300 rounded-lg">
-                                                <Target size={56} className="text-red-400 dark:hidden" strokeWidth={1} />
-                                                <AlertTriangle size={42} className="hidden dark:block mx-auto text-red-200 opacity-80" strokeWidth={1.5} />
-
-                                                <p className="text-red-500 dark:text-red-200 font-bold dark:font-medium tracking-widest dark:tracking-wide text-xs dark:text-sm uppercase text-center font-mono dark:font-sans">
-                                                    {(resolveError || viewerError || "FILE CORRUPTED OR MISSING").toUpperCase()}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    ) : documentFile ? (
-                                        <div className="bg-white dark:bg-[#0B1120] shadow-xl dark:shadow-2xl border border-slate-200 dark:border-slate-800/50 flex justify-center max-w-full h-full overflow-y-auto w-full items-start pt-4 transition-colors duration-300">
-                                            <Document
-                                                file={documentFile}
-                                                onLoadSuccess={onDocumentLoadSuccess}
-                                                onLoadError={(error) => {
-                                                    setViewerError(getErrorMessage(error, 'FILE CORRUPTED OR MISSING'));
-                                                }}
-                                                loading={
-                                                    <div className="flex flex-col items-center justify-center h-[500px] w-full text-slate-400 dark:text-slate-500 p-8 text-center">
-                                                        <Loader2 size={48} className="animate-spin mb-4 text-cyan-500 mx-auto" />
-                                                        <p className="text-xs font-mono uppercase tracking-widest font-bold">Loading Data Array...</p>
-                                                    </div>
-                                                }
-                                            >
-                                                <Page
-                                                    pageNumber={pageNumber}
-                                                    renderTextLayer={false}
-                                                    renderAnnotationLayer={false}
-                                                    width={pdfWidth}
-                                                    className="shadow-sm"
-                                                />
-                                            </Document>
-                                        </div>
-                                    ) : (
-                                        <div className="flex flex-col items-center justify-center w-full h-full p-4">
-                                            <div className="bg-white dark:bg-[#2a1115] border border-slate-100 dark:border-red-900/50 shadow-xl dark:shadow-2xl w-full max-w-lg p-10 flex flex-col items-center justify-center gap-6 transition-colors duration-300 rounded-lg">
-                                                <Target size={56} className="text-slate-300 dark:hidden" strokeWidth={1} />
-                                                <AlertTriangle size={42} className="hidden dark:block mx-auto text-red-200 opacity-80" strokeWidth={1.5} />
-
-                                                <p className="text-slate-400 dark:text-red-200 font-bold dark:font-medium tracking-widest dark:tracking-wide text-xs dark:text-sm uppercase text-center font-mono dark:font-sans">
-                                                    ERROR: FILE CORRUPTED OR MISSING
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
+                                    </div>
+                                )}
                             </div>
-                        </section>
-                    </main>
-                </ReactAntiCapture>
+                        </div>
+                    </section>
+                </main>
+                {/* </ReactAntiCapture> */}
             </div>
         </CyberTransition>
     );
