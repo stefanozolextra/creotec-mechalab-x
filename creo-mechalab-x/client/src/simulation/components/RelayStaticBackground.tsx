@@ -26,6 +26,8 @@ export const RelayStaticBackground = React.memo(({
     const panelStroke = isDarkMode ? '#334155' : '#e2e8f0';
     const textFill = isDarkMode ? '#94a3b8' : '#cbd5e1';
     const dashStroke = isDarkMode ? '#475569' : '#94a3b8';
+    const holeFill = '#020617';
+    const holeStroke = isDarkMode ? '#334155' : '#94a3b8';
 
     const renderTechnicalPanel = (id: string, x: number, y: number, width: number, height: number, title: string) => (
         <Group key={`panel-${id}`} x={x} y={y} listening={false}>
@@ -52,12 +54,18 @@ export const RelayStaticBackground = React.memo(({
             <Rect x={10} y={0} width={20} height={36} fill="#3498db" />
             <Rect x={150} y={0} width={20} height={36} fill="#3498db" />
             <Text text={label} x={40} y={12} fontSize={12} fontStyle="bold" fill="#475569" width={100} align="center" />
-            <Rect x={180} y={14} width={60} height={8} fill="#bdc3c7" stroke="#7f8c8d" strokeWidth={1} />
+            <Rect x={180} y={14} width={85} height={8} fill="#bdc3c7" stroke="#7f8c8d" strokeWidth={1} />
         </Group>
     );
 
     const renderMicroSwitch = (x: number, y: number) => (
         <Group x={x} y={y} listening={false}>
+            {/* Panel Hole for Wires */}
+            <Circle x={40} y={10} radius={4} fill={holeFill} stroke={holeStroke} strokeWidth={1} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} />
+            {/* Hardwired red electrical wires disappearing into panel */}
+            <Line points={[24, 6, 32, 6, 40, 10]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
+            <Line points={[24, 10, 34, 10, 39, 10]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
+
             {/* Simulated Wooden Mount */}
             <Rect x={-4} y={-4} width={36} height={26} fill="#8b5a2b" cornerRadius={2} opacity={isDarkMode ? 0.6 : 0.8} />
             {/* Switch Body */}
@@ -70,14 +78,15 @@ export const RelayStaticBackground = React.memo(({
         </Group>
     );
 
-    // --- NEW: 5/2-Way Solenoid Valve with Pneumatic Tubes ---
     const render52Valve = (x: number, y: number, cylX: number, cylY: number) => (
         <Group listening={false}>
             {/* Orange Pneumatic Tubes connecting to Cylinder */}
             <Line points={[x + 25, y, x + 25, y - 25, cylX + 20, y - 25, cylX + 20, cylY + 36]} stroke="#f97316" strokeWidth={3.5} lineJoin="round" />
             <Line points={[x + 55, y, x + 55, y - 15, cylX + 160, y - 15, cylX + 160, cylY + 36]} stroke="#f97316" strokeWidth={3.5} lineJoin="round" />
-            {/* Supply Air Tube (Bottom) */}
-            <Line points={[x + 40, y + 36, x + 40, y + 60]} stroke="#f97316" strokeWidth={3.5} />
+
+            {/* Supply Air Tube (Bottom) routing cleanly into the panel hole */}
+            <Circle x={x + 40} y={y + 50} radius={5} fill={holeFill} stroke={holeStroke} strokeWidth={1} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} />
+            <Line points={[x + 40, y + 36, x + 40, y + 50]} stroke="#f97316" strokeWidth={3.5} />
 
             <Group x={x} y={y}>
                 {/* Main Silver Valve Body */}
@@ -88,15 +97,22 @@ export const RelayStaticBackground = React.memo(({
                 <Text text="Model: 4V220-08" x={9} y={20} fontSize={6} fontStyle="bold" fill="#334155" />
                 <Text text="VALVE" x={52} y={10} fontSize={5} fill="#475569" />
 
+                {/* Panel Hole for Left Wires */}
+                <Circle x={-42} y={6} radius={4} fill={holeFill} stroke={holeStroke} strokeWidth={1} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} />
+
                 {/* Left Solenoid Coil (Black) */}
                 <Rect x={-36} y={0} width={36} height={36} fill="#111827" cornerRadius={[4, 0, 0, 4]} />
                 <Rect x={-36} y={10} width={8} height={16} fill="#334155" />
 
                 {/* Left Translucent Connector */}
                 <Rect x={-30} y={-16} width={24} height={16} fill="rgba(69, 26, 3, 0.85)" stroke="#000000" strokeWidth={1} />
-                {/* Electrical Wires (Red & Black) extending out */}
-                <Line points={[-18, -10, -35, -10, -45, 0]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
-                <Line points={[-18, -14, -30, -14, -40, 5]} stroke="#111827" strokeWidth={1.5} tension={0.3} />
+
+                {/* Left Electrical Wires routing into panel hole */}
+                <Line points={[-18, -10, -35, -10, -42, 6]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
+                <Line points={[-18, -14, -30, -14, -40, 4]} stroke="#111827" strokeWidth={1.5} tension={0.3} />
+
+                {/* Panel Hole for Right Wires */}
+                <Circle x={122} y={6} radius={4} fill={holeFill} stroke={holeStroke} strokeWidth={1} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} />
 
                 {/* Right Solenoid Coil (Black) */}
                 <Rect x={80} y={0} width={36} height={36} fill="#111827" cornerRadius={[0, 4, 4, 0]} />
@@ -104,9 +120,10 @@ export const RelayStaticBackground = React.memo(({
 
                 {/* Right Translucent Connector */}
                 <Rect x={86} y={-16} width={24} height={16} fill="rgba(69, 26, 3, 0.85)" stroke="#000000" strokeWidth={1} />
-                {/* Electrical Wires (Red & Black) extending out */}
-                <Line points={[98, -10, 115, -10, 125, 0]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
-                <Line points={[98, -14, 110, -14, 120, 5]} stroke="#111827" strokeWidth={1.5} tension={0.3} />
+
+                {/* Right Electrical Wires routing into panel hole */}
+                <Line points={[98, -10, 115, -10, 122, 6]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
+                <Line points={[98, -14, 110, -14, 120, 4]} stroke="#111827" strokeWidth={1.5} tension={0.3} />
 
                 {/* Pneumatic Fittings (Gold Bases & Blue Push-in Rings) */}
                 {/* Top A & B */}
@@ -208,11 +225,10 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={830} y={400} width={45} height={220} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="SOLENOID 2" x={830} y={385} fontSize={11} fontStyle="bold" fill={textFill} />
 
-                {/* Labels for the Limit Switches */}
-                <Text text="1S1" x={1082} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
-                <Text text="1S2" x={1142} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
-                <Text text="2S1" x={1082} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
-                <Text text="2S2" x={1142} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="1S1" x={1105} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="1S2" x={1165} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="2S1" x={1105} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="2S2" x={1165} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
             </Group>
 
             {/* Middle Hardware Components */}
@@ -239,12 +255,12 @@ export const RelayStaticBackground = React.memo(({
                 {renderPneumaticCylinder(920, 490, "CYLINDER B")}
 
                 {/* Limit Switch Mounts & Bodies */}
-                {renderMicroSwitch(1085, 172)}
-                {renderMicroSwitch(1145, 172)}
-                {renderMicroSwitch(1085, 472)}
-                {renderMicroSwitch(1145, 472)}
+                {renderMicroSwitch(1105, 172)}
+                {renderMicroSwitch(1165, 172)}
+                {renderMicroSwitch(1105, 472)}
+                {renderMicroSwitch(1165, 472)}
 
-                {/* NEW: 5/2-Way Valves with pneumatic tubes connecting to Cylinders */}
+                {/* 5/2-Way Valves */}
                 {render52Valve(970, 275, 920, 190)}
                 {render52Valve(970, 575, 920, 490)}
             </Group>
