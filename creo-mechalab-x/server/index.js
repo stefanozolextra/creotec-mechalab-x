@@ -1102,6 +1102,27 @@ function extractVimeoVideoId(parsedUrl) {
     return null;
 }
 
+function extractGoogleDriveFileId(parsedUrl) {
+    const hostname = parsedUrl.hostname.toLowerCase().replace(/^www\./, "");
+    if (hostname !== "drive.google.com") return null;
+
+    const pathSegments = parsedUrl.pathname
+        .split("/")
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+    if (
+        pathSegments.length !== 4 ||
+        pathSegments[0] !== "file" ||
+        pathSegments[1] !== "d" ||
+        (pathSegments[3] !== "preview" && pathSegments[3] !== "view")
+    ) {
+        return null;
+    }
+
+    const fileId = pathSegments[2] || "";
+    return /^[A-Za-z0-9_-]+$/.test(fileId) ? fileId : null;
+}
+
 function normalizeVideoLessonUrl(value) {
     if (typeof value !== "string" || !value.trim()) {
         return { url: null, error: "Video URL is required" };
@@ -1129,6 +1150,14 @@ function normalizeVideoLessonUrl(value) {
         return { url: parsedUrl.toString(), error: null };
     }
 
+    const googleDriveFileId = extractGoogleDriveFileId(parsedUrl);
+    if (googleDriveFileId) {
+        return {
+            url: `https://drive.google.com/file/d/${encodeURIComponent(googleDriveFileId)}/preview`,
+            error: null,
+        };
+    }
+
     const extension = path.extname(parsedUrl.pathname || "").toLowerCase();
     if (DIRECT_VIDEO_ALLOWED_EXTENSIONS.has(extension)) {
         return { url: parsedUrl.toString(), error: null };
@@ -1136,7 +1165,7 @@ function normalizeVideoLessonUrl(value) {
 
     return {
         url: null,
-        error: "Video URL must be an https YouTube, Vimeo, MP4, or WebM link",
+        error: "Video URL must be an https YouTube, Vimeo, Google Drive /preview or /view file link, MP4, or WebM link",
     };
 }
 

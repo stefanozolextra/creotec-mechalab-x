@@ -12,6 +12,12 @@ export type SupportedVideoLesson =
       providerLabel: "Vimeo";
     }
   | {
+      kind: "google-drive";
+      sourceUrl: string;
+      embedUrl: string;
+      providerLabel: "Google Drive";
+    }
+  | {
       kind: "direct";
       sourceUrl: string;
       mimeType: "video/mp4" | "video/webm";
@@ -19,6 +25,7 @@ export type SupportedVideoLesson =
     };
 
 const normalizeHost = (value: string): string => value.trim().toLowerCase().replace(/^www\./, "");
+const GOOGLE_DRIVE_FILE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 const extractYouTubeVideoId = (parsedUrl: URL): string | null => {
   const hostname = normalizeHost(parsedUrl.hostname);
@@ -61,6 +68,28 @@ const extractVimeoVideoId = (parsedUrl: URL): string | null => {
   return null;
 };
 
+const extractGoogleDriveFileId = (parsedUrl: URL): string | null => {
+  const hostname = normalizeHost(parsedUrl.hostname);
+  if (hostname !== "drive.google.com") return null;
+
+  const pathSegments = parsedUrl.pathname
+    .split("/")
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+
+  if (
+    pathSegments.length !== 4 ||
+    pathSegments[0] !== "file" ||
+    pathSegments[1] !== "d" ||
+    (pathSegments[3] !== "preview" && pathSegments[3] !== "view")
+  ) {
+    return null;
+  }
+
+  const fileId = pathSegments[2] || "";
+  return GOOGLE_DRIVE_FILE_ID_PATTERN.test(fileId) ? fileId : null;
+};
+
 export const resolveSupportedVideoLesson = (value: string): SupportedVideoLesson | null => {
   const trimmed = value.trim();
   if (!trimmed) return null;
@@ -91,6 +120,17 @@ export const resolveSupportedVideoLesson = (value: string): SupportedVideoLesson
       sourceUrl: parsedUrl.toString(),
       embedUrl: `https://player.vimeo.com/video/${encodeURIComponent(vimeoVideoId)}`,
       providerLabel: "Vimeo",
+    };
+  }
+
+  const googleDriveFileId = extractGoogleDriveFileId(parsedUrl);
+  if (googleDriveFileId) {
+    const embedUrl = `https://drive.google.com/file/d/${encodeURIComponent(googleDriveFileId)}/preview`;
+    return {
+      kind: "google-drive",
+      sourceUrl: embedUrl,
+      embedUrl,
+      providerLabel: "Google Drive",
     };
   }
 
