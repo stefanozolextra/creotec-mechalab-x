@@ -9,6 +9,7 @@ import {
   Loader2,
   MousePointerClick,
   Pencil,
+  PlayCircle,
   Plus,
   RefreshCw,
   Trash2,
@@ -30,8 +31,9 @@ import {
 } from "../../api/adminLessons";
 import { API_BASE_URL, ApiError } from "../../api/http";
 import AdminModalShell from "../../components/admin/ui/AdminModalShell";
-import type { AdminLessonItem, AdminLessonResource } from "../../types/adminLesson";
+import type { AdminLessonItem, AdminLessonResource, AdminLessonResourceType } from "../../types/adminLesson";
 import { getAuthToken } from "../../utils/auth";
+import { resolveSupportedVideoLesson } from "../../utils/videoLessons";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -43,6 +45,7 @@ type NoticeState =
 
 const MODULE_TITLE_MAX_LENGTH = 150;
 const LESSON_TITLE_MAX_LENGTH = 150;
+const DEFAULT_LESSON_TYPE: AdminLessonResourceType = "PDF";
 
 const toErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof ApiError) return error.message;
@@ -94,7 +97,7 @@ export default function LessonsPage() {
   const [busyModuleId, setBusyModuleId] = useState<number | null>(null);
   const [busyLessonId, setBusyLessonId] = useState<number | null>(null);
   const [busyAction, setBusyAction] = useState<
-    "module-title" | "create-lesson" | "lesson-title" | "lesson-order" | "upload" | "remove-pdf" | "delete-lesson" | null
+    "module-title" | "create-lesson" | "lesson-title" | "lesson-order" | "lesson-settings" | "upload" | "remove-pdf" | "delete-lesson" | null
   >(null);
 
   const [editingModuleId, setEditingModuleId] = useState<number | null>(null);
@@ -110,11 +113,16 @@ export default function LessonsPage() {
   const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null);
 
   const [addLessonDraft, setAddLessonDraft] = useState("");
+  const [addLessonTypeDraft, setAddLessonTypeDraft] = useState<AdminLessonResourceType>(DEFAULT_LESSON_TYPE);
+  const [addLessonUrlDraft, setAddLessonUrlDraft] = useState("");
   const [addLessonError, setAddLessonError] = useState<string | null>(null);
 
   const [editingLessonId, setEditingLessonId] = useState<number | null>(null);
   const [lessonTitleDraft, setLessonTitleDraft] = useState("");
   const [lessonTitleError, setLessonTitleError] = useState<string | null>(null);
+  const [lessonTypeDraft, setLessonTypeDraft] = useState<AdminLessonResourceType>(DEFAULT_LESSON_TYPE);
+  const [lessonUrlDraft, setLessonUrlDraft] = useState("");
+  const [lessonSettingsError, setLessonSettingsError] = useState<string | null>(null);
 
   const [refreshSeq, setRefreshSeq] = useState(0);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -193,7 +201,8 @@ export default function LessonsPage() {
       return item.lessons.some((lesson) => {
         const titleMatch = lesson.title.toLowerCase().includes(needle);
         const fileName = lesson.file_name?.toLowerCase() ?? "";
-        return titleMatch || fileName.includes(needle);
+        const lessonUrl = (lesson.resolved_url || lesson.url || "").toLowerCase();
+        return titleMatch || fileName.includes(needle) || lessonUrl.includes(needle);
       });
     });
   }, [items, query]);
@@ -231,18 +240,34 @@ export default function LessonsPage() {
     return selectedModule.lessons.find((lesson) => lesson.resource_id === selectedLessonId) ?? null;
   }, [selectedLessonId, selectedModule]);
 
-  const selectedLessonUrl =
+  const selectedLessonContentUrl =
     selectedLesson && (selectedLesson.resolved_url?.trim() || selectedLesson.url?.trim())
       ? (selectedLesson.resolved_url?.trim() || selectedLesson.url?.trim())
       : "";
+  const selectedLessonSavedType = selectedLesson?.type ?? DEFAULT_LESSON_TYPE;
+  const selectedLessonSavedVideoUrl = selectedLessonSavedType === "VIDEO" ? selectedLessonContentUrl : "";
+  const selectedLessonHasPendingTypeSwitch =
+    !!selectedLesson && lessonTypeDraft !== selectedLessonSavedType;
+  const lessonSettingsChanged =
+    !!selectedLesson &&
+    (selectedLessonHasPendingTypeSwitch ||
+      (lessonTypeDraft === "VIDEO" && lessonUrlDraft.trim() !== selectedLessonSavedVideoUrl));
+  const previewLessonType = selectedLesson ? lessonTypeDraft : DEFAULT_LESSON_TYPE;
+  const previewVideoUrl = previewLessonType === "VIDEO"
+    ? lessonUrlDraft.trim() || (selectedLessonSavedType === "VIDEO" ? selectedLessonSavedVideoUrl : "")
+    : "";
+  const previewVideo = useMemo(() => {
+    if (!previewVideoUrl) return null;
+    return resolveSupportedVideoLesson(previewVideoUrl);
+  }, [previewVideoUrl]);
 
   const previewFile = useMemo(() => {
-    if (!selectedLessonUrl) return null;
-    const absoluteUrl = toAbsoluteUrl(selectedLessonUrl);
+    if (!selectedLesson || previewLessonType !== "PDF" || selectedLessonSavedType !== "PDF" || !selectedLessonContentUrl) return null;
+    const absoluteUrl = toAbsoluteUrl(selectedLessonContentUrl);
     if (!absoluteUrl) return null;
 
     const shouldAttachAuthHeader =
-      selectedLessonUrl.startsWith("/") || absoluteUrl.startsWith(API_BASE_URL);
+      selectedLessonContentUrl.startsWith("/") || absoluteUrl.startsWith(API_BASE_URL);
 
     return {
       url: absoluteUrl,
@@ -254,11 +279,24 @@ export default function LessonsPage() {
           }
         : {}),
     };
-  }, [authToken, selectedLessonUrl]);
+  }, [authToken, previewLessonType, selectedLesson, selectedLessonContentUrl, selectedLessonSavedType]);
+
+  useEffect(() => {
+    if (!selectedLesson) {
+      setLessonTypeDraft(DEFAULT_LESSON_TYPE);
+      setLessonUrlDraft("");
+      setLessonSettingsError(null);
+      return;
+    }
+
+    setLessonTypeDraft(selectedLesson.type);
+    setLessonUrlDraft(selectedLesson.type === "VIDEO" ? (selectedLesson.resolved_url || selectedLesson.url || "").trim() : "");
+    setLessonSettingsError(null);
+  }, [selectedLesson]);
 
   useEffect(() => {
     setPreviewError(null);
-  }, [selectedLesson?.resource_id, selectedLessonUrl]);
+  }, [previewLessonType, previewVideoUrl, selectedLesson?.resource_id, selectedLessonContentUrl]);
 
   const applyItemPatch = (patched: AdminLessonItem | null, fallbackModuleId: number): void => {
     if (!patched) {
@@ -390,12 +428,17 @@ export default function LessonsPage() {
     if (busyModuleId !== null || busyLessonId !== null) return;
 
     const trimmedTitle = addLessonDraft.trim();
+    const trimmedLessonUrl = addLessonUrlDraft.trim();
     if (!trimmedTitle) {
       setAddLessonError("Lesson title cannot be empty.");
       return;
     }
     if (trimmedTitle.length > LESSON_TITLE_MAX_LENGTH) {
       setAddLessonError(`Lesson title must be at most ${LESSON_TITLE_MAX_LENGTH} characters.`);
+      return;
+    }
+    if (addLessonTypeDraft === "VIDEO" && !trimmedLessonUrl) {
+      setAddLessonError("Video URL is required for VIDEO lessons.");
       return;
     }
 
@@ -407,9 +450,15 @@ export default function LessonsPage() {
     setError(null);
 
     try {
-      const response = await createAdminModuleLesson(moduleId, trimmedTitle);
+      const response = await createAdminModuleLesson(moduleId, {
+        title: trimmedTitle,
+        type: addLessonTypeDraft,
+        ...(addLessonTypeDraft === "VIDEO" ? { url: trimmedLessonUrl } : {}),
+      });
       applyItemPatch(response.item, moduleId);
       setAddLessonDraft("");
+      setAddLessonTypeDraft(DEFAULT_LESSON_TYPE);
+      setAddLessonUrlDraft("");
       if (response.lesson) setSelectedLessonId(response.lesson.resource_id);
       setNotice({ kind: "success", text: "Lesson created." });
     } catch (createError) {
@@ -464,6 +513,41 @@ export default function LessonsPage() {
       setNotice({ kind: "success", text: "Lesson title updated." });
     } catch (updateError) {
       setLessonTitleError(toErrorMessage(updateError, "Failed to update lesson title."));
+    } finally {
+      setBusyAction(null);
+      setBusyModuleId(null);
+      setBusyLessonId(null);
+    }
+  };
+
+  const handleSaveLessonSettings = async (moduleId: number, lesson: AdminLessonResource) => {
+    if (busyModuleId !== null || busyLessonId !== null) return;
+
+    const trimmedLessonUrl = lessonUrlDraft.trim();
+    if (lessonTypeDraft === "VIDEO" && !trimmedLessonUrl) {
+      setLessonSettingsError("Video URL is required for VIDEO lessons.");
+      return;
+    }
+
+    setBusyModuleId(moduleId);
+    setBusyLessonId(lesson.resource_id);
+    setBusyAction("lesson-settings");
+    setLessonSettingsError(null);
+    setNotice(null);
+    setError(null);
+
+    try {
+      const response = await updateAdminModuleLesson(moduleId, lesson.resource_id, {
+        type: lessonTypeDraft,
+        ...(lessonTypeDraft === "VIDEO" ? { url: trimmedLessonUrl } : {}),
+      });
+      applyItemPatch(response.item, moduleId);
+      setNotice({
+        kind: "success",
+        text: lesson.type === lessonTypeDraft ? "Lesson settings updated." : "Lesson type updated.",
+      });
+    } catch (updateError) {
+      setLessonSettingsError(toErrorMessage(updateError, "Failed to update lesson settings."));
     } finally {
       setBusyAction(null);
       setBusyModuleId(null);
@@ -570,6 +654,20 @@ export default function LessonsPage() {
   const trimmedAddTitle = addTitleDraft.trim();
   const disableCreateModule =
     addSaving || trimmedAddTitle.length === 0 || trimmedAddTitle.length > MODULE_TITLE_MAX_LENGTH;
+  const trimmedAddLessonUrl = addLessonUrlDraft.trim();
+  const disableCreateLesson =
+    busyModuleId !== null ||
+    busyLessonId !== null ||
+    !addLessonDraft.trim() ||
+    addLessonDraft.trim().length > LESSON_TITLE_MAX_LENGTH ||
+    (addLessonTypeDraft === "VIDEO" && !trimmedAddLessonUrl);
+  const canUploadPdfForSelectedLesson =
+    !!selectedLesson && selectedLessonSavedType === "PDF" && lessonTypeDraft === "PDF";
+  const canSaveLessonSettings =
+    !!selectedLesson &&
+    !isLessonBusy(selectedLesson.resource_id) &&
+    lessonSettingsChanged &&
+    (lessonTypeDraft === "PDF" || lessonUrlDraft.trim().length > 0);
 
   return (
     <div className="flex-1 flex flex-col gap-6 min-h-0 relative">
@@ -833,7 +931,7 @@ export default function LessonsPage() {
                   )}
 
                   <p className="text-xs font-semibold text-slate-500 leading-relaxed mb-6">
-                    {selectedModule.description || "Module container for grouped lesson PDFs."}
+                    {selectedModule.description || "Module container for ordered lesson content."}
                   </p>
 
                   <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-8 mb-4 flex items-center gap-2">
@@ -854,15 +952,22 @@ export default function LessonsPage() {
                         disabled={busyModuleId !== null || busyLessonId !== null}
                         className="flex-1 px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6]"
                       />
+                      <select
+                        value={addLessonTypeDraft}
+                        onChange={(event) => {
+                          setAddLessonTypeDraft(event.target.value === "VIDEO" ? "VIDEO" : "PDF");
+                          if (addLessonError) setAddLessonError(null);
+                        }}
+                        disabled={busyModuleId !== null || busyLessonId !== null}
+                        className="px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 text-sm font-semibold outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                      >
+                        <option value="PDF">PDF</option>
+                        <option value="VIDEO">VIDEO</option>
+                      </select>
                       <button
                         type="button"
                         onClick={() => void handleCreateLesson(selectedModule.module_id)}
-                        disabled={
-                          busyModuleId !== null ||
-                          busyLessonId !== null ||
-                          !addLessonDraft.trim() ||
-                          addLessonDraft.trim().length > LESSON_TITLE_MAX_LENGTH
-                        }
+                        disabled={disableCreateLesson}
                         className="px-4 py-2.5 rounded-xl bg-[#3B82F6] text-white text-xs font-bold flex items-center gap-1.5 disabled:opacity-50"
                       >
                         {busyAction === "create-lesson" && busyModuleId === selectedModule.module_id ? (
@@ -873,6 +978,19 @@ export default function LessonsPage() {
                         Add
                       </button>
                     </div>
+                    {addLessonTypeDraft === "VIDEO" ? (
+                      <input
+                        type="url"
+                        value={addLessonUrlDraft}
+                        onChange={(event) => {
+                          setAddLessonUrlDraft(event.target.value);
+                          if (addLessonError) setAddLessonError(null);
+                        }}
+                        placeholder="https://youtube.com/... or https://example.com/video.mp4"
+                        disabled={busyModuleId !== null || busyLessonId !== null}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                      />
+                    ) : null}
                     {addLessonError ? <p className="text-xs font-semibold text-red-500">{addLessonError}</p> : null}
                   </div>
 
@@ -925,15 +1043,24 @@ export default function LessonsPage() {
                                     ) : null}
                                   </>
                                 ) : (
-                                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{lesson.title}</p>
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <p className="text-sm font-bold text-slate-800 dark:text-slate-200 truncate">{lesson.title}</p>
+                                    <span className="shrink-0 rounded-full border border-slate-200 dark:border-slate-700 px-2 py-0.5 text-[9px] font-black tracking-widest text-slate-500 dark:text-slate-400">
+                                      {lesson.type}
+                                    </span>
+                                  </div>
                                 )}
 
                                 <p className="text-xs font-semibold text-slate-500 mt-1 truncate">
-                                  {lesson.has_uploaded_file
-                                    ? lesson.file_name || "PDF uploaded"
-                                    : lessonUrl
-                                      ? "PDF link available"
-                                      : "No PDF uploaded yet"}
+                                  {lesson.type === "VIDEO"
+                                    ? lessonUrl
+                                      ? "Video link ready"
+                                      : "No video URL configured"
+                                    : lesson.has_uploaded_file
+                                      ? lesson.file_name || "PDF uploaded"
+                                      : lessonUrl
+                                        ? "PDF link available"
+                                        : "No PDF uploaded yet"}
                                 </p>
                               </div>
 
@@ -1034,7 +1161,7 @@ export default function LessonsPage() {
                   )}
 
                   <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-8 mb-4 flex items-center gap-2">
-                    <FileText size={14} /> Selected Lesson Asset
+                    <FileText size={14} /> Selected Lesson Content
                   </h3>
 
                   {selectedLesson ? (
@@ -1053,15 +1180,22 @@ export default function LessonsPage() {
                               : "bg-slate-100 text-slate-400 dark:bg-slate-800"
                           }`}
                         >
-                          <FileText size={20} strokeWidth={2} />
+                          {selectedLessonSavedType === "VIDEO" ? <PlayCircle size={20} strokeWidth={2} /> : <FileText size={20} strokeWidth={2} />}
                         </div>
                         <div className="flex-1 min-w-0 flex flex-col justify-center">
-                          <p className="font-bold text-[13px] text-slate-800 dark:text-slate-200 truncate">{selectedLesson.title}</p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-[13px] text-slate-800 dark:text-slate-200 truncate">{selectedLesson.title}</p>
+                            <span className="shrink-0 rounded-full border border-slate-200 dark:border-slate-700 px-2 py-0.5 text-[9px] font-black tracking-widest text-slate-500 dark:text-slate-400">
+                              {selectedLessonSavedType}
+                            </span>
+                          </div>
                           <div className="flex items-center gap-2 mt-0.5">
                             <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 truncate">
-                              {selectedLesson.file_name || "No PDF file uploaded"}
+                              {selectedLessonSavedType === "VIDEO"
+                                ? selectedLessonSavedVideoUrl || "No video URL configured"
+                                : selectedLesson.file_name || "No PDF file uploaded"}
                             </p>
-                            {selectedLesson.file_size != null && (
+                            {selectedLessonSavedType === "PDF" && selectedLesson.file_size != null && (
                               <span className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider bg-slate-100 dark:bg-slate-800/50 px-1.5 py-0.5 rounded-md">
                                 {formatFileSize(selectedLesson.file_size)}
                               </span>
@@ -1070,52 +1204,146 @@ export default function LessonsPage() {
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
-                        <label
-                          htmlFor={`lesson-file-upload-${selectedLesson.resource_id}`}
-                          className="flex-1 flex justify-center items-center gap-2 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer transition-colors"
-                        >
-                          <input
-                            type="file"
-                            id={`lesson-file-upload-${selectedLesson.resource_id}`}
-                            accept=".pdf,application/pdf"
-                            className="hidden"
-                            disabled={isLessonBusy(selectedLesson.resource_id) || busyModuleId !== null || busyLessonId !== null}
+                      <div className="grid gap-3">
+                        <div className="grid gap-2 sm:grid-cols-[140px_minmax(0,1fr)] sm:items-center">
+                          <label className="text-xs font-black uppercase tracking-widest text-slate-500">Lesson Type</label>
+                          <select
+                            value={lessonTypeDraft}
                             onChange={(event) => {
-                              const selected = event.target.files?.[0] ?? null;
-                              void handleUploadLessonPdf(selectedModule.module_id, selectedLesson.resource_id, selected);
-                              event.currentTarget.value = "";
+                              setLessonTypeDraft(event.target.value === "VIDEO" ? "VIDEO" : "PDF");
+                              if (lessonSettingsError) setLessonSettingsError(null);
                             }}
-                          />
-                          <Upload size={14} />
-                          {(selectedLesson.resolved_url || selectedLesson.url || "").trim().length > 0 ? "Replace PDF" : "Upload PDF"}
-                        </label>
+                            disabled={isLessonBusy(selectedLesson.resource_id) || busyModuleId !== null || busyLessonId !== null}
+                            className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] px-3 py-2.5 text-sm font-semibold text-[#0B1B3D] dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                          >
+                            <option value="PDF">PDF</option>
+                            <option value="VIDEO">VIDEO</option>
+                          </select>
+                        </div>
+
+                        {lessonTypeDraft === "VIDEO" ? (
+                          <div className="grid gap-2">
+                            <label className="text-xs font-black uppercase tracking-widest text-slate-500">Video URL</label>
+                            <input
+                              type="url"
+                              value={lessonUrlDraft}
+                              onChange={(event) => {
+                                setLessonUrlDraft(event.target.value);
+                                if (lessonSettingsError) setLessonSettingsError(null);
+                              }}
+                              placeholder="https://youtube.com/... or https://example.com/video.mp4"
+                              disabled={isLessonBusy(selectedLesson.resource_id) || busyModuleId !== null || busyLessonId !== null}
+                              className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] px-3 py-2.5 text-sm font-medium text-[#0B1B3D] dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                            />
+                          </div>
+                        ) : null}
 
                         <button
                           type="button"
-                          onClick={() => void handleRemoveLessonPdf(selectedModule.module_id, selectedLesson.resource_id)}
-                          disabled={isLessonBusy(selectedLesson.resource_id) || busyModuleId !== null || busyLessonId !== null}
-                          className="flex-1 flex justify-center items-center gap-2 py-2 border border-red-100 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-xs font-bold text-red-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          onClick={() => void handleSaveLessonSettings(selectedModule.module_id, selectedLesson)}
+                          disabled={!canSaveLessonSettings || busyModuleId !== null || busyLessonId !== null}
+                          className="flex items-center justify-center gap-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-3 py-2.5 text-xs font-bold text-slate-700 dark:text-slate-200 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                         >
-                          <Trash2 size={14} /> Remove PDF
+                          {isLessonBusy(selectedLesson.resource_id) && busyAction === "lesson-settings" ? (
+                            <Loader2 size={14} className="animate-spin" />
+                          ) : (
+                            <CheckCircle2 size={14} />
+                          )}
+                          {lessonSettingsChanged ? "Save Lesson Settings" : "Lesson Settings Saved"}
                         </button>
+
+                        {lessonTypeDraft === "PDF" ? (
+                          canUploadPdfForSelectedLesson ? (
+                            <div className="flex items-center gap-3">
+                              <label
+                                htmlFor={`lesson-file-upload-${selectedLesson.resource_id}`}
+                                className="flex-1 flex justify-center items-center gap-2 py-2 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer transition-colors"
+                              >
+                                <input
+                                  type="file"
+                                  id={`lesson-file-upload-${selectedLesson.resource_id}`}
+                                  accept=".pdf,application/pdf"
+                                  className="hidden"
+                                  disabled={isLessonBusy(selectedLesson.resource_id) || busyModuleId !== null || busyLessonId !== null}
+                                  onChange={(event) => {
+                                    const selected = event.target.files?.[0] ?? null;
+                                    void handleUploadLessonPdf(selectedModule.module_id, selectedLesson.resource_id, selected);
+                                    event.currentTarget.value = "";
+                                  }}
+                                />
+                                <Upload size={14} />
+                                {selectedLessonContentUrl ? "Replace PDF" : "Upload PDF"}
+                              </label>
+
+                              <button
+                                type="button"
+                                onClick={() => void handleRemoveLessonPdf(selectedModule.module_id, selectedLesson.resource_id)}
+                                disabled={isLessonBusy(selectedLesson.resource_id) || busyModuleId !== null || busyLessonId !== null}
+                                className="flex-1 flex justify-center items-center gap-2 py-2 border border-red-100 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl text-xs font-bold text-red-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                              >
+                                <Trash2 size={14} /> Remove PDF
+                              </button>
+                            </div>
+                          ) : (
+                            <p className="text-xs font-semibold text-slate-500">
+                              Save this lesson as a PDF lesson to enable PDF upload controls.
+                            </p>
+                          )
+                        ) : (
+                          <p className="text-xs font-semibold text-slate-500">
+                            VIDEO lessons use the configured HTTPS video URL instead of an uploaded file.
+                          </p>
+                        )}
+
+                        {lessonSettingsError ? <p className="text-xs font-semibold text-red-500">{lessonSettingsError}</p> : null}
                       </div>
                     </div>
                   ) : (
                     <div className="border border-dashed border-slate-200 dark:border-slate-700/50 rounded-2xl p-6 text-center text-sm font-semibold text-slate-500">
-                      Select a lesson to manage its PDF.
+                      Select a lesson to manage its content.
                     </div>
                   )}
 
                   <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-8 mb-4 flex items-center gap-2">
-                    <FileText size={14} /> PDF Preview
+                    <FileText size={14} /> Lesson Preview
                   </h3>
 
                   <div className="border border-slate-200 dark:border-slate-700/50 rounded-2xl p-4 min-h-[220px] flex items-center justify-center bg-slate-50/40 dark:bg-slate-900/20 overflow-auto">
                     {!selectedLesson ? (
-                      <p className="text-xs font-semibold text-slate-500">Select a lesson to preview its first page.</p>
+                      <p className="text-xs font-semibold text-slate-500">Select a lesson to preview its content.</p>
+                    ) : previewLessonType === "VIDEO" ? (
+                      previewVideo ? (
+                        previewVideo.kind === "direct" ? (
+                          <video
+                            controls
+                            preload="metadata"
+                            className="w-full max-h-[360px] rounded-xl border border-slate-200 dark:border-slate-700"
+                            src={previewVideo.sourceUrl}
+                          >
+                            Your browser does not support video preview.
+                          </video>
+                        ) : (
+                          <div className="w-full aspect-video overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
+                            <iframe
+                              title={`${selectedLesson.title} preview`}
+                              src={previewVideo.embedUrl}
+                              className="h-full w-full border-0"
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                              allowFullScreen
+                            />
+                          </div>
+                        )
+                      ) : (
+                        <p className="text-xs font-semibold text-slate-500">
+                          Enter a supported HTTPS YouTube, Vimeo, MP4, or WebM URL to preview this video lesson.
+                        </p>
+                      )
                     ) : !previewFile ? (
-                      <p className="text-xs font-semibold text-slate-500">No PDF uploaded for this lesson yet.</p>
+                      <p className="text-xs font-semibold text-slate-500">
+                        {selectedLessonSavedType === "PDF"
+                          ? "No PDF uploaded for this lesson yet."
+                          : "Save the lesson as a PDF lesson to enable PDF preview."}
+                      </p>
                     ) : previewError ? (
                       <div className="text-center text-red-500 text-xs font-semibold">
                         <AlertTriangle size={18} className="mx-auto mb-2" />
@@ -1153,7 +1381,7 @@ export default function LessonsPage() {
                 </div>
                 <p className="text-base font-black text-slate-800 dark:text-slate-200">Select a module</p>
                 <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mt-2 max-w-[250px] leading-relaxed">
-                  View module details, then create and manage multiple lesson PDFs.
+                  View module details, then create and manage ordered PDF and VIDEO lessons.
                 </p>
               </motion.div>
             )}

@@ -24,10 +24,12 @@ import CyberTransition from '../components/CyberTransition';
 import { API_BASE_URL } from '../api/http';
 import { clearAuthRole, getAuthToken } from '../utils/auth';
 import { getTraineeDashboard } from '../api/trainees';
+import { resolveSupportedVideoLesson } from '../utils/videoLessons';
 import type {
     DashboardState,
     ModuleStatusApi,
     ModuleStatusValue,
+    ResourceType,
     SimulationApi,
 } from '../types/traineeDashboard';
 
@@ -48,6 +50,7 @@ type ModuleLessonOption = {
     title: string;
     url: string;
     orderNo: number;
+    type: ResourceType;
 };
 
 const toNumber = (value: string | number | null | undefined): number => {
@@ -241,21 +244,45 @@ const Dashboard = () => {
         const data = dashboardState.data;
         if (!data) return [];
 
-        return [...data.moduleContent.modules]
-            .sort((a, b) => toNumber(a.order_no) - toNumber(b.order_no))
-            .map((module) => {
-                const moduleId = toNumber(module.module_id);
-                const moduleStatus = moduleStatusByModuleId.get(moduleId);
+        // 1. Sort the modules first so we know their exact sequence
+        const sortedModules = [...data.moduleContent.modules].sort(
+            (a, b) => toNumber(a.order_no) - toNumber(b.order_no)
+        );
 
-                return {
-                    id: moduleId,
-                    title: module.title,
-                    moduleCode: module.module_code,
-                    description: module.description,
-                    status: getLevelStatus(moduleStatus?.module_status),
-                    score: getScorePercent(moduleStatus),
-                };
-            });
+        // 2. Map through them and apply the smart unlock logic
+        return sortedModules.map((module, index) => {
+            const moduleId = toNumber(module.module_id);
+            const moduleStatus = moduleStatusByModuleId.get(moduleId);
+
+            // Get the raw status from the database
+            let status = getLevelStatus(moduleStatus?.module_status);
+
+            // --- SMART UNLOCK LOGIC ---
+            // If the database says it's locked, we evaluate if it should be unlocked by default
+            if (status === 'locked') {
+                if (index === 0) {
+                    // Rule 1: The very first module is ALWAYS unlocked for new users
+                    status = 'unlocked';
+                } else {
+                    // Rule 2: Unlock this module automatically if the PREVIOUS module is completed
+                    const prevModuleId = toNumber(sortedModules[index - 1].module_id);
+                    const prevStatus = getLevelStatus(moduleStatusByModuleId.get(prevModuleId)?.module_status);
+
+                    if (prevStatus === 'completed') {
+                        status = 'unlocked';
+                    }
+                }
+            }
+
+            return {
+                id: moduleId,
+                title: module.title,
+                moduleCode: module.module_code,
+                description: module.description,
+                status, // Passes the new smart status to the UI
+                score: getScorePercent(moduleStatus),
+            };
+        });
     }, [dashboardState.data, moduleStatusByModuleId]);
 
     const nextSimulationByModuleId = useMemo(() => {
@@ -268,14 +295,15 @@ const Dashboard = () => {
         const resources = dashboardState.data?.moduleContent.resources ?? [];
 
         for (const resource of resources) {
-            if (String(resource.type).toUpperCase() !== 'PDF') continue;
+            const type = String(resource.type).toUpperCase() === 'VIDEO' ? 'VIDEO' : 'PDF';
             const moduleId = toNumber(resource.module_id);
             if (moduleId < 1) continue;
 
             const resolvedUrl = typeof resource.resolved_url === 'string' ? resource.resolved_url.trim() : '';
             const fallbackUrl = typeof resource.url === 'string' ? resource.url.trim() : '';
-            const pdfUrl = resolvedUrl || fallbackUrl;
-            if (!pdfUrl) continue;
+            const lessonUrl = resolvedUrl || fallbackUrl;
+            if (!lessonUrl) continue;
+            if (type === 'VIDEO' && !resolveSupportedVideoLesson(lessonUrl)) continue;
 
             const resourceId = toNumber(resource.resource_id);
             if (resourceId < 1) continue;
@@ -287,8 +315,9 @@ const Dashboard = () => {
                 resourceId,
                 moduleId,
                 title,
-                url: pdfUrl,
+                url: lessonUrl,
                 orderNo: toNumber(resource.order_no),
+                type,
             });
         }
 
@@ -325,8 +354,9 @@ const Dashboard = () => {
     }, [lessonsByModuleId, selectedLevel]);
     const selectedPrimaryLesson = selectedModuleLessons[0] ?? null;
     const selectedModuleLessonCount = selectedModuleLessons.length;
-    const selectedModuleHasManual = selectedModuleLessonCount > 0;
+    const selectedModuleHasLessonContent = selectedModuleLessonCount > 0;
     const briefingPreviewFile = useMemo(() => {
+        if (selectedPrimaryLesson?.type !== 'PDF') return null;
         const previewUrl = selectedPrimaryLesson?.url?.trim() ?? '';
         if (!previewUrl) return null;
         const absoluteUrl = toAbsoluteUrl(previewUrl);
@@ -339,19 +369,23 @@ const Dashboard = () => {
             url: absoluteUrl,
             ...(shouldAttachAuthHeader && authToken
                 ? {
-                      httpHeaders: {
-                          Authorization: `Bearer ${authToken}`,
-                      },
-                  }
+                    httpHeaders: {
+                        Authorization: `Bearer ${authToken}`,
+                    },
+                }
                 : {}),
         };
     }, [authToken, selectedPrimaryLesson]);
+    const selectedPrimaryVideoLesson = useMemo(() => {
+        if (selectedPrimaryLesson?.type !== 'VIDEO') return null;
+        return resolveSupportedVideoLesson(selectedPrimaryLesson.url);
+    }, [selectedPrimaryLesson]);
 
     const trainee = dashboardState.data?.trainee ?? null;
 
     useEffect(() => {
         setBriefingPreviewError(null);
-    }, [selectedPrimaryLesson?.resourceId, selectedPrimaryLesson?.url]);
+    }, [selectedPrimaryLesson?.resourceId, selectedPrimaryLesson?.type, selectedPrimaryLesson?.url]);
 
     useEffect(() => {
         const node = briefingPreviewRef.current;
@@ -390,7 +424,7 @@ const Dashboard = () => {
     };
 
     const handleViewModule = () => {
-        if (!selectedLevelData || !selectedModuleHasManual) return;
+        if (!selectedLevelData || !selectedModuleHasLessonContent) return;
         navigate(`/module/${selectedLevelData.id}`);
     };
 
@@ -584,8 +618,8 @@ const Dashboard = () => {
                                                         <p className="text-[10px] sm:text-xs text-slate-600 dark:text-slate-400 leading-relaxed mb-3 font-mono">
                                                             {'>'} {level.description ?? 'Initialize the wiring interface for this module before testing the circuit.'}
                                                         </p>
-                                                        {!selectedModuleHasManual ? (
-                                                            <p className="text-[10px] sm:text-xs font-mono text-slate-500 mb-3">No lesson PDFs available yet.</p>
+                                                        {!selectedModuleHasLessonContent ? (
+                                                            <p className="text-[10px] sm:text-xs font-mono text-slate-500 mb-3">No lesson content available yet.</p>
                                                         ) : null}
                                                         <div className="flex flex-col gap-2">
                                                             <button
@@ -601,11 +635,11 @@ const Dashboard = () => {
                                                             <button
                                                                 type="button"
                                                                 onClick={handleViewModule}
-                                                                disabled={!selectedModuleHasManual}
+                                                                disabled={!selectedModuleHasLessonContent}
                                                                 className="w-full bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed text-slate-800 dark:text-slate-200 py-2.5 text-[10px] sm:text-xs uppercase tracking-widest font-bold flex items-center justify-center gap-2 transition-all"
                                                             >
                                                                 <BookOpen size={12} />
-                                                                {selectedModuleHasManual ? 'Access Intel Manual' : 'PDF Not Available'}
+                                                                {selectedModuleHasLessonContent ? 'Open Lesson Content' : 'No Lesson Content'}
                                                             </button>
                                                         </div>
                                                     </div>
@@ -650,8 +684,8 @@ const Dashboard = () => {
                                             ref={briefingPreviewRef}
                                             className="h-32 lg:h-40 bg-slate-200 dark:bg-slate-900 relative mb-4 lg:mb-6 flex items-center justify-center border border-slate-300 dark:border-slate-800 overflow-hidden"
                                         >
-                                            {selectedModuleHasManual ? (
-                                                briefingPreviewFile ? (
+                                            {selectedModuleHasLessonContent ? (
+                                                selectedPrimaryLesson?.type === 'PDF' && briefingPreviewFile ? (
                                                     <Document
                                                         file={briefingPreviewFile}
                                                         onLoadError={(loadError) => {
@@ -671,14 +705,33 @@ const Dashboard = () => {
                                                             renderAnnotationLayer={false}
                                                         />
                                                     </Document>
+                                                ) : selectedPrimaryLesson?.type === 'VIDEO' && selectedPrimaryVideoLesson ? (
+                                                    selectedPrimaryVideoLesson.kind === 'direct' ? (
+                                                        <video
+                                                            controls
+                                                            preload="metadata"
+                                                            className="relative z-10 h-full w-full object-cover"
+                                                            src={selectedPrimaryVideoLesson.sourceUrl}
+                                                        >
+                                                            Your browser does not support the video preview.
+                                                        </video>
+                                                    ) : (
+                                                        <iframe
+                                                            title={`${selectedPrimaryLesson.title} preview`}
+                                                            src={selectedPrimaryVideoLesson.embedUrl}
+                                                            className="relative z-10 h-full w-full border-0"
+                                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                                            allowFullScreen
+                                                        />
+                                                    )
                                                 ) : (
                                                     <p className="relative z-10 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                                                        Preview source unavailable.
+                                                        Preview unavailable for this lesson.
                                                     </p>
                                                 )
                                             ) : (
                                                 <p className="relative z-10 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                                                    No lesson PDFs available yet.
+                                                    No lesson content available yet.
                                                 </p>
                                             )}
                                             <div className="absolute inset-0 bg-[linear-gradient(to_right,#8080801a_1px,transparent_1px),linear-gradient(to_bottom,#8080801a_1px,transparent_1px)] bg-[size:16px_16px] pointer-events-none" />
@@ -703,8 +756,8 @@ const Dashboard = () => {
                                             <span className="inline-block w-1.5 h-3 bg-cyan-500 ml-1 animate-pulse" />
                                         </div>
 
-                                        {!selectedModuleHasManual ? (
-                                            <p className="mb-6 lg:mb-8 text-[10px] lg:text-xs font-mono text-slate-500">No lesson PDFs available yet.</p>
+                                        {!selectedModuleHasLessonContent ? (
+                                            <p className="mb-6 lg:mb-8 text-[10px] lg:text-xs font-mono text-slate-500">No lesson content available yet.</p>
                                         ) : null}
 
                                         <div className="space-y-3 lg:space-y-4">
@@ -722,11 +775,11 @@ const Dashboard = () => {
                                             <button
                                                 type="button"
                                                 onClick={handleViewModule}
-                                                disabled={!selectedModuleHasManual}
+                                                disabled={!selectedModuleHasLessonContent}
                                                 className="w-full bg-slate-800 hover:bg-slate-900 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-slate-800 dark:hover:bg-slate-700 text-white dark:text-slate-200 py-3 uppercase tracking-widest font-bold text-[10px] lg:text-xs flex items-center justify-center gap-2 transition-colors border border-transparent dark:border-slate-700"
                                             >
                                                 <BookOpen size={14} className="lg:w-4 lg:h-4" />
-                                                {selectedModuleHasManual ? 'Access Intel Manual' : 'PDF Not Available'}
+                                                {selectedModuleHasLessonContent ? 'Open Lesson Content' : 'No Lesson Content'}
                                             </button>
                                         </div>
                                     </div>

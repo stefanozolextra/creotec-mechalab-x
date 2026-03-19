@@ -51,6 +51,9 @@ const LESSON_UPLOADS_DIR = path.resolve(
     __dirname,
     process.env.LESSON_UPLOADS_DIR?.trim() || path.join("uploads", "module-pdfs")
 );
+const LESSON_RESOURCE_TYPE_PDF = "PDF";
+const LESSON_RESOURCE_TYPE_VIDEO = "VIDEO";
+const DIRECT_VIDEO_ALLOWED_EXTENSIONS = new Set([".mp4", ".webm"]);
 const PDF_ALLOWED_MIME_TYPES = new Set(["application/pdf", "application/x-pdf"]);
 
 const adminDashboardCache = new Map();
@@ -1049,30 +1052,119 @@ function normalizeLessonTitle(value) {
     return trimmed;
 }
 
+function normalizeLessonResourceType(value) {
+    const normalized = String(value || "")
+        .trim()
+        .toUpperCase();
+    if (normalized === LESSON_RESOURCE_TYPE_PDF || normalized === LESSON_RESOURCE_TYPE_VIDEO) {
+        return normalized;
+    }
+    return null;
+}
+
+function extractYouTubeVideoId(parsedUrl) {
+    const hostname = parsedUrl.hostname.toLowerCase().replace(/^www\./, "");
+    const pathSegments = parsedUrl.pathname
+        .split("/")
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+
+    if (hostname === "youtu.be") {
+        return pathSegments[0] || null;
+    }
+
+    if (hostname === "youtube.com" || hostname === "m.youtube.com" || hostname === "youtube-nocookie.com") {
+        if (parsedUrl.searchParams.get("v")) {
+            return parsedUrl.searchParams.get("v");
+        }
+
+        if (pathSegments[0] === "embed" || pathSegments[0] === "shorts" || pathSegments[0] === "live") {
+            return pathSegments[1] || null;
+        }
+    }
+
+    return null;
+}
+
+function extractVimeoVideoId(parsedUrl) {
+    const hostname = parsedUrl.hostname.toLowerCase().replace(/^www\./, "");
+    if (hostname !== "vimeo.com" && hostname !== "player.vimeo.com") return null;
+
+    const pathSegments = parsedUrl.pathname
+        .split("/")
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+    for (let index = pathSegments.length - 1; index >= 0; index -= 1) {
+        if (/^\d+$/.test(pathSegments[index])) {
+            return pathSegments[index];
+        }
+    }
+    return null;
+}
+
+function normalizeVideoLessonUrl(value) {
+    if (typeof value !== "string" || !value.trim()) {
+        return { url: null, error: "Video URL is required" };
+    }
+
+    let parsedUrl;
+    try {
+        parsedUrl = new URL(value.trim());
+    } catch {
+        return { url: null, error: "Video URL must be a valid URL" };
+    }
+
+    if (parsedUrl.protocol !== "https:") {
+        return { url: null, error: "Video URL must use https" };
+    }
+
+    const hostname = parsedUrl.hostname.toLowerCase().replace(/^www\./, "");
+    const youTubeVideoId = extractYouTubeVideoId(parsedUrl);
+    if (youTubeVideoId) {
+        return { url: parsedUrl.toString(), error: null };
+    }
+
+    const vimeoVideoId = extractVimeoVideoId(parsedUrl);
+    if (vimeoVideoId) {
+        return { url: parsedUrl.toString(), error: null };
+    }
+
+    const extension = path.extname(parsedUrl.pathname || "").toLowerCase();
+    if (DIRECT_VIDEO_ALLOWED_EXTENSIONS.has(extension)) {
+        return { url: parsedUrl.toString(), error: null };
+    }
+
+    return {
+        url: null,
+        error: "Video URL must be an https YouTube, Vimeo, MP4, or WebM link",
+    };
+}
+
 function mapAdminLessonResourceRow(row) {
     const resourceId = Number(row.resource_id);
     const moduleId = Number(row.module_id);
+    const type = normalizeLessonResourceType(row.type) || LESSON_RESOURCE_TYPE_PDF;
+    const isPdfLesson = type === LESSON_RESOURCE_TYPE_PDF;
     const fallbackUrl = typeof row.url === "string" ? row.url.trim() : "";
     const resolvedFromRow = typeof row.resolved_url === "string" ? row.resolved_url.trim() : "";
     const resolvedUrl = resolvedFromRow || fallbackUrl || null;
-    const hasUploadedFile = row.file_id != null;
-    const derivedFileName = row.original_filename || extractFileNameFromUrl(resolvedUrl || fallbackUrl);
+    const hasUploadedFile = isPdfLesson && row.file_id != null;
+    const derivedFileName = isPdfLesson ? row.original_filename || extractFileNameFromUrl(resolvedUrl || fallbackUrl) : null;
 
     return {
         resource_id: Number.isInteger(resourceId) && resourceId > 0 ? resourceId : 0,
         module_id: Number.isInteger(moduleId) && moduleId > 0 ? moduleId : 0,
-        type: row.type || "PDF",
+        type,
         title: row.title || "",
         url: fallbackUrl || "",
         order_no: Number(row.order_no) || 0,
-        has_pdf: true,
         has_uploaded_file: hasUploadedFile,
-        file_id: row.file_id == null ? null : Number(row.file_id),
+        file_id: hasUploadedFile ? Number(row.file_id) : null,
         file_name: derivedFileName || null,
-        original_filename: row.original_filename || null,
-        mime_type: row.mime_type || null,
-        file_size: row.file_size == null ? null : Number(row.file_size),
-        uploaded_at: row.uploaded_at ? new Date(row.uploaded_at).toISOString() : null,
+        original_filename: isPdfLesson ? row.original_filename || null : null,
+        mime_type: isPdfLesson ? row.mime_type || null : null,
+        file_size: isPdfLesson && row.file_size != null ? Number(row.file_size) : null,
+        uploaded_at: isPdfLesson && row.uploaded_at ? new Date(row.uploaded_at).toISOString() : null,
         resolved_url: resolvedUrl,
         view_url: resolvedUrl,
     };
@@ -1099,8 +1191,7 @@ async function getAdminLessonResourceRows(moduleId = null) {
            END AS resolved_url
          FROM module_resources mr
          LEFT JOIN module_resource_files mrf ON mrf.resource_id = mr.resource_id
-         WHERE mr.type = 'PDF'
-           AND ($1::BIGINT IS NULL OR mr.module_id = $1)
+         WHERE ($1::BIGINT IS NULL OR mr.module_id = $1)
          ORDER BY mr.module_id, mr.order_no, mr.resource_id`,
         [moduleId]
     );
@@ -1143,7 +1234,6 @@ async function getAdminLessonItems(moduleId = null) {
     return moduleResult.rows.map((row) => {
         const safeModuleId = Number(row.module_id) || 0;
         const lessons = lessonsByModuleId.get(safeModuleId) || [];
-        const firstLesson = lessons[0] || null;
 
         return {
             module_id: safeModuleId,
@@ -1153,18 +1243,6 @@ async function getAdminLessonItems(moduleId = null) {
             order_no: Number(row.order_no) || 0,
             is_active: row.is_active === true,
             lessons,
-            // Keep legacy singular shape so existing clients remain compatible.
-            pdf: {
-                resource_id: firstLesson?.resource_id ?? null,
-                has_pdf: Boolean(firstLesson),
-                has_uploaded_file: firstLesson?.has_uploaded_file ?? false,
-                file_id: firstLesson?.file_id ?? null,
-                file_name: firstLesson?.file_name ?? null,
-                mime_type: firstLesson?.mime_type ?? null,
-                file_size: firstLesson?.file_size ?? null,
-                uploaded_at: firstLesson?.uploaded_at ?? null,
-                view_url: firstLesson?.view_url ?? null,
-            },
         };
     });
 }
@@ -1505,9 +1583,22 @@ app.post("/api/admin/modules/:moduleId/lessons", async (req, res) => {
     const moduleId = parsePositiveIntParam(req.params.moduleId);
     if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
 
-    const title = normalizeLessonTitle(req.body?.title);
+    const lessonBody =
+        req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+
+    const title = normalizeLessonTitle(lessonBody.title);
     if (!title) {
         return res.status(400).json({ error: `Lesson title is required and must be at most ${LESSON_TITLE_MAX_LENGTH} characters` });
+    }
+
+    const type = normalizeLessonResourceType(lessonBody.type) || LESSON_RESOURCE_TYPE_PDF;
+    let lessonUrl = "";
+    if (type === LESSON_RESOURCE_TYPE_VIDEO) {
+        const normalizedVideoUrl = normalizeVideoLessonUrl(lessonBody.url ?? lessonBody.video_url);
+        if (normalizedVideoUrl.error || !normalizedVideoUrl.url) {
+            return res.status(400).json({ error: normalizedVideoUrl.error || "Video URL is required" });
+        }
+        lessonUrl = normalizedVideoUrl.url;
     }
 
     const client = await pool.connect();
@@ -1532,17 +1623,16 @@ app.post("/api/admin/modules/:moduleId/lessons", async (req, res) => {
         const nextOrderResult = await client.query(
             `SELECT COALESCE(MAX(order_no), 0)::INT + 1 AS next_order
              FROM module_resources
-             WHERE module_id = $1
-               AND type = 'PDF'`,
+             WHERE module_id = $1`,
             [moduleId]
         );
         const nextOrder = Number(nextOrderResult.rows[0]?.next_order) || 1;
 
         const insertResult = await client.query(
             `INSERT INTO module_resources (module_id, type, title, url, order_no)
-             VALUES ($1, 'PDF', $2, $3, $4)
+             VALUES ($1, $2, $3, $4, $5)
              RETURNING resource_id::INT AS resource_id`,
-            [moduleId, title, "", nextOrder]
+            [moduleId, type, title, lessonUrl, nextOrder]
         );
         createdResourceId = Number(insertResult.rows[0]?.resource_id) || null;
         if (!createdResourceId) {
@@ -1583,20 +1673,32 @@ app.patch("/api/admin/modules/:moduleId/lessons/:resourceId", async (req, res) =
     if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
     if (!resourceId) return res.status(400).json({ error: "Invalid resource id" });
 
-    const hasTitle = Object.prototype.hasOwnProperty.call(req.body || {}, "title");
-    const hasOrderNo = Object.prototype.hasOwnProperty.call(req.body || {}, "order_no");
-    if (!hasTitle && !hasOrderNo) {
-        return res.status(400).json({ error: "At least one of title or order_no is required" });
+    const lessonBody =
+        req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+
+    const hasTitle = Object.prototype.hasOwnProperty.call(lessonBody, "title");
+    const hasOrderNo = Object.prototype.hasOwnProperty.call(lessonBody, "order_no");
+    const hasType = Object.prototype.hasOwnProperty.call(lessonBody, "type");
+    const hasUrl =
+        Object.prototype.hasOwnProperty.call(lessonBody, "url") ||
+        Object.prototype.hasOwnProperty.call(lessonBody, "video_url");
+    if (!hasTitle && !hasOrderNo && !hasType && !hasUrl) {
+        return res.status(400).json({ error: "At least one of title, order_no, type, or url is required" });
     }
 
-    const title = hasTitle ? normalizeLessonTitle(req.body?.title) : null;
+    const title = hasTitle ? normalizeLessonTitle(lessonBody.title) : null;
     if (hasTitle && !title) {
         return res.status(400).json({ error: `Lesson title must be at most ${LESSON_TITLE_MAX_LENGTH} characters` });
     }
 
+    const requestedType = hasType ? normalizeLessonResourceType(lessonBody.type) : null;
+    if (hasType && !requestedType) {
+        return res.status(400).json({ error: "Lesson type must be PDF or VIDEO" });
+    }
+
     let requestedOrderNo = null;
     if (hasOrderNo) {
-        const parsedOrder = Number(req.body?.order_no);
+        const parsedOrder = Number(lessonBody.order_no);
         if (!Number.isInteger(parsedOrder) || parsedOrder < 1) {
             return res.status(400).json({ error: "order_no must be a positive integer" });
         }
@@ -1604,23 +1706,48 @@ app.patch("/api/admin/modules/:moduleId/lessons/:resourceId", async (req, res) =
     }
 
     const client = await pool.connect();
+    const staleStorageKeys = new Set();
     let committed = false;
 
     try {
         await client.query("BEGIN");
 
         const lessonResult = await client.query(
-            `SELECT resource_id::INT AS resource_id
+            `SELECT resource_id::INT AS resource_id, type, url
              FROM module_resources
              WHERE module_id = $1
                AND resource_id = $2
-               AND type = 'PDF'
              FOR UPDATE`,
             [moduleId, resourceId]
         );
         if (lessonResult.rowCount === 0) {
             await client.query("ROLLBACK");
             return res.status(404).json({ error: "Lesson not found" });
+        }
+
+        const currentLesson = lessonResult.rows[0];
+        const currentType = normalizeLessonResourceType(currentLesson.type) || LESSON_RESOURCE_TYPE_PDF;
+        const nextType = requestedType || currentType;
+        const currentUrl = typeof currentLesson.url === "string" ? currentLesson.url.trim() : "";
+
+        let nextUrl = currentUrl;
+        if (nextType === LESSON_RESOURCE_TYPE_VIDEO) {
+            if (hasUrl) {
+                const normalizedVideoUrl = normalizeVideoLessonUrl(lessonBody.url ?? lessonBody.video_url);
+                if (normalizedVideoUrl.error || !normalizedVideoUrl.url) {
+                    await client.query("ROLLBACK");
+                    return res.status(400).json({ error: normalizedVideoUrl.error || "Video URL is required" });
+                }
+                nextUrl = normalizedVideoUrl.url;
+            } else if (requestedType === LESSON_RESOURCE_TYPE_VIDEO && currentType !== LESSON_RESOURCE_TYPE_VIDEO) {
+                await client.query("ROLLBACK");
+                return res.status(400).json({ error: "Video URL is required when changing lesson type to VIDEO" });
+            } else if (!currentUrl) {
+                await client.query("ROLLBACK");
+                return res.status(400).json({ error: "Video lessons must have a valid video URL" });
+            }
+        } else {
+            nextUrl = "";
         }
 
         if (hasTitle && title) {
@@ -1632,12 +1759,35 @@ app.patch("/api/admin/modules/:moduleId/lessons/:resourceId", async (req, res) =
             );
         }
 
+        if (nextType !== currentType || nextUrl !== currentUrl) {
+            await client.query(
+                `UPDATE module_resources
+                 SET type = $2,
+                     url = $3
+                 WHERE resource_id = $1`,
+                [resourceId, nextType, nextUrl]
+            );
+        }
+
+        if (nextType !== currentType) {
+            const fileRowsResult = await client.query(
+                `SELECT storage_key
+                 FROM module_resource_files
+                 WHERE resource_id = $1
+                 FOR UPDATE`,
+                [resourceId]
+            );
+            for (const row of fileRowsResult.rows) {
+                if (row.storage_key) staleStorageKeys.add(row.storage_key);
+            }
+            await client.query(`DELETE FROM module_resource_files WHERE resource_id = $1`, [resourceId]);
+        }
+
         if (requestedOrderNo !== null) {
             const orderedResourcesResult = await client.query(
                 `SELECT resource_id::INT AS resource_id
                  FROM module_resources
                  WHERE module_id = $1
-                   AND type = 'PDF'
                  ORDER BY order_no ASC, resource_id ASC
                  FOR UPDATE`,
                 [moduleId]
@@ -1680,6 +1830,10 @@ app.patch("/api/admin/modules/:moduleId/lessons/:resourceId", async (req, res) =
         client.release();
     }
 
+    for (const key of staleStorageKeys.values()) {
+        await removeStoredLessonPdf(key);
+    }
+
     try {
         const [item] = await getAdminLessonItems(moduleId);
         const lesson = findAdminLessonByResourceId(item, resourceId);
@@ -1708,7 +1862,6 @@ app.delete("/api/admin/modules/:moduleId/lessons/:resourceId", async (req, res) 
              FROM module_resources
              WHERE module_id = $1
                AND resource_id = $2
-               AND type = 'PDF'
              FOR UPDATE`,
             [moduleId, resourceId]
         );
@@ -1734,7 +1887,6 @@ app.delete("/api/admin/modules/:moduleId/lessons/:resourceId", async (req, res) 
             `SELECT resource_id::INT AS resource_id
              FROM module_resources
              WHERE module_id = $1
-               AND type = 'PDF'
              ORDER BY order_no ASC, resource_id ASC
              FOR UPDATE`,
             [moduleId]
@@ -1829,17 +1981,20 @@ app.post("/api/admin/modules/:moduleId/lessons/:resourceId/pdf", (req, res) => {
             await client.query("BEGIN");
 
             const lessonResult = await client.query(
-                `SELECT resource_id::INT AS resource_id
+                `SELECT resource_id::INT AS resource_id, type
                  FROM module_resources
                  WHERE module_id = $1
                    AND resource_id = $2
-                   AND type = 'PDF'
                  FOR UPDATE`,
                 [moduleId, resourceId]
             );
             if (lessonResult.rowCount === 0) {
                 await client.query("ROLLBACK");
                 return res.status(404).json({ error: "Lesson not found" });
+            }
+            if (normalizeLessonResourceType(lessonResult.rows[0]?.type) !== LESSON_RESOURCE_TYPE_PDF) {
+                await client.query("ROLLBACK");
+                return res.status(400).json({ error: "Only PDF lessons can receive uploaded PDF files" });
             }
 
             const existingFileResult = await client.query(
@@ -1933,17 +2088,20 @@ app.delete("/api/admin/modules/:moduleId/lessons/:resourceId/pdf", async (req, r
         await client.query("BEGIN");
 
         const lessonResult = await client.query(
-            `SELECT resource_id::INT AS resource_id, url
+            `SELECT resource_id::INT AS resource_id, type, url
              FROM module_resources
              WHERE module_id = $1
                AND resource_id = $2
-               AND type = 'PDF'
              FOR UPDATE`,
             [moduleId, resourceId]
         );
         if (lessonResult.rowCount === 0) {
             await client.query("ROLLBACK");
             return res.status(404).json({ error: "Lesson not found" });
+        }
+        if (normalizeLessonResourceType(lessonResult.rows[0]?.type) !== LESSON_RESOURCE_TYPE_PDF) {
+            await client.query("ROLLBACK");
+            return res.status(400).json({ error: "Only PDF lessons have uploaded PDF files" });
         }
 
         const existingUrl = String(lessonResult.rows[0]?.url || "").trim();
