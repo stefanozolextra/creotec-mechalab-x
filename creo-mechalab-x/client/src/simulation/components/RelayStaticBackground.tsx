@@ -2,6 +2,8 @@ import React from 'react';
 import { Layer, Group, Rect, Text, Circle, Line } from 'react-konva';
 import { HW_STYLES } from '../constants/relayBoard';
 
+export type ManualRelayButtonId = 'start-1' | 'start-2' | 'stop-1' | 'stop-2' | 'emergency-stop';
+
 interface RelayStaticBackgroundProps {
     BASE_CANVAS_WIDTH: number;
     BASE_CANVAS_HEIGHT: number;
@@ -9,7 +11,9 @@ interface RelayStaticBackgroundProps {
     isDarkMode: boolean;
     isMainSwitchOn: boolean;
     isGreenLampOn: boolean;
+    manualButtonState: Record<ManualRelayButtonId, boolean>;
     onToggleSwitch: () => void;
+    onManualButtonPressChange: (buttonId: ManualRelayButtonId, isPressed: boolean) => void;
 }
 
 export const RelayStaticBackground = React.memo(({
@@ -19,13 +23,22 @@ export const RelayStaticBackground = React.memo(({
     isDarkMode,
     isMainSwitchOn,
     isGreenLampOn,
-    onToggleSwitch
+    manualButtonState,
+    onToggleSwitch,
+    onManualButtonPressChange
 }: RelayStaticBackgroundProps) => {
 
     const panelFill = isDarkMode ? '#1e293b' : '#ffffff';
     const panelStroke = isDarkMode ? '#334155' : '#e2e8f0';
     const textFill = isDarkMode ? '#94a3b8' : '#cbd5e1';
     const dashStroke = isDarkMode ? '#475569' : '#94a3b8';
+    const MANUAL_BUTTONS: Array<{ id: ManualRelayButtonId; label: string; x: number; y: number; kind: 'start' | 'stop' | 'emergency' }> = [
+        { id: 'start-1', label: 'START', x: 92, y: 560, kind: 'start' },
+        { id: 'start-2', label: 'START', x: 128, y: 560, kind: 'start' },
+        { id: 'stop-1', label: 'STOP', x: 164, y: 560, kind: 'stop' },
+        { id: 'stop-2', label: 'STOP', x: 200, y: 560, kind: 'stop' },
+        { id: 'emergency-stop', label: 'EMERGENCY\nSTOP', x: 244, y: 560, kind: 'emergency' },
+    ];
 
     const renderTechnicalPanel = (id: string, x: number, y: number, width: number, height: number, title: string) => (
         <Group key={`panel-${id}`} x={x} y={y} listening={false}>
@@ -144,6 +157,64 @@ export const RelayStaticBackground = React.memo(({
         </Group>
     );
 
+    const renderManualButton = (button: (typeof MANUAL_BUTTONS)[number]) => {
+        const isPressed = manualButtonState[button.id];
+        const isEmergency = button.kind === 'emergency';
+        const containerOffsetY = isPressed ? 2 : 0;
+
+        return (
+            <Group
+                key={button.id}
+                x={button.x}
+                y={button.y}
+                onMouseDown={() => onManualButtonPressChange(button.id, true)}
+                onMouseUp={() => onManualButtonPressChange(button.id, false)}
+                onTouchStart={() => onManualButtonPressChange(button.id, true)}
+                onTouchEnd={() => onManualButtonPressChange(button.id, false)}
+                onMouseLeave={(e) => {
+                    onManualButtonPressChange(button.id, false);
+                    const container = e.target.getStage()?.container();
+                    if (container) container.style.cursor = 'default';
+                }}
+                onMouseEnter={(e) => {
+                    const container = e.target.getStage()?.container();
+                    if (container) container.style.cursor = 'pointer';
+                }}
+            >
+                {isEmergency ? (
+                    <>
+                        <Group y={containerOffsetY}>
+                            <Circle radius={15} fill={isPressed ? '#ca8a04' : '#facc15'} shadowColor="rgba(0,0,0,0.4)" shadowBlur={6} shadowOffsetY={3} />
+                            <Circle radius={10} fill={isPressed ? '#dc2626' : '#ef4444'} />
+                        </Group>
+                        <Text text={button.label} x={-34} y={19} width={68} fontSize={7} fontStyle="bold" fill="#1e293b" align="center" listening={false} />
+                    </>
+                ) : (
+                    <>
+                        <Group y={containerOffsetY}>
+                            <Circle
+                                radius={12}
+                                fill={button.kind === 'start'
+                                    ? (isPressed ? '#0f766e' : '#10b981')
+                                    : (isPressed ? '#b91c1c' : '#ef4444')}
+                                shadowColor="rgba(0,0,0,0.4)"
+                                shadowBlur={6}
+                                shadowOffsetY={3}
+                            />
+                            <Circle
+                                radius={8}
+                                fill={button.kind === 'start'
+                                    ? (isPressed ? '#10b981' : '#34d399')
+                                    : (isPressed ? '#ef4444' : '#f87171')}
+                            />
+                        </Group>
+                        <Text text={button.label} x={-18} y={18} width={36} fontSize={7.5} fontStyle="bold" fill="#1e293b" align="center" listening={false} />
+                    </>
+                )}
+            </Group>
+        );
+    };
+
     return (
         <Layer scaleX={canvasScale} scaleY={canvasScale} id="static-hardware-layer">
             <Rect width={BASE_CANVAS_WIDTH} height={BASE_CANVAS_HEIGHT} fill="#cbd5e1" listening={false} />
@@ -186,22 +257,22 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={550} y={230} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="LIGHTS AND BUZZER (X1/X2)" x={550} y={215} fontSize={11} fill={textFill} fontStyle="bold" />
 
-                <Rect x={50} y={495} width={730} height={30} fill={isDarkMode ? '#334155' : '#e2e8f0'} stroke={isDarkMode ? '#475569' : '#cbd5e1'} strokeWidth={1} cornerRadius={2} />
-                <Line points={[50, 510, 780, 510]} stroke={isDarkMode ? '#1e293b' : '#94a3b8'} strokeWidth={2} dash={[10, 10]} />
+                <Rect x={320} y={495} width={460} height={30} fill={isDarkMode ? '#334155' : '#e2e8f0'} stroke={isDarkMode ? '#475569' : '#cbd5e1'} strokeWidth={1} cornerRadius={2} />
+                <Line points={[320, 510, 780, 510]} stroke={isDarkMode ? '#1e293b' : '#94a3b8'} strokeWidth={2} dash={[10, 10]} />
 
-                <Rect x={60} y={380} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (RELAY 1)" x={60} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
-                <Rect x={305} y={380} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (RELAY 2)" x={305} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
-                <Rect x={550} y={380} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (RELAY 3)" x={550} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Rect x={56} y={380} width={244} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="TERMINALS (RELAY 1)" x={56} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Rect x={301} y={380} width={244} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="TERMINALS (RELAY 2)" x={301} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Rect x={546} y={380} width={244} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="TERMINALS (RELAY 3)" x={546} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
 
-                <Rect x={60} y={610} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="BUTTON" x={60} y={595} fontSize={10} fontStyle="bold" fill={textFill} />
-                <Rect x={305} y={610} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="COUNTER" x={305} y={595} fontSize={10} fontStyle="bold" fill={textFill} />
-                <Rect x={550} y={610} width={220} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TIMER" x={550} y={595} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Rect x={60} y={604} width={220} height={54} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="BUTTON" x={60} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Rect x={305} y={604} width={220} height={54} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="COUNTER" x={305} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Rect x={550} y={604} width={220} height={54} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="TIMER" x={550} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
 
                 <Rect x={830} y={100} width={45} height={220} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="SOLENOID 1" x={830} y={85} fontSize={11} fontStyle="bold" fill={textFill} />
@@ -209,25 +280,25 @@ export const RelayStaticBackground = React.memo(({
                 <Text text="SOLENOID 2" x={830} y={385} fontSize={11} fontStyle="bold" fill={textFill} />
 
                 {/* Labels for the Limit Switches */}
-                <Text text="1S1" x={1082} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
-                <Text text="1S2" x={1142} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
-                <Text text="2S1" x={1082} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
-                <Text text="2S2" x={1142} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="LS1" x={1082} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="LS2" x={1142} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="LS3" x={1082} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="LS4" x={1142} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
             </Group>
 
             {/* Middle Hardware Components */}
             <Group listening={false}>
-                <Group x={140} y={465}>
+                <Group x={430} y={465}>
                     <Rect width={60} height={90} fill="#1e293b" cornerRadius={4} shadowColor="rgba(0,0,0,0.3)" shadowBlur={4} shadowOffsetY={2} />
                     <Rect x={5} y={5} width={50} height={80} fill="#334155" cornerRadius={2} />
                     <Text text="RY-1" x={16} y={40} fill="#94a3b8" fontStyle="bold" />
                 </Group>
-                <Group x={385} y={465}>
+                <Group x={555} y={465}>
                     <Rect width={60} height={90} fill="#1e293b" cornerRadius={4} shadowColor="rgba(0,0,0,0.3)" shadowBlur={4} shadowOffsetY={2} />
                     <Rect x={5} y={5} width={50} height={80} fill="#334155" cornerRadius={2} />
                     <Text text="RY-2" x={16} y={40} fill="#94a3b8" fontStyle="bold" />
                 </Group>
-                <Group x={620} y={465}>
+                <Group x={675} y={465}>
                     <Rect width={80} height={90} fill="#f8fafc" stroke="#cbd5e1" strokeWidth={2} cornerRadius={4} shadowColor="rgba(0,0,0,0.2)" shadowBlur={4} shadowOffsetY={2} />
                     <Rect x={10} y={10} width={60} height={30} fill="#0f172a" cornerRadius={2} />
                     <Text text="00.00" x={18} y={16} fill="#ef4444" fontSize={18} fontFamily={HW_STYLES.technicalMono} />
@@ -249,16 +320,19 @@ export const RelayStaticBackground = React.memo(({
                 {render52Valve(970, 575, 920, 490)}
             </Group>
 
+            {/* Manual Input Buttons */}
+            {MANUAL_BUTTONS.map(renderManualButton)}
+
             {/* Terminal Bases (Untouched) */}
             {renderTerminalStripBase('vplus', 82, 252, 12, false)}
             {renderTerminalStripBase('vminus', 327, 252, 12, false)}
             {renderTerminalStripBase('signals', 572, 252, 12, false)}
-            {renderTerminalStripBase('relay1_top', 82, 402, 12, false)}
-            {renderTerminalStripBase('relay2_top', 327, 402, 12, false)}
-            {renderTerminalStripBase('timer_top', 572, 402, 12, false)}
-            {renderTerminalStripBase('relay1_bot', 82, 632, 12, false)}
-            {renderTerminalStripBase('relay2_bot', 327, 632, 12, false)}
-            {renderTerminalStripBase('timer_bot', 572, 632, 12, false)}
+            {renderTerminalStripBase('relay1_top', 76, 402, 14, false)}
+            {renderTerminalStripBase('relay2_top', 321, 402, 14, false)}
+            {renderTerminalStripBase('timer_top', 566, 402, 14, false)}
+            {renderTerminalStripBase('relay1_bot', 84, 638, 12, false)}
+            {renderTerminalStripBase('relay2_bot', 329, 638, 12, false)}
+            {renderTerminalStripBase('timer_bot', 574, 638, 12, false)}
             {renderTerminalStripBase('solenoid1', 852, 122, 12, true)}
             {renderTerminalStripBase('solenoid2', 852, 422, 12, true)}
 

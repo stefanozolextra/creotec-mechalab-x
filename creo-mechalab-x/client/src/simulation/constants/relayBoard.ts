@@ -34,13 +34,13 @@ generateTerminalStrip('vminus', 327, 252, 12, false, HW_STYLES.jackBlack, '0V- G
 generateTerminalStrip('lights', 572, 252, 12, false, HW_STYLES.jackBlue, 'Signal I/O');
 
 // 2. Bottom-Left Relay & Timer Terminals (Horizontal)
-generateTerminalStrip('relay1', 82, 402, 12, false, HW_STYLES.jackYellow, 'Relay 1 (Top)');
-generateTerminalStrip('relay2', 327, 402, 12, false, HW_STYLES.jackYellow, 'Relay 2 (Top)');
-generateTerminalStrip('relay3', 572, 402, 12, false, HW_STYLES.jackYellow, 'Timer/Ctr (Top)');
+generateTerminalStrip('relay1', 76, 402, 14, false, HW_STYLES.jackYellow, 'Relay 1 (Top)');
+generateTerminalStrip('relay2', 321, 402, 14, false, HW_STYLES.jackYellow, 'Relay 2 (Top)');
+generateTerminalStrip('relay3', 566, 402, 14, false, HW_STYLES.jackYellow, 'Timer/Ctr (Top)');
 
-generateTerminalStrip('button', 82, 632, 12, false, HW_STYLES.jackYellow, 'Relay 1 (Bot)');
-generateTerminalStrip('counter', 327, 632, 12, false, HW_STYLES.jackYellow, 'Relay 2 (Bot)');
-generateTerminalStrip('timer', 572, 632, 12, false, HW_STYLES.jackYellow, 'Timer/Ctr (Bot)');
+generateTerminalStrip('button', 84, 638, 12, false, HW_STYLES.jackYellow, 'Relay 1 (Bot)');
+generateTerminalStrip('counter', 329, 638, 12, false, HW_STYLES.jackYellow, 'Relay 2 (Bot)');
+generateTerminalStrip('timer', 574, 638, 12, false, HW_STYLES.jackYellow, 'Timer/Ctr (Bot)');
 
 // 3. Right-Side Solenoid Terminals (Vertical)
 generateTerminalStrip('solenoid1', 852, 122, 12, true, HW_STYLES.jackBlue, 'Solenoid 1');

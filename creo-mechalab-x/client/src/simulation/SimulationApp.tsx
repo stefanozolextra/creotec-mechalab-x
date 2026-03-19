@@ -7,7 +7,7 @@ import { ArrowLeft, Play, Trash2, Undo2, Redo2, Sun, Moon, RefreshCw, ChevronLef
 import './SimulationApp.css';
 
 import { RELAY_PORTS, HW_STYLES } from './constants/relayBoard';
-import { RelayStaticBackground } from './components/RelayStaticBackground';
+import { RelayStaticBackground, type ManualRelayButtonId } from './components/RelayStaticBackground';
 import { computeOrthogonalPath } from './utils/wireRouting';
 import { evaluateActivityAnswer, type ActivityEvaluationResult } from './utils/evaluateActivityAnswer';
 import PortraitGuard from '../components/PortraitGuard';
@@ -55,6 +55,14 @@ const isWireIssue = (issue: string) =>
   || issue.startsWith('Missing required connection:')
   || issue.startsWith('Missing one required connection option:');
 
+const INITIAL_MANUAL_RELAY_BUTTON_STATE: Record<ManualRelayButtonId, boolean> = {
+  'start-1': false,
+  'start-2': false,
+  'stop-1': false,
+  'stop-2': false,
+  'emergency-stop': false,
+};
+
 export default function SimulationApp({ routeId, onNavigateBack }: SimulationAppProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
@@ -73,6 +81,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   }, []);
 
   const [isMainSwitchOn, setIsMainSwitchOn] = useState(false);
+  const [pressedManualButtons, setPressedManualButtons] = useState<Record<ManualRelayButtonId, boolean>>(INITIAL_MANUAL_RELAY_BUTTON_STATE);
   const [wires, setWires] = useState<Connection[]>([]);
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
@@ -120,6 +129,11 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
 
   const toggleTheme = () => { const newMode = !isDarkMode; setIsDarkMode(newMode); document.documentElement.classList.toggle('dark', newMode); };
   const handleToggleSwitch = useCallback(() => setIsMainSwitchOn(prev => !prev), []);
+  const handleManualButtonPressChange = useCallback((buttonId: ManualRelayButtonId, isPressed: boolean) => {
+    setPressedManualButtons((prev) => (
+      prev[buttonId] === isPressed ? prev : { ...prev, [buttonId]: isPressed }
+    ));
+  }, []);
 
   const handleBackNavigation = () => {
     if (onNavigateBack) {
@@ -259,7 +273,15 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
 
   const handleUndo = () => { if (!historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
   const handleRedo = () => { if (!historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
-  const handleResetBoard = () => { setHistoryPast(prev => [...prev, wires].slice(-50)); setHistoryFuture([]); setWires([]); setSelectedWireId(null); setActivePin(null); setIsMainSwitchOn(false); };
+  const handleResetBoard = () => {
+    setHistoryPast(prev => [...prev, wires].slice(-50));
+    setHistoryFuture([]);
+    setWires([]);
+    setSelectedWireId(null);
+    setActivePin(null);
+    setIsMainSwitchOn(false);
+    setPressedManualButtons(INITIAL_MANUAL_RELAY_BUTTON_STATE);
+  };
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedWire(); } };
@@ -619,7 +641,17 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                   </div>
                 ) : (
                   <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseLeave={handleStageMouseLeave}>
-                    <RelayStaticBackground BASE_CANVAS_WIDTH={BASE_CANVAS_WIDTH} BASE_CANVAS_HEIGHT={BASE_CANVAS_HEIGHT} canvasScale={canvasScale} isDarkMode={isDarkMode} isMainSwitchOn={isMainSwitchOn} isGreenLampOn={isActivity1GreenLampOn} onToggleSwitch={handleToggleSwitch} />
+                    <RelayStaticBackground
+                      BASE_CANVAS_WIDTH={BASE_CANVAS_WIDTH}
+                      BASE_CANVAS_HEIGHT={BASE_CANVAS_HEIGHT}
+                      canvasScale={canvasScale}
+                      isDarkMode={isDarkMode}
+                      isMainSwitchOn={isMainSwitchOn}
+                      isGreenLampOn={isActivity1GreenLampOn}
+                      manualButtonState={pressedManualButtons}
+                      onToggleSwitch={handleToggleSwitch}
+                      onManualButtonPressChange={handleManualButtonPressChange}
+                    />
 
                     <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
                       {Object.entries(RELAY_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
