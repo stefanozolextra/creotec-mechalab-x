@@ -4,6 +4,7 @@ import type { ActivityAnswerDefinition } from './types';
 export const activity2Answer: ActivityAnswerDefinition = {
   routeId: '2',
   title: 'Start-Stop Latching Conrtol Unit',
+  instruction: 'Follow the ladder diagram, place the required devices, and complete the wiring path for the latching start-stop circuit before checking your answer.',
   diagram: activity1Diagram,
   rule: {
     requiredInputDevices: { button: 1 },

@@ -553,6 +553,11 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
 
                   <div className="mt-5 flex flex-col">
                     <p className="text-base font-black text-slate-900 dark:text-white">{activityPreset.title}</p>
+                    {activityPreset.instruction ? (
+                      <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                        {activityPreset.instruction}
+                      </p>
+                    ) : null}
                     <div className="mt-3 h-[220px] rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
                       <img src={activityPreset.diagram} alt={activityPreset.title} className="h-full w-full rounded-xl object-contain" />
                     </div>

@@ -12,6 +12,7 @@ export interface ActivityRuleDefinition {
 export interface ActivityAnswerDefinition {
   routeId: string;
   title: string;
+  instruction?: string;
   diagram: string;
   rule: ActivityRuleDefinition;
 }
