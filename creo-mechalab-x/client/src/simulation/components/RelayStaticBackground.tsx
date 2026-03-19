@@ -56,6 +56,21 @@ export const RelayStaticBackground = React.memo(({
         </Group>
     );
 
+    const renderMicroSwitch = (x: number, y: number) => (
+        <Group x={x} y={y} listening={false}>
+            {/* Simulated Wooden Mount */}
+            <Rect x={-4} y={-4} width={36} height={26} fill="#8b5a2b" cornerRadius={2} opacity={isDarkMode ? 0.6 : 0.8} />
+            {/* Switch Body */}
+            <Rect width={28} height={18} fill="#111827" cornerRadius={2} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} shadowOffsetY={1} />
+            <Circle x={6} y={6} radius={2} fill="#374151" />
+            <Circle x={22} y={12} radius={2} fill="#374151" />
+            {/* Angled Metal Lever */}
+            <Line points={[2, 18, 16, 28]} stroke="#cbd5e1" strokeWidth={1.5} lineCap="round" />
+            {/* Roller resting on the rod plane */}
+            <Circle x={16} y={28} radius={2.5} fill="#f8fafc" stroke="#475569" strokeWidth={1} />
+        </Group>
+    );
+
     const renderIndicatorLamp = (
         x: number,
         label: string,
@@ -140,6 +155,12 @@ export const RelayStaticBackground = React.memo(({
                 <Text text="SOLENOID 1" x={830} y={85} fontSize={11} fontStyle="bold" fill={textFill} />
                 <Rect x={830} y={400} width={45} height={220} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="SOLENOID 2" x={830} y={385} fontSize={11} fontStyle="bold" fill={textFill} />
+
+                {/* Labels for the Limit Switches */}
+                <Text text="1S1" x={1082} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="1S2" x={1142} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="2S1" x={1082} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="2S2" x={1142} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
             </Group>
 
             {/* Middle Hardware Components */}
@@ -162,6 +183,12 @@ export const RelayStaticBackground = React.memo(({
                 </Group>
                 {renderPneumaticCylinder(920, 190, "CYLINDER A")}
                 {renderPneumaticCylinder(920, 490, "CYLINDER B")}
+
+                {/* Limit Switch Mounts & Bodies */}
+                {renderMicroSwitch(1085, 172)}
+                {renderMicroSwitch(1145, 172)}
+                {renderMicroSwitch(1085, 472)}
+                {renderMicroSwitch(1145, 472)}
             </Group>
 
             {/* Terminal Bases */}
