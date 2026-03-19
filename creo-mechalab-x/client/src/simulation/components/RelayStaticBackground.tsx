@@ -66,8 +66,60 @@ export const RelayStaticBackground = React.memo(({
             <Circle x={22} y={12} radius={2} fill="#374151" />
             {/* Angled Metal Lever */}
             <Line points={[2, 18, 16, 28]} stroke="#cbd5e1" strokeWidth={1.5} lineCap="round" />
-            {/* Roller resting on the rod plane */}
             <Circle x={16} y={28} radius={2.5} fill="#f8fafc" stroke="#475569" strokeWidth={1} />
+        </Group>
+    );
+
+    // --- NEW: 5/2-Way Solenoid Valve with Pneumatic Tubes ---
+    const render52Valve = (x: number, y: number, cylX: number, cylY: number) => (
+        <Group listening={false}>
+            {/* Orange Pneumatic Tubes connecting to Cylinder */}
+            <Line points={[x + 25, y, x + 25, y - 25, cylX + 20, y - 25, cylX + 20, cylY + 36]} stroke="#f97316" strokeWidth={3.5} lineJoin="round" />
+            <Line points={[x + 55, y, x + 55, y - 15, cylX + 160, y - 15, cylX + 160, cylY + 36]} stroke="#f97316" strokeWidth={3.5} lineJoin="round" />
+            {/* Supply Air Tube (Bottom) */}
+            <Line points={[x + 40, y + 36, x + 40, y + 60]} stroke="#f97316" strokeWidth={3.5} />
+
+            <Group x={x} y={y}>
+                {/* Main Silver Valve Body */}
+                <Rect width={80} height={36} fill="#cbd5e1" stroke="#94a3b8" strokeWidth={1} shadowColor="rgba(0,0,0,0.2)" shadowBlur={4} shadowOffsetY={2} />
+
+                {/* AIGYAD Logo/Text */}
+                <Text text="AIGYAD" x={22} y={8} fontSize={9} fontStyle="bold" fill="#0369a1" />
+                <Text text="Model: 4V220-08" x={9} y={20} fontSize={6} fontStyle="bold" fill="#334155" />
+                <Text text="VALVE" x={52} y={10} fontSize={5} fill="#475569" />
+
+                {/* Left Solenoid Coil (Black) */}
+                <Rect x={-36} y={0} width={36} height={36} fill="#111827" cornerRadius={[4, 0, 0, 4]} />
+                <Rect x={-36} y={10} width={8} height={16} fill="#334155" />
+
+                {/* Left Translucent Connector */}
+                <Rect x={-30} y={-16} width={24} height={16} fill="rgba(69, 26, 3, 0.85)" stroke="#000000" strokeWidth={1} />
+                {/* Electrical Wires (Red & Black) extending out */}
+                <Line points={[-18, -10, -35, -10, -45, 0]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
+                <Line points={[-18, -14, -30, -14, -40, 5]} stroke="#111827" strokeWidth={1.5} tension={0.3} />
+
+                {/* Right Solenoid Coil (Black) */}
+                <Rect x={80} y={0} width={36} height={36} fill="#111827" cornerRadius={[0, 4, 4, 0]} />
+                <Rect x={108} y={10} width={8} height={16} fill="#334155" />
+
+                {/* Right Translucent Connector */}
+                <Rect x={86} y={-16} width={24} height={16} fill="rgba(69, 26, 3, 0.85)" stroke="#000000" strokeWidth={1} />
+                {/* Electrical Wires (Red & Black) extending out */}
+                <Line points={[98, -10, 115, -10, 125, 0]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
+                <Line points={[98, -14, 110, -14, 120, 5]} stroke="#111827" strokeWidth={1.5} tension={0.3} />
+
+                {/* Pneumatic Fittings (Gold Bases & Blue Push-in Rings) */}
+                {/* Top A & B */}
+                <Rect x={20} y={-6} width={10} height={6} fill="#d4af37" />
+                <Rect x={21} y={-8} width={8} height={2} fill="#3b82f6" />
+                <Rect x={50} y={-6} width={10} height={6} fill="#d4af37" />
+                <Rect x={51} y={-8} width={8} height={2} fill="#3b82f6" />
+                {/* Bottom R, P, S */}
+                <Rect x={10} y={36} width={8} height={6} fill="#d4af37" />
+                <Rect x={36} y={36} width={8} height={6} fill="#d4af37" />
+                <Rect x={37} y={42} width={6} height={2} fill="#3b82f6" />
+                <Rect x={62} y={36} width={8} height={6} fill="#d4af37" />
+            </Group>
         </Group>
     );
 
@@ -181,6 +233,8 @@ export const RelayStaticBackground = React.memo(({
                     <Text text="00.00" x={18} y={16} fill="#ef4444" fontSize={18} fontFamily={HW_STYLES.technicalMono} />
                     <Text text="TIMER/CTR" x={12} y={60} fill="#64748b" fontSize={10} fontStyle="bold" />
                 </Group>
+
+                {/* Cylinders */}
                 {renderPneumaticCylinder(920, 190, "CYLINDER A")}
                 {renderPneumaticCylinder(920, 490, "CYLINDER B")}
 
@@ -189,9 +243,13 @@ export const RelayStaticBackground = React.memo(({
                 {renderMicroSwitch(1145, 172)}
                 {renderMicroSwitch(1085, 472)}
                 {renderMicroSwitch(1145, 472)}
+
+                {/* NEW: 5/2-Way Valves with pneumatic tubes connecting to Cylinders */}
+                {render52Valve(970, 275, 920, 190)}
+                {render52Valve(970, 575, 920, 490)}
             </Group>
 
-            {/* Terminal Bases */}
+            {/* Terminal Bases (Untouched) */}
             {renderTerminalStripBase('vplus', 82, 252, 12, false)}
             {renderTerminalStripBase('vminus', 327, 252, 12, false)}
             {renderTerminalStripBase('signals', 572, 252, 12, false)}
@@ -203,6 +261,7 @@ export const RelayStaticBackground = React.memo(({
             {renderTerminalStripBase('timer_bot', 572, 632, 12, false)}
             {renderTerminalStripBase('solenoid1', 852, 122, 12, true)}
             {renderTerminalStripBase('solenoid2', 852, 422, 12, true)}
+
         </Layer>
     );
 });
