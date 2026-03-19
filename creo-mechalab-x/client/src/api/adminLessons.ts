@@ -1,9 +1,10 @@
 import { requestJson } from "./http";
 import type {
-  AdminLessonItem,
-  AdminLessonMutationResponse,
-  AdminLessonsListResponse,
-  AdminModuleLessonsResponse,
+    AdminLessonItem,
+    AdminLessonMutationResponse,
+    AdminLessonsListResponse,
+    AdminModuleLessonsResponse,
+    AdminLessonResourceType,
 } from "../types/adminLesson";
 
 const toPositiveInt = (value: number, label: string): number => {
@@ -79,29 +80,44 @@ export const getAdminModuleLessons = async (
 
 export const createAdminModuleLesson = async (
   moduleId: number,
-  title: string,
+  payload: { title: string; type: AdminLessonResourceType; url?: string },
 ): Promise<AdminLessonMutationResponse> => {
   const safeModuleId = toPositiveInt(moduleId, "moduleId");
-  const trimmedTitle = title.trim();
+  const trimmedTitle = payload.title.trim();
   if (!trimmedTitle) {
     throw new Error("Lesson title cannot be empty.");
+  }
+  const normalizedType = payload.type === "VIDEO" ? "VIDEO" : "PDF";
+  const trimmedUrl = typeof payload.url === "string" ? payload.url.trim() : "";
+  if (normalizedType === "VIDEO" && !trimmedUrl) {
+    throw new Error("Video URL cannot be empty.");
   }
 
   return requestJson<AdminLessonMutationResponse>(`/api/admin/modules/${safeModuleId}/lessons`, {
     method: "POST",
-    body: { title: trimmedTitle },
+    body: {
+      title: trimmedTitle,
+      type: normalizedType,
+      ...(normalizedType === "VIDEO" ? { url: trimmedUrl, video_url: trimmedUrl } : {}),
+    },
   });
 };
 
 export const updateAdminModuleLesson = async (
   moduleId: number,
   resourceId: number,
-  payload: { title?: string; order_no?: number },
+  payload: { title?: string; order_no?: number; type?: AdminLessonResourceType; url?: string },
 ): Promise<AdminLessonMutationResponse> => {
   const safeModuleId = toPositiveInt(moduleId, "moduleId");
   const safeResourceId = toPositiveInt(resourceId, "resourceId");
 
-  const body: { title?: string; order_no?: number } = {};
+  const body: {
+    title?: string;
+    order_no?: number;
+    type?: AdminLessonResourceType;
+    url?: string;
+    video_url?: string;
+  } = {};
   if (payload.title !== undefined) {
     const trimmedTitle = payload.title.trim();
     if (!trimmedTitle) {
@@ -111,6 +127,19 @@ export const updateAdminModuleLesson = async (
   }
   if (payload.order_no !== undefined) {
     body.order_no = toPositiveInt(payload.order_no, "order_no");
+  }
+  if (payload.type !== undefined) {
+    body.type = payload.type === "VIDEO" ? "VIDEO" : "PDF";
+  }
+  if (payload.url !== undefined) {
+    const trimmedUrl = payload.url.trim();
+    if (body.type === "VIDEO" && !trimmedUrl) {
+      throw new Error("Video URL cannot be empty.");
+    }
+    body.url = trimmedUrl;
+    if (body.type === "VIDEO") {
+      body.video_url = trimmedUrl;
+    }
   }
   if (Object.keys(body).length === 0) {
     throw new Error("No lesson fields to update.");

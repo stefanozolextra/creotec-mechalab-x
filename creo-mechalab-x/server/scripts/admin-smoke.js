@@ -113,6 +113,94 @@ async function run() {
             }`,
         );
     }
+
+    // 5) Lesson PATCH should accept VIDEO type/url updates without title or order_no
+    try {
+        const { response: lessonsResponse, data: lessonsData } = await requestJson("/api/admin/lessons", {
+            headers: authHeaders,
+        });
+        const items = Array.isArray(lessonsData?.items) ? lessonsData.items : [];
+        const moduleId = Number(items[0]?.module_id);
+
+        if (lessonsResponse.status !== 200) {
+            fail(`GET /api/admin/lessons expected 200, got ${lessonsResponse.status}`);
+        } else if (!Number.isInteger(moduleId) || moduleId < 1) {
+            fail("GET /api/admin/lessons did not return a usable module for lesson smoke test");
+        } else {
+            const lessonTitle = `Smoke Video Update ${Date.now()}`;
+            const videoUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+            let createdResourceId = null;
+
+            try {
+                const { response: createResponse, data: createData } = await requestJson(
+                    `/api/admin/modules/${moduleId}/lessons`,
+                    {
+                        method: "POST",
+                        headers: {
+                            ...authHeaders,
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            title: lessonTitle,
+                            type: "PDF",
+                        }),
+                    }
+                );
+
+                createdResourceId = Number(createData?.lesson?.resource_id);
+                if (createResponse.status !== 201 || !Number.isInteger(createdResourceId) || createdResourceId < 1) {
+                    fail(`POST /api/admin/modules/${moduleId}/lessons failed for lesson smoke test (status=${createResponse.status})`);
+                } else {
+                    const { response: patchResponse, data: patchData } = await requestJson(
+                        `/api/admin/modules/${moduleId}/lessons/${createdResourceId}`,
+                        {
+                            method: "PATCH",
+                            headers: {
+                                ...authHeaders,
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                type: "VIDEO",
+                                video_url: videoUrl,
+                            }),
+                        }
+                    );
+
+                    const patchedLesson = patchData?.lesson;
+                    if (patchResponse.status !== 200) {
+                        fail(
+                            `PATCH /api/admin/modules/${moduleId}/lessons/${createdResourceId} expected 200 for VIDEO update, got ${patchResponse.status}`,
+                        );
+                    } else if (patchedLesson?.type !== "VIDEO") {
+                        fail("Lesson VIDEO update smoke test returned 200 but did not persist type=VIDEO");
+                    } else if (patchedLesson?.url !== videoUrl && patchedLesson?.resolved_url !== videoUrl) {
+                        fail("Lesson VIDEO update smoke test returned 200 but did not persist the video URL");
+                    } else {
+                        pass("PATCH /api/admin/modules/:moduleId/lessons/:resourceId accepts VIDEO type/url-only updates");
+                    }
+                }
+            } finally {
+                if (Number.isInteger(createdResourceId) && createdResourceId > 0) {
+                    const { response: deleteResponse } = await requestJson(
+                        `/api/admin/modules/${moduleId}/lessons/${createdResourceId}`,
+                        {
+                            method: "DELETE",
+                            headers: authHeaders,
+                        }
+                    );
+                    if (deleteResponse.status !== 200) {
+                        fail(
+                            `DELETE /api/admin/modules/${moduleId}/lessons/${createdResourceId} cleanup expected 200, got ${deleteResponse.status}`,
+                        );
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        fail(
+            `Lesson VIDEO update smoke test request error: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
 }
 
 run()

@@ -1,23 +1,12 @@
-export type AdminLessonPdfState = {
-  resource_id: number | null;
-  has_pdf: boolean;
-  has_uploaded_file: boolean;
-  file_id: number | null;
-  file_name: string | null;
-  mime_type: string | null;
-  file_size: number | null;
-  uploaded_at: string | null;
-  view_url: string | null;
-};
+export type AdminLessonResourceType = "PDF" | "VIDEO";
 
 export type AdminLessonResource = {
   resource_id: number;
   module_id: number;
-  type: string;
+  type: AdminLessonResourceType;
   title: string;
   url: string;
   order_no: number;
-  has_pdf: boolean;
   has_uploaded_file: boolean;
   file_id: number | null;
   file_name: string | null;
@@ -37,7 +26,6 @@ export type AdminLessonItem = {
   order_no: number;
   is_active: boolean;
   lessons: AdminLessonResource[];
-  pdf: AdminLessonPdfState;
 };
 
 export type AdminLessonsListResponse = {
