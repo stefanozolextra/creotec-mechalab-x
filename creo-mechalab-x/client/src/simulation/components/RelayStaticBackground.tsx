@@ -32,6 +32,8 @@ export const RelayStaticBackground = React.memo(({
     const panelStroke = isDarkMode ? '#334155' : '#e2e8f0';
     const textFill = isDarkMode ? '#94a3b8' : '#cbd5e1';
     const dashStroke = isDarkMode ? '#475569' : '#94a3b8';
+    const holeFill = isDarkMode ? '#0f172a' : '#cbd5e1';
+    const holeStroke = isDarkMode ? '#334155' : '#94a3b8';
     const MANUAL_BUTTONS: Array<{ id: ManualRelayButtonId; label: string; x: number; y: number; kind: 'start' | 'stop' | 'emergency' }> = [
         { id: 'start-1', label: 'START', x: 92, y: 560, kind: 'start' },
         { id: 'start-2', label: 'START', x: 128, y: 560, kind: 'start' },
