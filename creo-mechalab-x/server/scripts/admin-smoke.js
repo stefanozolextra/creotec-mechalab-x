@@ -128,7 +128,7 @@ async function run() {
             fail("GET /api/admin/lessons did not return a usable module for lesson smoke test");
         } else {
             const lessonTitle = `Smoke Video Update ${Date.now()}`;
-            const videoUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
+            const youTubeVideoUrl = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
             let createdResourceId = null;
 
             try {
@@ -161,7 +161,7 @@ async function run() {
                             },
                             body: JSON.stringify({
                                 type: "VIDEO",
-                                video_url: videoUrl,
+                                video_url: youTubeVideoUrl,
                             }),
                         }
                     );
@@ -173,7 +173,7 @@ async function run() {
                         );
                     } else if (patchedLesson?.type !== "VIDEO") {
                         fail("Lesson VIDEO update smoke test returned 200 but did not persist type=VIDEO");
-                    } else if (patchedLesson?.url !== videoUrl && patchedLesson?.resolved_url !== videoUrl) {
+                    } else if (patchedLesson?.url !== youTubeVideoUrl && patchedLesson?.resolved_url !== youTubeVideoUrl) {
                         fail("Lesson VIDEO update smoke test returned 200 but did not persist the video URL");
                     } else {
                         pass("PATCH /api/admin/modules/:moduleId/lessons/:resourceId accepts VIDEO type/url-only updates");
@@ -199,6 +199,149 @@ async function run() {
     } catch (error) {
         fail(
             `Lesson VIDEO update smoke test request error: ${error instanceof Error ? error.message : String(error)}`,
+        );
+    }
+
+    // 6) Google Drive preview/view URLs should be accepted, canonicalized, and unsupported Drive URLs rejected
+    try {
+        const { response: lessonsResponse, data: lessonsData } = await requestJson("/api/admin/lessons", {
+            headers: authHeaders,
+        });
+        const items = Array.isArray(lessonsData?.items) ? lessonsData.items : [];
+        const moduleId = Number(items[0]?.module_id);
+
+        if (lessonsResponse.status !== 200) {
+            fail(`GET /api/admin/lessons expected 200, got ${lessonsResponse.status}`);
+        } else if (!Number.isInteger(moduleId) || moduleId < 1) {
+            fail("GET /api/admin/lessons did not return a usable module for Google Drive video smoke test");
+        } else {
+            const googleDrivePreviewUrl =
+                "https://drive.google.com/file/d/1BXtg_jjJJuoi38vYnk-KicLgrhu4EL5Q/preview";
+            const googleDrivePreviewUrlWithQuery =
+                "https://drive.google.com/file/d/1BXtg_jjJJuoi38vYnk-KicLgrhu4EL5Q/preview?usp=sharing";
+            const googleDriveViewUrl =
+                "https://drive.google.com/file/d/1BXtg_jjJJuoi38vYnk-KicLgrhu4EL5Q/view?usp=sharing";
+            const unsupportedGoogleDriveUrl =
+                "https://drive.google.com/file/d/1BXtg_jjJJuoi38vYnk-KicLgrhu4EL5Q/edit?usp=sharing";
+            const lessonTitle = `Smoke Drive Video ${Date.now()}`;
+            let createdResourceId = null;
+
+            try {
+                const { response: createResponse, data: createData } = await requestJson(
+                    `/api/admin/modules/${moduleId}/lessons`,
+                    {
+                        method: "POST",
+                        headers: {
+                            ...authHeaders,
+                            "Content-Type": "application/json",
+                        },
+                        body: JSON.stringify({
+                            title: lessonTitle,
+                            type: "VIDEO",
+                            url: googleDrivePreviewUrlWithQuery,
+                        }),
+                    }
+                );
+
+                createdResourceId = Number(createData?.lesson?.resource_id);
+                const createdLesson = createData?.lesson;
+                if (createResponse.status !== 201 || !Number.isInteger(createdResourceId) || createdResourceId < 1) {
+                    fail(
+                        `POST /api/admin/modules/${moduleId}/lessons expected 201 for Google Drive preview URL, got ${createResponse.status}`,
+                    );
+                } else if (createdLesson?.type !== "VIDEO") {
+                    fail("Google Drive video create smoke test returned 201 but did not persist type=VIDEO");
+                } else if (
+                    createdLesson?.url !== googleDrivePreviewUrl &&
+                    createdLesson?.resolved_url !== googleDrivePreviewUrl
+                ) {
+                    fail("Google Drive video create smoke test did not persist the canonical preview URL");
+                } else {
+                    pass("POST /api/admin/modules/:moduleId/lessons accepts Google Drive preview URLs for VIDEO lessons");
+                }
+
+                if (Number.isInteger(createdResourceId) && createdResourceId > 0) {
+                    const { response: viewPatchResponse, data: viewPatchData } = await requestJson(
+                        `/api/admin/modules/${moduleId}/lessons/${createdResourceId}`,
+                        {
+                            method: "PATCH",
+                            headers: {
+                                ...authHeaders,
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                type: "VIDEO",
+                                video_url: googleDriveViewUrl,
+                            }),
+                        }
+                    );
+
+                    const viewPatchedLesson = viewPatchData?.lesson;
+                    if (viewPatchResponse.status !== 200) {
+                        fail(
+                            `PATCH /api/admin/modules/${moduleId}/lessons/${createdResourceId} expected 200 for Google Drive /view URL, got ${viewPatchResponse.status}`,
+                        );
+                    } else if (
+                        viewPatchedLesson?.url !== googleDrivePreviewUrl &&
+                        viewPatchedLesson?.resolved_url !== googleDrivePreviewUrl
+                    ) {
+                        fail(
+                            "Google Drive /view smoke test did not normalize the saved URL to the canonical preview URL",
+                        );
+                    } else {
+                        pass("PATCH /api/admin/modules/:moduleId/lessons/:resourceId accepts Google Drive /view URLs and normalizes them");
+                    }
+
+                    const { response: invalidPatchResponse, data: invalidPatchData } = await requestJson(
+                        `/api/admin/modules/${moduleId}/lessons/${createdResourceId}`,
+                        {
+                            method: "PATCH",
+                            headers: {
+                                ...authHeaders,
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({
+                                type: "VIDEO",
+                                video_url: unsupportedGoogleDriveUrl,
+                            }),
+                        }
+                    );
+
+                    const errorMessage = invalidPatchData && typeof invalidPatchData.error === "string"
+                        ? invalidPatchData.error
+                        : "";
+                    if (invalidPatchResponse.status !== 400) {
+                        fail(
+                            `PATCH /api/admin/modules/${moduleId}/lessons/${createdResourceId} expected 400 for unsupported Google Drive URL, got ${invalidPatchResponse.status}`,
+                        );
+                    } else if (!errorMessage.includes("Google Drive /preview or /view")) {
+                        fail(
+                            `Unsupported Google Drive URL returned 400 but unexpected error message: "${errorMessage}"`,
+                        );
+                    } else {
+                        pass("PATCH /api/admin/modules/:moduleId/lessons/:resourceId rejects unsupported Google Drive VIDEO URLs");
+                    }
+                }
+            } finally {
+                if (Number.isInteger(createdResourceId) && createdResourceId > 0) {
+                    const { response: deleteResponse } = await requestJson(
+                        `/api/admin/modules/${moduleId}/lessons/${createdResourceId}`,
+                        {
+                            method: "DELETE",
+                            headers: authHeaders,
+                        }
+                    );
+                    if (deleteResponse.status !== 200) {
+                        fail(
+                            `DELETE /api/admin/modules/${moduleId}/lessons/${createdResourceId} cleanup expected 200, got ${deleteResponse.status}`,
+                        );
+                    }
+                }
+            }
+        }
+    } catch (error) {
+        fail(
+            `Google Drive video smoke test request error: ${error instanceof Error ? error.message : String(error)}`,
         );
     }
 }

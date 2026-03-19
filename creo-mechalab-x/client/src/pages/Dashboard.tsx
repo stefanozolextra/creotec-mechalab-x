@@ -717,7 +717,7 @@ const Dashboard = () => {
                                                         </video>
                                                     ) : (
                                                         <iframe
-                                                            title={`${selectedPrimaryLesson.title} preview`}
+                                                            title={`${selectedPrimaryLesson.title} ${selectedPrimaryVideoLesson.providerLabel} preview`}
                                                             src={selectedPrimaryVideoLesson.embedUrl}
                                                             className="relative z-10 h-full w-full border-0"
                                                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"

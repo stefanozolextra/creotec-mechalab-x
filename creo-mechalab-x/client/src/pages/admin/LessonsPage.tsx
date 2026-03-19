@@ -46,6 +46,8 @@ type NoticeState =
 const MODULE_TITLE_MAX_LENGTH = 150;
 const LESSON_TITLE_MAX_LENGTH = 150;
 const DEFAULT_LESSON_TYPE: AdminLessonResourceType = "PDF";
+const SUPPORTED_VIDEO_URL_TEXT = "Supported HTTPS sources: YouTube, Vimeo, Google Drive /preview or /view file links, MP4, and WebM.";
+const SUPPORTED_VIDEO_URL_ERROR = "Enter a supported HTTPS YouTube, Vimeo, Google Drive /preview or /view file link, MP4, or WebM URL.";
 
 const toErrorMessage = (error: unknown, fallback: string): string => {
   if (error instanceof ApiError) return error.message;
@@ -441,6 +443,10 @@ export default function LessonsPage() {
       setAddLessonError("Video URL is required for VIDEO lessons.");
       return;
     }
+    if (addLessonTypeDraft === "VIDEO" && !resolveSupportedVideoLesson(trimmedLessonUrl)) {
+      setAddLessonError(SUPPORTED_VIDEO_URL_ERROR);
+      return;
+    }
 
     setBusyModuleId(moduleId);
     setBusyLessonId(null);
@@ -526,6 +532,10 @@ export default function LessonsPage() {
     const trimmedLessonUrl = lessonUrlDraft.trim();
     if (lessonTypeDraft === "VIDEO" && !trimmedLessonUrl) {
       setLessonSettingsError("Video URL is required for VIDEO lessons.");
+      return;
+    }
+    if (lessonTypeDraft === "VIDEO" && !resolveSupportedVideoLesson(trimmedLessonUrl)) {
+      setLessonSettingsError(SUPPORTED_VIDEO_URL_ERROR);
       return;
     }
 
@@ -655,19 +665,24 @@ export default function LessonsPage() {
   const disableCreateModule =
     addSaving || trimmedAddTitle.length === 0 || trimmedAddTitle.length > MODULE_TITLE_MAX_LENGTH;
   const trimmedAddLessonUrl = addLessonUrlDraft.trim();
+  const isAddLessonVideoUrlSupported =
+    addLessonTypeDraft !== "VIDEO" || !trimmedAddLessonUrl || !!resolveSupportedVideoLesson(trimmedAddLessonUrl);
   const disableCreateLesson =
     busyModuleId !== null ||
     busyLessonId !== null ||
     !addLessonDraft.trim() ||
     addLessonDraft.trim().length > LESSON_TITLE_MAX_LENGTH ||
-    (addLessonTypeDraft === "VIDEO" && !trimmedAddLessonUrl);
+    (addLessonTypeDraft === "VIDEO" && (!trimmedAddLessonUrl || !isAddLessonVideoUrlSupported));
   const canUploadPdfForSelectedLesson =
     !!selectedLesson && selectedLessonSavedType === "PDF" && lessonTypeDraft === "PDF";
+  const trimmedLessonUrlDraft = lessonUrlDraft.trim();
+  const isLessonVideoUrlSupported =
+    lessonTypeDraft !== "VIDEO" || !trimmedLessonUrlDraft || !!resolveSupportedVideoLesson(trimmedLessonUrlDraft);
   const canSaveLessonSettings =
     !!selectedLesson &&
     !isLessonBusy(selectedLesson.resource_id) &&
     lessonSettingsChanged &&
-    (lessonTypeDraft === "PDF" || lessonUrlDraft.trim().length > 0);
+    (lessonTypeDraft === "PDF" || (trimmedLessonUrlDraft.length > 0 && isLessonVideoUrlSupported));
 
   return (
     <div className="flex-1 flex flex-col gap-6 min-h-0 relative">
@@ -979,17 +994,20 @@ export default function LessonsPage() {
                       </button>
                     </div>
                     {addLessonTypeDraft === "VIDEO" ? (
-                      <input
-                        type="url"
-                        value={addLessonUrlDraft}
-                        onChange={(event) => {
-                          setAddLessonUrlDraft(event.target.value);
-                          if (addLessonError) setAddLessonError(null);
-                        }}
-                        placeholder="https://youtube.com/... or https://example.com/video.mp4"
-                        disabled={busyModuleId !== null || busyLessonId !== null}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6]"
-                      />
+                      <>
+                        <input
+                          type="url"
+                          value={addLessonUrlDraft}
+                          onChange={(event) => {
+                            setAddLessonUrlDraft(event.target.value);
+                            if (addLessonError) setAddLessonError(null);
+                          }}
+                          placeholder="https://drive.google.com/file/d/.../view?usp=sharing"
+                          disabled={busyModuleId !== null || busyLessonId !== null}
+                          className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                        />
+                        <p className="text-[11px] font-semibold text-slate-500">{SUPPORTED_VIDEO_URL_TEXT}</p>
+                      </>
                     ) : null}
                     {addLessonError ? <p className="text-xs font-semibold text-red-500">{addLessonError}</p> : null}
                   </div>
@@ -1231,10 +1249,11 @@ export default function LessonsPage() {
                                 setLessonUrlDraft(event.target.value);
                                 if (lessonSettingsError) setLessonSettingsError(null);
                               }}
-                              placeholder="https://youtube.com/... or https://example.com/video.mp4"
+                              placeholder="https://drive.google.com/file/d/.../view?usp=sharing"
                               disabled={isLessonBusy(selectedLesson.resource_id) || busyModuleId !== null || busyLessonId !== null}
                               className="w-full rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] px-3 py-2.5 text-sm font-medium text-[#0B1B3D] dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#3B82F6]"
                             />
+                            <p className="text-[11px] font-semibold text-slate-500">{SUPPORTED_VIDEO_URL_TEXT}</p>
                           </div>
                         ) : null}
 
@@ -1325,7 +1344,7 @@ export default function LessonsPage() {
                         ) : (
                           <div className="w-full aspect-video overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700">
                             <iframe
-                              title={`${selectedLesson.title} preview`}
+                              title={`${selectedLesson.title} ${previewVideo.providerLabel} preview`}
                               src={previewVideo.embedUrl}
                               className="h-full w-full border-0"
                               allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
@@ -1335,7 +1354,7 @@ export default function LessonsPage() {
                         )
                       ) : (
                         <p className="text-xs font-semibold text-slate-500">
-                          Enter a supported HTTPS YouTube, Vimeo, MP4, or WebM URL to preview this video lesson.
+                          {SUPPORTED_VIDEO_URL_ERROR}
                         </p>
                       )
                     ) : !previewFile ? (

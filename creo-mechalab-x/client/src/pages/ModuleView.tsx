@@ -534,7 +534,7 @@ const ModuleView = () => {
                                         ) : (
                                             <div className="w-full overflow-hidden rounded-lg border border-slate-200 shadow-2xl dark:border-slate-800 aspect-video bg-black">
                                                 <iframe
-                                                    title={resolvedLessonTitle}
+                                                    title={`${resolvedLessonTitle} ${currentVideoLesson.providerLabel}`}
                                                     src={currentVideoLesson.embedUrl}
                                                     className="h-full w-full border-0"
                                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
