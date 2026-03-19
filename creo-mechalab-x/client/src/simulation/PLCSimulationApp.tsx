@@ -140,17 +140,20 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
         }
     }, [hideTooltip, selectedWireId]);
 
-    const handlePortMouseEnter = useCallback((e: KonvaEventObject<MouseEvent>, _Id: string, config: PlcPortConfig) => {
+    const handlePortMouseEnter = useCallback((e: KonvaEventObject<MouseEvent>, portId: string, config: PlcPortConfig) => {
         const stage = e.target.getStage();
         if (stage) stage.container().style.cursor = 'crosshair';
 
-        if (hoverRingRef.current && !activePin) {
+        // Keep the next target jack inspectable while a wire start pin is already selected.
+        const shouldPreviewPin = activePin !== portId;
+
+        if (hoverRingRef.current && shouldPreviewPin) {
             hoverRingRef.current.position({ x: config.x, y: config.y });
             hoverRingRef.current.visible(true);
             hoverRingRef.current.getLayer()?.batchDraw();
         }
 
-        if (!activePin) showTooltip(config.x, config.y, config.desc);
+        if (shouldPreviewPin) showTooltip(config.x, config.y, config.desc);
     }, [activePin, showTooltip]);
 
     const handlePortMouseLeave = useCallback((e: KonvaEventObject<MouseEvent>) => {

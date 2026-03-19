@@ -407,13 +407,16 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
             const stage = e.target.getStage();
             if (stage) stage.container().style.cursor = 'crosshair';
 
-            if (hoverRingRef.current && !activePin) {
+            // Keep the next target jack inspectable while a wire start pin is already selected.
+            const shouldPreviewPin = activePin !== portId;
+
+            if (hoverRingRef.current && shouldPreviewPin) {
               hoverRingRef.current.position({ x: pos.x, y: pos.y });
               hoverRingRef.current.visible(true);
               hoverRingRef.current.getLayer()?.batchDraw();
             }
 
-            if (!activePin && pos.desc.trim()) showTooltip(pos.x, pos.y, pos.desc);
+            if (shouldPreviewPin && pos.desc.trim()) showTooltip(pos.x, pos.y, pos.desc);
           }}
           onMouseLeave={(e) => {
             const stage = e.target.getStage();
