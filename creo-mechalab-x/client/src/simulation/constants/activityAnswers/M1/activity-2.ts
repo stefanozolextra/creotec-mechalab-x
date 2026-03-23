@@ -19,11 +19,18 @@ export const activity2Answer: ActivityAnswerDefinition = {
     requiredComponents: { battery: 1, relayModule: 1, lightIndicator: 1 },
     minWires: 7,
     customConnections: [
-      [RELAY_PIN_IDS.lights.greenX2, RELAY_PIN_IDS.relay1.terminal4],
+      [RELAY_PIN_IDS.lights.redX1, RELAY_PIN_IDS.lights.greenX1],
+
       connectToAny(RELAY_PIN_IDS.lights.greenX1, VMINUS_PINS),
       connectToAny(RELAY_PIN_IDS.relay1.terminal13, VMINUS_PINS),
       connectToAny(RELAY_PIN_IDS.relay1.terminal7, VPLUS_PINS),
+      connectToAny(RELAY_PIN_IDS.relay1.terminal8, VPLUS_PINS),
       connectToAny(RELAY_PIN_IDS.button.pb1Terminal23, VPLUS_PINS),
+
+      [RELAY_PIN_IDS.lights.greenX2, RELAY_PIN_IDS.relay1.terminal5],
+      [RELAY_PIN_IDS.lights.redX2, RELAY_PIN_IDS.relay1.terminal2],
+      [RELAY_PIN_IDS.relay1.terminal4, RELAY_PIN_IDS.button.pb1Terminal24],
+
       [RELAY_PIN_IDS.button.pb1Terminal24, RELAY_PIN_IDS.button.pb3Terminal11],
       [RELAY_PIN_IDS.button.pb3Terminal12, RELAY_PIN_IDS.relay1.terminal14],
     ],

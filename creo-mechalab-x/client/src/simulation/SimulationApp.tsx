@@ -130,6 +130,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
   const canvasScale = Math.max(0.1, Math.min(availableCanvasWidth / BASE_CANVAS_WIDTH, availableCanvasHeight / BASE_CANVAS_HEIGHT));
 
   const activityPreset = getActivityAnswerByRouteId(routeId);
+  const isPlaceholderActivity = Boolean(activityPreset.isPlaceholder);
 
   const routeKeys = Object.keys(ACTIVITY_ANSWERS);
   const currentIndex = routeKeys.indexOf(activityPreset.routeId);
@@ -384,7 +385,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
 
   const answerFeedback =
     answerFeedbackState?.signature === answerSignature ? answerFeedbackState.result : null;
-  const answerPercent = answerFeedback?.passed ? '100%' : '0%';
+  const answerPercent = isPlaceholderActivity ? 'N/A' : answerFeedback?.passed ? '100%' : '0%';
   const wrongWireKeySet = useMemo(
     () => new Set((answerFeedback?.wrongConnections ?? []).map(({ fromPin, toPin }) => toWireKey(fromPin, toPin))),
     [answerFeedback],
@@ -474,6 +475,10 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
   }, [simulationId]);
 
   const handleCheckAnswer = useCallback(() => {
+    if (isPlaceholderActivity) {
+      return;
+    }
+
     const result = evaluateActivityAnswer(activityPreset, {
       inputDeviceIds: assignedDevices.input,
       outputDeviceIds: assignedDevices.output,
@@ -498,7 +503,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
       setShowSuccessAnim(true);
       setTimeout(() => setShowSuccessAnim(false), 2500);
     }
-  }, [activityPreset, answerSignature, assignedDevices, wires, simulationId, submitCompletion]);
+  }, [activityPreset, answerSignature, assignedDevices, isPlaceholderActivity, wires, simulationId, submitCompletion]);
 
   const handleDeviceDragStart = useCallback(
     (deviceId: DeviceId, source: DeviceZone | 'library', event: DragEvent<HTMLElement>) => {
@@ -711,9 +716,11 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
                   <div className="flex items-start justify-between gap-4">
                     <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Ladder Diagram</h4>
                     <div
-                      className={`inline-flex min-w-[56px] items-center justify-center rounded-xl border px-3 py-2 text-xs font-black ${answerFeedback?.passed
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
-                        : 'border-rose-200 bg-rose-50 text-rose-500 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300'
+                      className={`inline-flex min-w-[56px] items-center justify-center rounded-xl border px-3 py-2 text-xs font-black ${isPlaceholderActivity
+                        ? 'border-slate-200 bg-slate-100 text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                        : answerFeedback?.passed
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                          : 'border-rose-200 bg-rose-50 text-rose-500 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300'
                         }`}
                     >
                       {answerPercent}
@@ -730,13 +737,19 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
                     <div className="mt-3 h-[220px] rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
                       <img src={activityPreset.diagram} alt={activityPreset.title} className="h-full w-full rounded-xl object-contain" />
                     </div>
+                    {isPlaceholderActivity ? (
+                      <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                        Placeholder only. This route currently uses the shared simulation layout for preview, but answer checking is not implemented yet.
+                      </div>
+                    ) : null}
                     <div className="mt-3 flex justify-end">
                       <button
                         type="button"
                         onClick={handleCheckAnswer}
-                        className="rounded-xl bg-[#223a5a] px-4 py-3 text-sm font-black text-white shadow-sm transition-colors hover:bg-[#1a304d] dark:bg-cyan-600 dark:hover:bg-cyan-500"
+                        disabled={isPlaceholderActivity}
+                        className="rounded-xl bg-[#223a5a] px-4 py-3 text-sm font-black text-white shadow-sm transition-colors hover:bg-[#1a304d] disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-600 dark:bg-cyan-600 dark:hover:bg-cyan-500 dark:disabled:bg-slate-700 dark:disabled:text-slate-300"
                       >
-                        Check Answer
+                        {isPlaceholderActivity ? 'Placeholder' : 'Check Answer'}
                       </button>
                     </div>
                     {answerFeedback ? (
@@ -829,8 +842,6 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
                     />
 
                     <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
-                      {Object.entries(RELAY_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
-
                       {wires.map((wire) => {
                         const isSelected = selectedWireId === wire.id;
                         const isWrong = wrongWireKeySet.has(toWireKey(wire.fromPin, wire.toPin));
@@ -853,6 +864,9 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
                           />
                         );
                       })}
+
+                      {/* Keep jacks above the wires so the same jack can accept multiple connections. */}
+                      {Object.entries(RELAY_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
                     </Layer>
 
                     <Layer scaleX={canvasScale} scaleY={canvasScale} id="overlay-layer" listening={false}>

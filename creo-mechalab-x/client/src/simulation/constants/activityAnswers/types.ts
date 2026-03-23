@@ -14,5 +14,6 @@ export interface ActivityAnswerDefinition {
   title: string;
   instruction?: string;
   diagram: string;
+  isPlaceholder?: boolean;
   rule: ActivityRuleDefinition;
 }
