@@ -11,6 +11,7 @@ interface RelayStaticBackgroundProps {
     isDarkMode: boolean;
     isMainSwitchOn: boolean;
     isGreenLampOn: boolean;
+    isRedLampOn: boolean;
     manualButtonState: Record<ManualRelayButtonId, boolean>;
     onToggleSwitch: () => void;
     onManualButtonPressChange: (buttonId: ManualRelayButtonId, isPressed: boolean) => void;
@@ -23,6 +24,7 @@ export const RelayStaticBackground = React.memo(({
     isDarkMode,
     isMainSwitchOn,
     isGreenLampOn,
+    isRedLampOn,
     manualButtonState,
     onToggleSwitch,
     onManualButtonPressChange
@@ -259,7 +261,7 @@ export const RelayStaticBackground = React.memo(({
             {/* Static Indicators */}
             {renderIndicatorLamp(280, "LAMP 1 (G)", HW_STYLES.ledOn, "#16a34a", isGreenLampOn)}
             {renderIndicatorLamp(425, "LAMP 2 (Y)", "#eab308", "#ca8a04", false)}
-            {renderIndicatorLamp(570, "LAMP 3 (R)", "#ef4444", "#dc2626", false)}
+            {renderIndicatorLamp(570, "LAMP 3 (R)", "#ef4444", "#dc2626", isRedLampOn)}
             <Group x={715} y={130} listening={false}>
                 <Circle radius={26} fill={isDarkMode ? "#0f172a" : "#f1f5f9"} stroke={isDarkMode ? "#334155" : "#cbd5e1"} strokeWidth={2} />
                 <Circle radius={18} fill="#1e293b" />

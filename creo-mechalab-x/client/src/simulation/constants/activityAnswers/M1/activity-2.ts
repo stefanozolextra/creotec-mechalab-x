@@ -11,7 +11,7 @@ const connectToAny = (sourcePin: string, targetPins: string[]): ActivityConnecti
 export const activity2Answer: ActivityAnswerDefinition = {
   routeId: '2',
   title: 'Start-Stop Latching Conrtol Unit',
-  instruction: 'Follow the ladder diagram, place the required devices, and complete the wiring path for the latching start-stop circuit before checking your answer.',
+  instruction: 'Follow the ladder diagram, place the required devices, and complete the wiring path for the latching start-stop circuit. With the main switch on, pressing START-1 should light the green lamp, and pressing STOP-1 should switch the red lamp on while the green lamp turns off.',
   diagram: activity1Diagram,
   rule: {
     requiredInputDevices: { button: 1 },

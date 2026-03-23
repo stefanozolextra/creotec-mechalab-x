@@ -27,6 +27,7 @@ import { getActivityAnswerByRouteId, ACTIVITY_ANSWERS } from './constants/activi
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
 interface SimulationAppProps { routeId?: string; simulationId?: number; onNavigateBack?: () => void; }
+type Activity2LampMode = 'off' | 'green' | 'red';
 
 const DEVICE_LIBRARY = [
   { id: 'push-button', name: 'Push Button', image: buttonDevice },
@@ -91,6 +92,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
   const [isMainSwitchOn, setIsMainSwitchOn] = useState(false);
   const [pressedManualButtons, setPressedManualButtons] = useState<Record<ManualRelayButtonId, boolean>>(INITIAL_MANUAL_RELAY_BUTTON_STATE);
   const [isActivity1GreenLampLatched, setIsActivity1GreenLampLatched] = useState(false);
+  const [activity2LampMode, setActivity2LampMode] = useState<Activity2LampMode>('off');
   const [wires, setWires] = useState<Connection[]>([]);
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
@@ -157,6 +159,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
     setIsMainSwitchOn(false);
     setPressedManualButtons(INITIAL_MANUAL_RELAY_BUTTON_STATE);
     setIsActivity1GreenLampLatched(false);
+    setActivity2LampMode('off');
     setAnswerFeedbackState(null);
   }, [activityPreset.routeId]);
 
@@ -175,6 +178,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
 
     if (!nextIsMainSwitchOn) {
       setIsActivity1GreenLampLatched(false);
+      setActivity2LampMode('off');
     }
   }, [isMainSwitchOn]);
 
@@ -187,8 +191,27 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
       return;
     }
 
-    if (buttonId === 'stop-1' || buttonId === 'emergency-stop') {
+    const isCurrentSetupValid = evaluateActivityAnswer(activityPreset, {
+      inputDeviceIds: assignedDevices.input,
+      outputDeviceIds: assignedDevices.output,
+      wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
+    }).passed;
+
+    if (activityPreset.routeId === '1' && (buttonId === 'stop-1' || buttonId === 'emergency-stop')) {
       setIsActivity1GreenLampLatched(false);
+      return;
+    }
+
+    if (activityPreset.routeId === '2') {
+      if (buttonId === 'stop-1' || buttonId === 'emergency-stop') {
+        setActivity2LampMode(isMainSwitchOn && isCurrentSetupValid ? 'red' : 'off');
+        return;
+      }
+
+      if (buttonId === 'start-1' && isMainSwitchOn && isCurrentSetupValid) {
+        setActivity2LampMode('green');
+      }
+
       return;
     }
 
@@ -196,21 +219,10 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
       return;
     }
 
-    const activity = getActivityAnswerByRouteId(routeId);
-    if (activity.routeId !== '1') {
-      return;
-    }
-
-    const isActivity1SetupValid = evaluateActivityAnswer(activity, {
-      inputDeviceIds: assignedDevices.input,
-      outputDeviceIds: assignedDevices.output,
-      wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
-    }).passed;
-
-    if (isActivity1SetupValid) {
+    if (activityPreset.routeId === '1' && isCurrentSetupValid) {
       setIsActivity1GreenLampLatched(true);
     }
-  }, [assignedDevices.input, assignedDevices.output, isMainSwitchOn, routeId, wires]);
+  }, [activityPreset, assignedDevices.input, assignedDevices.output, isMainSwitchOn, wires]);
 
   const handleBackNavigation = () => {
     if (onNavigateBack) {
@@ -360,6 +372,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
     setIsMainSwitchOn(false);
     setPressedManualButtons(INITIAL_MANUAL_RELAY_BUTTON_STATE);
     setIsActivity1GreenLampLatched(false);
+    setActivity2LampMode('off');
   };
 
   useEffect(() => {
@@ -404,6 +417,16 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
     && isMainSwitchOn
     && activityEvaluationPreview.passed
     && isActivity1GreenLampLatched;
+  const isActivity2GreenLampOn =
+    activityPreset.routeId === '2'
+    && isMainSwitchOn
+    && activityEvaluationPreview.passed
+    && activity2LampMode === 'green';
+  const isActivity2RedLampOn =
+    activityPreset.routeId === '2'
+    && isMainSwitchOn
+    && activityEvaluationPreview.passed
+    && activity2LampMode === 'red';
 
   const hasNoSelectedDevices =
     !assignedDevices.input.length
@@ -835,7 +858,8 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
                       canvasScale={canvasScale}
                       isDarkMode={isDarkMode}
                       isMainSwitchOn={isMainSwitchOn}
-                      isGreenLampOn={isActivity1GreenLampOn}
+                      isGreenLampOn={isActivity1GreenLampOn || isActivity2GreenLampOn}
+                      isRedLampOn={isActivity2RedLampOn}
                       manualButtonState={pressedManualButtons}
                       onToggleSwitch={handleToggleSwitch}
                       onManualButtonPressChange={handleManualButtonPressChange}
