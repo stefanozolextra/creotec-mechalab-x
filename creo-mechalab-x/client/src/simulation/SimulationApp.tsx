@@ -11,7 +11,7 @@ import { RelayStaticBackground, type ManualRelayButtonId } from './components/Re
 import { computeOrthogonalPath } from './utils/wireRouting';
 import { evaluateActivityAnswer, type ActivityEvaluationResult } from './utils/evaluateActivityAnswer';
 import PortraitGuard from '../components/PortraitGuard';
-import CyberTransition from '../components/CyberTransition'; // <-- Added import
+import CyberTransition from '../components/CyberTransition';
 import buttonDevice from '../assets/devices/button.png';
 import buzzerDevice from '../assets/devices/buzzer.png';
 import counterDevice from '../assets/devices/counter.png';
@@ -21,7 +21,6 @@ import relayModuleDevice from '../assets/devices/relay-module.png';
 import rollerLeverDevice from '../assets/devices/roller-lever.png';
 import solenoidValveDevice from '../assets/devices/solenoid-valve.png';
 import { getActivityAnswerByRouteId } from './constants/activityAnswers';
-// import ReactAntiCapture from '../components/AntiCapture';
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
 interface SimulationAppProps { routeId?: string; onNavigateBack?: () => void; }
@@ -75,7 +74,6 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   const [isCanvasReady, setIsCanvasReady] = useState(false);
 
   useEffect(() => {
-    // Wait 700ms for the CyberTransition to finish before locking CPU with Konva
     const timer = setTimeout(() => setIsCanvasReady(true), 700);
     return () => clearTimeout(timer);
   }, []);
@@ -92,7 +90,6 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     result: ActivityEvaluationResult;
   } | null>(null);
 
-  // IMPERATIVE REFS: 0 React Renders for high-frequency actions
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ghostWireRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -787,30 +784,24 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                   </div>
                 </div>
               ) : (
-                <div className="flex h-full flex-col items-center justify-between py-4">
+                <div className="flex h-full flex-col items-center py-4 relative">
                   <button
                     type="button"
                     onClick={() => setIsDeviceDrawerOpen(true)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    className="inline-flex shrink-0 h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
                     aria-label="Expand device drawer"
                     title="Expand device drawer"
                   >
                     <ChevronLeft size={18} />
                   </button>
 
-                  <div
-                    className="text-[10px] font-black uppercase tracking-[0.34em] text-slate-500 dark:text-cyan-500/70"
-                    style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-                  >
-                    Devices
-                  </div>
-
-                  <div className="flex flex-col gap-2">
-                    {DEVICE_LIBRARY.slice(0, 3).map((device) => (
-                      <div key={device.name} className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-700 dark:bg-slate-800/80">
-                        <img src={device.image} alt={device.name} className="h-full w-full object-contain" />
-                      </div>
-                    ))}
+                  <div className="flex-1 flex items-center justify-center">
+                    <div
+                      className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400 dark:text-cyan-500/50"
+                      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                    >
+                      Device Library
+                    </div>
                   </div>
                 </div>
               )}
