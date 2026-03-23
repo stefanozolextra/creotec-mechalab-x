@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Stage, Layer, Circle, Line, Rect, Text, Group } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
+import type Konva from 'konva';
 
 // Lucide Icons for Taskbar
-import { ArrowLeft, Play, Trash2, Undo2, Redo2, Sun, Moon, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, Play, Trash2, Undo2, Redo2, Sun, Moon, RefreshCw, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
 import './SimulationApp.css';
 
 import { completeSimulation } from '../api/trainees';
@@ -21,7 +23,7 @@ import magneticContactorDevice from '../assets/devices/magnetic-motor-contactor.
 import relayModuleDevice from '../assets/devices/relay-module.png';
 import rollerLeverDevice from '../assets/devices/roller-lever.png';
 import solenoidValveDevice from '../assets/devices/solenoid-valve.png';
-import { getActivityAnswerByRouteId } from './constants/activityAnswers';
+import { getActivityAnswerByRouteId, ACTIVITY_ANSWERS } from './constants/activityAnswers';
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
 interface SimulationAppProps { routeId?: string; simulationId?: number; onNavigateBack?: () => void; }
@@ -64,6 +66,7 @@ const INITIAL_MANUAL_RELAY_BUTTON_STATE: Record<ManualRelayButtonId, boolean> = 
 };
 
 export default function SimulationApp({ routeId, simulationId, onNavigateBack }: SimulationAppProps) {
+  const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -100,16 +103,14 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
   const completionInFlightSignatureRef = useRef<string | null>(null);
   const completionPostedSignatureRef = useRef<string | null>(null);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const ghostWireRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const hoverRingRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tooltipRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tooltipBgRef = useRef<any>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const tooltipTextRef = useRef<any>(null);
+  const [savedStates, setSavedStates] = useState<Record<string, { wires: Connection[], assignedDevices: Record<DeviceZone, DeviceId[]> }>>({});
+  const [showSuccessAnim, setShowSuccessAnim] = useState(false);
+
+  const ghostWireRef = useRef<Konva.Line>(null);
+  const hoverRingRef = useRef<Konva.Circle>(null);
+  const tooltipRef = useRef<Konva.Group>(null);
+  const tooltipBgRef = useRef<Konva.Rect>(null);
+  const tooltipTextRef = useRef<Konva.Text>(null);
 
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -128,6 +129,36 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
   const availableCanvasHeight = viewport.height - PADDING * 2;
   const canvasScale = Math.max(0.1, Math.min(availableCanvasWidth / BASE_CANVAS_WIDTH, availableCanvasHeight / BASE_CANVAS_HEIGHT));
 
+  const activityPreset = getActivityAnswerByRouteId(routeId);
+
+  const routeKeys = Object.keys(ACTIVITY_ANSWERS);
+  const currentIndex = routeKeys.indexOf(activityPreset.routeId);
+  const nextRouteId = currentIndex !== -1 && currentIndex < routeKeys.length - 1 ? routeKeys[currentIndex + 1] : null;
+
+  const savedStatesRef = useRef(savedStates);
+  useEffect(() => {
+    savedStatesRef.current = savedStates;
+  }, [savedStates]);
+
+  useEffect(() => {
+    const saved = savedStatesRef.current[activityPreset.routeId];
+    if (saved) {
+      setWires(saved.wires);
+      setAssignedDevices(saved.assignedDevices);
+    } else {
+      setWires([]);
+      setAssignedDevices({ input: [], output: [] });
+    }
+    setHistoryPast([]);
+    setHistoryFuture([]);
+    setSelectedWireId(null);
+    setActivePin(null);
+    setIsMainSwitchOn(false);
+    setPressedManualButtons(INITIAL_MANUAL_RELAY_BUTTON_STATE);
+    setIsActivity1GreenLampLatched(false);
+    setAnswerFeedbackState(null);
+  }, [activityPreset.routeId]);
+
   useEffect(() => {
     const handleResize = () => { if (containerRef.current) setViewport({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight }); };
     window.addEventListener('resize', handleResize);
@@ -136,6 +167,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
   }, []);
 
   const toggleTheme = () => { const newMode = !isDarkMode; setIsDarkMode(newMode); document.documentElement.classList.toggle('dark', newMode); };
+
   const handleToggleSwitch = useCallback(() => {
     const nextIsMainSwitchOn = !isMainSwitchOn;
     setIsMainSwitchOn(nextIsMainSwitchOn);
@@ -144,6 +176,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
       setIsActivity1GreenLampLatched(false);
     }
   }, [isMainSwitchOn]);
+
   const handleManualButtonPressChange = useCallback((buttonId: ManualRelayButtonId, isPressed: boolean) => {
     setPressedManualButtons((prev) => (
       prev[buttonId] === isPressed ? prev : { ...prev, [buttonId]: isPressed }
@@ -227,7 +260,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
       const start = RELAY_PORTS[portId];
       ghostWireRef.current.points([start.x, start.y, start.x, start.y]);
       ghostWireRef.current.visible(true);
-      ghostWireRef.current.getLayer().batchDraw();
+      ghostWireRef.current.getLayer()?.batchDraw();
     }
   };
 
@@ -241,10 +274,10 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
     if (rafRef.current === null) {
       rafRef.current = requestAnimationFrame(() => {
         const currentPos = mousePosRef.current;
-        if (currentPos) {
+        if (currentPos && ghostWireRef.current) {
           const startPos = RELAY_PORTS[activePin];
           ghostWireRef.current.points([startPos.x, startPos.y, currentPos.x, currentPos.y]);
-          ghostWireRef.current.getLayer().batchDraw();
+          ghostWireRef.current.getLayer()?.batchDraw();
         }
         rafRef.current = null;
       });
@@ -270,7 +303,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
       setActivePin(null);
       if (ghostWireRef.current) {
         ghostWireRef.current.visible(false);
-        ghostWireRef.current.getLayer().batchDraw();
+        ghostWireRef.current.getLayer()?.batchDraw();
       }
     }
   };
@@ -280,7 +313,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
       setActivePin(null);
       if (ghostWireRef.current) {
         ghostWireRef.current.visible(false);
-        ghostWireRef.current.getLayer().batchDraw();
+        ghostWireRef.current.getLayer()?.batchDraw();
       }
     }
   };
@@ -316,6 +349,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
 
   const handleUndo = () => { if (!historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
   const handleRedo = () => { if (!historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
+
   const handleResetBoard = () => {
     setHistoryPast(prev => [...prev, wires].slice(-50));
     setHistoryFuture([]);
@@ -333,11 +367,11 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [deleteSelectedWire]);
 
-  const activityPreset = getActivityAnswerByRouteId(routeId);
   const assignedDeviceIds = useMemo(
     () => new Set([...assignedDevices.input, ...assignedDevices.output]),
     [assignedDevices],
   );
+
   const answerSignature = useMemo(
     () => JSON.stringify({
       routeId: activityPreset.routeId,
@@ -347,6 +381,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
     }),
     [activityPreset.routeId, assignedDevices, wires],
   );
+
   const answerFeedback =
     answerFeedbackState?.signature === answerSignature ? answerFeedbackState.result : null;
   const answerPercent = answerFeedback?.passed ? '100%' : '0%';
@@ -362,11 +397,13 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
     }),
     [activityPreset, assignedDevices, wires],
   );
+
   const isActivity1GreenLampOn =
     activityPreset.routeId === '1'
     && isMainSwitchOn
     && activityEvaluationPreview.passed
     && isActivity1GreenLampLatched;
+
   const hasNoSelectedDevices =
     !assignedDevices.input.length
     && !assignedDevices.output.length;
@@ -409,7 +446,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
   }, []);
 
   const submitCompletion = useCallback(async (signature: string, bestScore: number) => {
-    if (!Number.isInteger(simulationId) || simulationId < 1) return;
+    if (typeof simulationId !== 'number' || !Number.isInteger(simulationId) || simulationId < 1) return;
     if (completionPostedSignatureRef.current === signature) return;
     if (completionInFlightSignatureRef.current === signature) return;
 
@@ -449,9 +486,19 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
     });
 
     if (result.passed) {
-      void submitCompletion(answerSignature, 100);
+      setSavedStates((prev) => ({
+        ...prev,
+        [activityPreset.routeId]: { wires, assignedDevices },
+      }));
+
+      if (simulationId) {
+        void submitCompletion(answerSignature, 100);
+      }
+
+      setShowSuccessAnim(true);
+      setTimeout(() => setShowSuccessAnim(false), 2500);
     }
-  }, [activityPreset, answerSignature, assignedDevices, submitCompletion, wires]);
+  }, [activityPreset, answerSignature, assignedDevices, wires, simulationId, submitCompletion]);
 
   const handleDeviceDragStart = useCallback(
     (deviceId: DeviceId, source: DeviceZone | 'library', event: DragEvent<HTMLElement>) => {
@@ -509,7 +556,6 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
             const stage = e.target.getStage();
             if (stage) stage.container().style.cursor = 'crosshair';
 
-            // Keep the next target jack inspectable while a wire start pin is already selected.
             const shouldPreviewPin = activePin !== portId;
 
             if (hoverRingRef.current && shouldPreviewPin) {
@@ -591,6 +637,16 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
     <PortraitGuard>
       <CyberTransition>
         <div className={`flex flex-col h-screen w-screen text-slate-800 dark:text-slate-200 font-sans overflow-hidden select-none transition-colors duration-300 ${isDarkMode ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
+          <style>{`
+            @keyframes popIn {
+              0% { transform: scale(0.8); opacity: 0; }
+              100% { transform: scale(1); opacity: 1; }
+            }
+            .animate-pop-in {
+              animation: popIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            }
+          `}</style>
+
           <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-20 shadow-md relative">
             <div className="flex items-center gap-4">
               <button onClick={handleBackNavigation} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence"><ArrowLeft size={20} /></button>
@@ -599,7 +655,18 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
                 <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: Electro-Pneumatic Trainer • Task: {routeId || 'Default'}</p>
               </div>
             </div>
+
             <div className="flex items-center gap-3">
+              {answerFeedback?.passed && nextRouteId && (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/simulation/${nextRouteId}`)}
+                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] animate-[pulse_2s_infinite] mr-2"
+                >
+                  Next Activity <ChevronRight size={16} strokeWidth={3} />
+                </button>
+              )}
+
               <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner">
                 <button onClick={deleteSelectedWire} disabled={!selectedWireId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
                 <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
@@ -710,6 +777,34 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
             </aside>
 
             <div className="flex-1 relative flex items-center justify-center p-6">
+              <div className="absolute top-10 left-1/2 -translate-x-1/2 z-30 flex items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-2.5 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-lg">
+                {routeKeys.map((key, index) => {
+                  const isCompleted = !!savedStates[key];
+                  const isCurrent = key === activityPreset.routeId;
+                  const isClickable = isCompleted || isCurrent || (index > 0 && !!savedStates[routeKeys[index - 1]]);
+                  const activityTitle = getActivityAnswerByRouteId(key).title;
+
+                  return (
+                    <div key={key} className="flex items-center">
+                      {index > 0 && (
+                        <div className={`w-8 h-1 mx-1 rounded-full ${isCompleted || isCurrent ? 'bg-cyan-500' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                      )}
+                      <button
+                        onClick={() => isClickable && navigate(`/simulation/${key}`)}
+                        disabled={!isClickable}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ${isCurrent ? 'bg-cyan-500 text-white shadow-[0_0_10px_rgba(6,182,212,0.5)] scale-110' :
+                          isCompleted ? 'bg-emerald-500 text-white hover:bg-emerald-400 cursor-pointer shadow-sm' :
+                            'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                          }`}
+                        title={activityTitle}
+                      >
+                        {isCompleted && !isCurrent ? <CheckCircle2 size={16} strokeWidth={3} /> : index + 1}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+
               <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
 
                 {!isCanvasReady ? (
@@ -760,11 +855,9 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
                       })}
                     </Layer>
 
-                    {/* LAYER 3: Fast Overlay for Ghost Wire & Imperative Tooltips */}
                     <Layer scaleX={canvasScale} scaleY={canvasScale} id="overlay-layer" listening={false}>
                       <Line ref={ghostWireRef} stroke={wireColor} strokeWidth={4} dash={[10, 8]} opacity={0.6} tension={0.4} visible={false} />
 
-                      {/* The Hover Ring trick! Never redraws the heavy layer! */}
                       <Circle ref={hoverRingRef} radius={9} stroke="#ffffff" strokeWidth={2} visible={false} />
 
                       <Group ref={tooltipRef} visible={false}>
@@ -775,6 +868,18 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
                   </Stage>
                 )}
               </div>
+
+              {showSuccessAnim && (
+                <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-emerald-500/10 backdrop-blur-[2px] transition-opacity duration-500">
+                  <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-[0_0_40px_rgba(16,185,129,0.3)] border-2 border-emerald-400 flex flex-col items-center animate-pop-in">
+                    <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/50 rounded-full flex items-center justify-center mb-4">
+                      <CheckCircle2 size={48} className="text-emerald-500" strokeWidth={2.5} />
+                    </div>
+                    <h2 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-widest">Activity Cleared</h2>
+                    <p className="text-slate-500 dark:text-slate-400 mt-2 font-semibold">Configuration saved successfully.</p>
+                  </div>
+                </div>
+              )}
             </div>
 
             <aside
@@ -801,6 +906,7 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-4">
+                    {/* --- FIXED DEVICE GRID LAYOUT --- */}
                     <div className="grid grid-cols-3 gap-3">
                       {DEVICE_LIBRARY.map((device) => (
                         <button
@@ -809,22 +915,28 @@ export default function SimulationApp({ routeId, simulationId, onNavigateBack }:
                           draggable
                           onDragStart={(event) => handleDeviceDragStart(device.id, 'library', event)}
                           onDragEnd={handleDeviceDragEnd}
-                          className="group flex min-h-[108px] flex-col items-center justify-center rounded-2xl border border-slate-200 bg-white px-2 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-cyan-400 hover:shadow-md dark:border-slate-700 dark:bg-slate-900/70 dark:hover:border-cyan-500/70"
+                          className={`group relative flex h-[124px] flex-col items-center justify-start rounded-2xl border bg-white px-2 pt-3 pb-2 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900/70 ${assignedDeviceIds.has(device.id)
+                            ? 'border-emerald-400 dark:border-emerald-500/50'
+                            : 'border-slate-200 hover:border-cyan-400 dark:border-slate-700 dark:hover:border-cyan-500/70'
+                            }`}
                         >
-                          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-50 p-2.5 dark:bg-slate-800/80">
+                          <div className="flex shrink-0 h-12 w-12 items-center justify-center rounded-xl bg-slate-50 p-2 dark:bg-slate-800/80">
                             <img src={device.image} alt={device.name} className="h-full w-full object-contain" />
                           </div>
-                          <span className="mt-2.5 text-[10px] font-bold leading-4 text-slate-700 group-hover:text-slate-900 dark:text-slate-200 dark:group-hover:text-white">
+
+                          <span className="mt-2 text-[10px] font-bold leading-[1.15] text-slate-700 group-hover:text-slate-900 dark:text-slate-200 dark:group-hover:text-white line-clamp-2">
                             {device.name}
                           </span>
-                          {assignedDeviceIds.has(device.id) ? (
-                            <span className="mt-2 rounded-full bg-emerald-50 px-2 py-1 text-[9px] font-black uppercase tracking-[0.18em] text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300">
+
+                          {assignedDeviceIds.has(device.id) && (
+                            <div className="absolute bottom-2 left-1/2 w-10/12 -translate-x-1/2 rounded-full bg-emerald-50 py-0.5 text-[8px] font-black uppercase tracking-[0.15em] text-emerald-600 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/30">
                               In Use
-                            </span>
-                          ) : null}
+                            </div>
+                          )}
                         </button>
                       ))}
                     </div>
+                    {/* -------------------------------- */}
                   </div>
                 </div>
               ) : (
