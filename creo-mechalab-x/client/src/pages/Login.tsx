@@ -85,7 +85,7 @@ const Login = () => {
                         <div className="bg-blue-900 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                             <Settings aria-hidden="true" className="text-yellow-400 w-10 h-10" />
                         </div>
-                        <h1 className="text-2xl font-bold text-slate-800">CREO MechaLabX</h1>
+                        <h1 className="text-2xl font-bold text-slate-800">CREOSim - MECHA</h1>
                         <p className="text-slate-500">TESDA NC II Trainer</p>
                     </div>
 

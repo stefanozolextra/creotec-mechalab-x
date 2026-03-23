@@ -342,14 +342,13 @@ const ModuleView = () => {
     }, [hasPrevLesson, lessonOptions, selectedLessonIndex]);
     // -------------------------
 
-    // --- SMART KEYBOARD NAVIGATION (Includes Prev/Next jumps) ---
+    // --- SMART KEYBOARD NAVIGATION ---
     useEffect(() => {
         if (resolvedLessonType !== 'PDF' || numPages === null) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'ArrowLeft') {
                 e.preventDefault();
-                // If on the first page and there is a previous lesson, jump to it!
                 if (pageNumber === 1 && hasPrevLesson) {
                     goToPrevLesson();
                 } else {
@@ -357,7 +356,6 @@ const ModuleView = () => {
                 }
             } else if (e.key === 'ArrowRight') {
                 e.preventDefault();
-                // If on the last page and there is a next lesson, jump to it!
                 if (pageNumber === numPages && hasNextLesson) {
                     goToNextLesson();
                 } else {
@@ -453,9 +451,15 @@ const ModuleView = () => {
                         >
                             {isDarkMode ? <Sun size={22} /> : <Moon size={22} />}
                         </button>
-                        <div className="hidden sm:block bg-slate-100 dark:bg-[#111622] text-slate-400 dark:text-slate-500 px-6 py-2.5 rounded font-bold text-xs tracking-widest uppercase border border-slate-200 dark:border-slate-800 transition-colors duration-300">
-                            AWAITING_DATA
-                        </div>
+
+                        {/* --- REPLACED: AWAITING_DATA placeholder with Simulation Launcher --- */}
+                        <button
+                            onClick={() => navigate('/simulation/1')}
+                            className="hidden sm:flex items-center gap-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/50 px-6 py-2.5 rounded font-black text-xs tracking-widest uppercase transition-all duration-300 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
+                        >
+                            <Target size={16} strokeWidth={2.5} /> LAUNCH SIMULATOR
+                        </button>
+                        {/* ------------------------------------------------------------------ */}
                     </div>
                 </header>
 
@@ -589,7 +593,6 @@ const ModuleView = () => {
                                         ) : (() => {
                                             let embedSrc = currentVideoLesson.embedUrl;
 
-                                            // Force APIs on for tracking capabilities
                                             if (embedSrc.includes('youtube.com') || embedSrc.includes('youtu.be')) {
                                                 if (!embedSrc.includes('enablejsapi=1')) {
                                                     embedSrc += embedSrc.includes('?') ? '&enablejsapi=1' : '?enablejsapi=1';
@@ -612,7 +615,6 @@ const ModuleView = () => {
                                                             const iframe = e.target as HTMLIFrameElement;
                                                             if (!iframe.contentWindow) return;
 
-                                                            // Handshake to force iframe to send us messages
                                                             if (embedSrc.includes('youtube.com') || embedSrc.includes('youtu.be')) {
                                                                 iframe.contentWindow.postMessage(JSON.stringify({ event: 'listening' }), '*');
                                                             }
@@ -641,7 +643,6 @@ const ModuleView = () => {
                                                 </div>
                                             }
                                         >
-                                            {/* DYNAMICAL SIZING LOGIC */}
                                             <Page
                                                 pageNumber={pageNumber}
                                                 renderTextLayer={false}
@@ -668,7 +669,7 @@ const ModuleView = () => {
                                 )}
                             </div>
 
-                            {/* UPDATED: DYNAMIC OVERLAY NAVIGATION FOR PDF */}
+                            {/* DYNAMIC OVERLAY NAVIGATION FOR PDF */}
                             {resolvedLessonType === 'PDF' && numPages && !isResolvingLesson && !resolveError && !viewerError && documentFile && (
                                 <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-6 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-3 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] transition-all">
 
