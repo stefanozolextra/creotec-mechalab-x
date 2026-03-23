@@ -446,7 +446,7 @@ const Dashboard = () => {
                         </div>
                         <div className="flex flex-col min-w-0">
                             <h1 className="font-black text-sm sm:text-xl text-slate-900 dark:text-white tracking-widest uppercase transition-colors leading-tight truncate">
-                                CREO <span className="text-cyan-600 dark:text-cyan-400">MECHALAB</span> <span className="hidden sm:inline">X</span>
+                                CREO<span className="text-cyan-600 dark:text-cyan-400">sim</span> <span className="hidden sm:inline">- MECHA</span>
                             </h1>
                             <div className="flex items-center gap-2 mt-0.5">
                                 <span className="inline-block w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
@@ -473,10 +473,10 @@ const Dashboard = () => {
                             type="button"
                             onClick={() => setIsSettingsOpen(true)}
                             className="p-2 sm:p-2.5 text-slate-500 hover:text-cyan-600 dark:text-slate-400 dark:hover:text-cyan-400 transition hover:bg-slate-200 dark:hover:bg-slate-800 rounded border border-transparent hover:border-slate-300 dark:hover:border-slate-700 font-mono text-xs flex items-center gap-2"
-                            title="System Config"
+                            title="Trainee Details"
                         >
                             <Settings size={16} aria-hidden="true" />
-                            <span className="hidden lg:inline uppercase font-bold tracking-widest">Config</span>
+                            <span className="hidden lg:inline uppercase font-bold tracking-widest">Details</span>
                         </button>
 
                         <div className="w-px h-5 sm:h-6 bg-slate-300 dark:bg-slate-700 mx-1 transition-colors hidden sm:block" />
@@ -485,10 +485,10 @@ const Dashboard = () => {
                             onClick={handleLogout}
                             type="button"
                             className="p-2 sm:p-2.5 text-slate-500 hover:bg-red-100 hover:text-red-600 dark:text-slate-400 dark:hover:bg-red-500/20 dark:hover:text-red-400 rounded border border-transparent dark:hover:border-red-500/50 transition-colors font-mono text-xs flex items-center gap-2"
-                            title="Disconnect"
+                            title="Log Out"
                         >
                             <LogOut size={16} aria-hidden="true" />
-                            <span className="hidden lg:inline uppercase font-bold tracking-widest">Abort</span>
+                            <span className="hidden lg:inline uppercase font-bold tracking-widest">Log Out</span>
                         </button>
                     </div>
                 </header>
@@ -630,7 +630,7 @@ const Dashboard = () => {
                                                             >
                                                                 <span className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500 ease-out" />
                                                                 <Play size={12} fill="currentColor" />
-                                                                {selectedSimulationId ? 'Initiate Sequence' : 'Offline'}
+                                                                {selectedSimulationId ? 'Initiate Simulation' : 'Offline'}
                                                             </button>
                                                             <button
                                                                 type="button"
@@ -769,7 +769,7 @@ const Dashboard = () => {
                                             >
                                                 <span className="absolute inset-0 bg-white/30 translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-500 ease-out" />
                                                 <Play size={16} fill="currentColor" className="lg:w-[18px] lg:h-[18px]" />
-                                                {selectedSimulationId ? 'Initiate Sequence' : 'System Offline'}
+                                                {selectedSimulationId ? 'Initiate Simulation' : 'System Offline'}
                                             </button>
 
                                             <button
@@ -819,7 +819,7 @@ const Dashboard = () => {
                                             <User className="text-cyan-600 dark:text-cyan-400 skew-x-6" size={32} />
                                         </div>
                                         <div>
-                                            <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-wider">System Config</h2>
+                                            <h2 className="text-2xl font-black text-slate-900 dark:text-white uppercase tracking-wider">Trainee Details</h2>
                                             <p className="text-xs text-slate-500 dark:text-cyan-500/70 font-mono uppercase tracking-widest mt-1">
                                                 ID_CODE: {trainee?.trainee_code ?? (trainee?.trainee_id ? `TRN-${trainee.trainee_id}` : 'NULL')}
                                             </p>
