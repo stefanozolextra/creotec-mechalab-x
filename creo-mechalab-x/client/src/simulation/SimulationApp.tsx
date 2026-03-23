@@ -82,6 +82,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
 
   const [isMainSwitchOn, setIsMainSwitchOn] = useState(false);
   const [pressedManualButtons, setPressedManualButtons] = useState<Record<ManualRelayButtonId, boolean>>(INITIAL_MANUAL_RELAY_BUTTON_STATE);
+  const [isActivity1GreenLampLatched, setIsActivity1GreenLampLatched] = useState(false);
   const [wires, setWires] = useState<Connection[]>([]);
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
@@ -128,12 +129,47 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   }, []);
 
   const toggleTheme = () => { const newMode = !isDarkMode; setIsDarkMode(newMode); document.documentElement.classList.toggle('dark', newMode); };
-  const handleToggleSwitch = useCallback(() => setIsMainSwitchOn(prev => !prev), []);
+  const handleToggleSwitch = useCallback(() => {
+    const nextIsMainSwitchOn = !isMainSwitchOn;
+    setIsMainSwitchOn(nextIsMainSwitchOn);
+
+    if (!nextIsMainSwitchOn) {
+      setIsActivity1GreenLampLatched(false);
+    }
+  }, [isMainSwitchOn]);
   const handleManualButtonPressChange = useCallback((buttonId: ManualRelayButtonId, isPressed: boolean) => {
     setPressedManualButtons((prev) => (
       prev[buttonId] === isPressed ? prev : { ...prev, [buttonId]: isPressed }
     ));
-  }, []);
+
+    if (!isPressed) {
+      return;
+    }
+
+    if (buttonId === 'stop-1' || buttonId === 'emergency-stop') {
+      setIsActivity1GreenLampLatched(false);
+      return;
+    }
+
+    if (buttonId !== 'start-1' || !isMainSwitchOn) {
+      return;
+    }
+
+    const activity = getActivityAnswerByRouteId(routeId);
+    if (activity.routeId !== '1') {
+      return;
+    }
+
+    const isActivity1SetupValid = evaluateActivityAnswer(activity, {
+      inputDeviceIds: assignedDevices.input,
+      outputDeviceIds: assignedDevices.output,
+      wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
+    }).passed;
+
+    if (isActivity1SetupValid) {
+      setIsActivity1GreenLampLatched(true);
+    }
+  }, [assignedDevices.input, assignedDevices.output, isMainSwitchOn, routeId, wires]);
 
   const handleBackNavigation = () => {
     if (onNavigateBack) {
@@ -281,6 +317,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     setActivePin(null);
     setIsMainSwitchOn(false);
     setPressedManualButtons(INITIAL_MANUAL_RELAY_BUTTON_STATE);
+    setIsActivity1GreenLampLatched(false);
   };
 
   useEffect(() => {
@@ -310,17 +347,19 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     () => new Set((answerFeedback?.wrongConnections ?? []).map(({ fromPin, toPin }) => toWireKey(fromPin, toPin))),
     [answerFeedback],
   );
-  const isActivity1GreenLampOn = useMemo(() => {
-    if (!isMainSwitchOn || activityPreset.routeId !== '1') {
-      return false;
-    }
-
-    return evaluateActivityAnswer(activityPreset, {
-      inputDeviceIds: ['push-button'],
-      outputDeviceIds: ['relay-module', 'light-indicator'],
+  const activityEvaluationPreview = useMemo(
+    () => evaluateActivityAnswer(activityPreset, {
+      inputDeviceIds: assignedDevices.input,
+      outputDeviceIds: assignedDevices.output,
       wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
-    }).passed;
-  }, [activityPreset, isMainSwitchOn, wires]);
+    }),
+    [activityPreset, assignedDevices, wires],
+  );
+  const isActivity1GreenLampOn =
+    activityPreset.routeId === '1'
+    && isMainSwitchOn
+    && activityEvaluationPreview.passed
+    && isActivity1GreenLampLatched;
   const hasNoSelectedDevices =
     !assignedDevices.input.length
     && !assignedDevices.output.length;

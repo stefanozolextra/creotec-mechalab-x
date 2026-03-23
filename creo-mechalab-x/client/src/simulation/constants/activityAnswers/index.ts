@@ -1,5 +1,5 @@
-import { activity1Answer } from './activity-1';
-import { activity2Answer } from './activity-2';
+import { activity1Answer } from './M1/activity-1';
+import { activity2Answer } from './M1/activity-2';
 import type { ActivityAnswerDefinition } from './types';
 
 export const ACTIVITY_ANSWERS: Record<string, ActivityAnswerDefinition> = {
