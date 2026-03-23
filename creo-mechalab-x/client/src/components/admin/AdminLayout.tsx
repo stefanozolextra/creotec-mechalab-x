@@ -87,8 +87,8 @@ const AdminLayout = () => {
               </div>
             </div>
             <div className={`flex flex-col justify-center overflow-hidden whitespace-nowrap transition-all duration-300 ${isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100 pl-2"}`}>
-              <p className="font-bold text-base sm:text-lg dark:text-slate-100 leading-none">Creo</p>
-              <p className="font-bold text-base sm:text-lg dark:text-slate-100 leading-none mt-1">Mechalab X</p>
+              <p className="font-bold text-base sm:text-lg dark:text-slate-100 leading-none">CREOSim</p>
+              <p className="font-bold text-base sm:text-lg dark:text-slate-100 leading-none mt-1">MECHA</p>
             </div>
           </div>
         </div>
@@ -176,8 +176,8 @@ const AdminLayout = () => {
             {getHeaderTitle()}
           </h1>
           <div className="text-left md:text-right mt-1 md:mt-0 shrink-0">
-            <p className="text-sm sm:text-lg lg:text-xl font-bold dark:text-slate-100 leading-none">Creo Mechalab X</p>
-            <p className="text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs lg:text-sm font-medium mt-1">TESDA NC II Trainer</p>
+            <p className="text-sm sm:text-lg lg:text-xl font-bold dark:text-slate-100 leading-none">CREOSim - MECHA</p>
+            <p className="text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs lg:text-sm font-medium mt-1">TESDA Mechatronics NC II Trainer</p>
           </div>
         </header>
 
