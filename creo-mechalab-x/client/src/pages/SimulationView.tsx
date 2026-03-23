@@ -98,6 +98,7 @@ export default function SimulationView() {
             ) : (
             <SimulationApp
                 routeId={simulationRouteId}
+                simulationId={routeSimulationId ?? undefined}
                 onNavigateBack={() => navigate('/dashboard')}
             />
             )}

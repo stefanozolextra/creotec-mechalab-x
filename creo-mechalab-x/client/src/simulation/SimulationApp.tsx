@@ -6,6 +6,7 @@ import type { KonvaEventObject } from 'konva/lib/Node';
 import { ArrowLeft, Play, Trash2, Undo2, Redo2, Sun, Moon, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import './SimulationApp.css';
 
+import { completeSimulation } from '../api/trainees';
 import { RELAY_PORTS, HW_STYLES } from './constants/relayBoard';
 import { RelayStaticBackground, type ManualRelayButtonId } from './components/RelayStaticBackground';
 import { computeOrthogonalPath } from './utils/wireRouting';
@@ -23,7 +24,7 @@ import solenoidValveDevice from '../assets/devices/solenoid-valve.png';
 import { getActivityAnswerByRouteId } from './constants/activityAnswers';
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
-interface SimulationAppProps { routeId?: string; onNavigateBack?: () => void; }
+interface SimulationAppProps { routeId?: string; simulationId?: number; onNavigateBack?: () => void; }
 
 const DEVICE_LIBRARY = [
   { id: 'push-button', name: 'Push Button', image: buttonDevice },
@@ -62,7 +63,7 @@ const INITIAL_MANUAL_RELAY_BUTTON_STATE: Record<ManualRelayButtonId, boolean> = 
   'emergency-stop': false,
 };
 
-export default function SimulationApp({ routeId, onNavigateBack }: SimulationAppProps) {
+export default function SimulationApp({ routeId, simulationId, onNavigateBack }: SimulationAppProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -78,6 +79,12 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     return () => clearTimeout(timer);
   }, []);
 
+  useEffect(() => {
+    return () => {
+      completionAbortControllerRef.current?.abort();
+    };
+  }, []);
+
   const [isMainSwitchOn, setIsMainSwitchOn] = useState(false);
   const [pressedManualButtons, setPressedManualButtons] = useState<Record<ManualRelayButtonId, boolean>>(INITIAL_MANUAL_RELAY_BUTTON_STATE);
   const [isActivity1GreenLampLatched, setIsActivity1GreenLampLatched] = useState(false);
@@ -89,6 +96,9 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     signature: string;
     result: ActivityEvaluationResult;
   } | null>(null);
+  const completionAbortControllerRef = useRef<AbortController | null>(null);
+  const completionInFlightSignatureRef = useRef<string | null>(null);
+  const completionPostedSignatureRef = useRef<string | null>(null);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ghostWireRef = useRef<any>(null);
@@ -398,16 +408,50 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     }));
   }, []);
 
+  const submitCompletion = useCallback(async (signature: string, bestScore: number) => {
+    if (!Number.isInteger(simulationId) || simulationId < 1) return;
+    if (completionPostedSignatureRef.current === signature) return;
+    if (completionInFlightSignatureRef.current === signature) return;
+
+    completionAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    completionAbortControllerRef.current = controller;
+    completionInFlightSignatureRef.current = signature;
+
+    try {
+      await completeSimulation(simulationId, { bestScore }, { signal: controller.signal });
+
+      if (controller.signal.aborted) return;
+      completionPostedSignatureRef.current = signature;
+    } catch (error) {
+      if (controller.signal.aborted) return;
+      console.error('Simulation completion sync failed:', error);
+    } finally {
+      if (completionInFlightSignatureRef.current === signature) {
+        completionInFlightSignatureRef.current = null;
+      }
+      if (completionAbortControllerRef.current === controller) {
+        completionAbortControllerRef.current = null;
+      }
+    }
+  }, [simulationId]);
+
   const handleCheckAnswer = useCallback(() => {
+    const result = evaluateActivityAnswer(activityPreset, {
+      inputDeviceIds: assignedDevices.input,
+      outputDeviceIds: assignedDevices.output,
+      wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
+    });
+
     setAnswerFeedbackState({
       signature: answerSignature,
-      result: evaluateActivityAnswer(activityPreset, {
-        inputDeviceIds: assignedDevices.input,
-        outputDeviceIds: assignedDevices.output,
-        wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
-      }),
+      result,
     });
-  }, [activityPreset, answerSignature, assignedDevices, wires]);
+
+    if (result.passed) {
+      void submitCompletion(answerSignature, 100);
+    }
+  }, [activityPreset, answerSignature, assignedDevices, submitCompletion, wires]);
 
   const handleDeviceDragStart = useCallback(
     (deviceId: DeviceId, source: DeviceZone | 'library', event: DragEvent<HTMLElement>) => {

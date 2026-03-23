@@ -365,9 +365,23 @@ function normalizeAdminActivityLogsLimit(limitInput, defaultLimit = 50) {
     return Math.max(1, Math.min(limit, 200));
 }
 
-function normalizeAdminActivityLogsBeforeCursor(beforeInput) {
-    if (typeof beforeInput !== "string" || beforeInput.trim() === "") return null;
-    const parsed = new Date(beforeInput);
+function normalizeAdminActivityLogsMode(modeInput) {
+    const normalized = typeof modeInput === "string" ? modeInput.trim().toLowerCase() : "";
+    if (!normalized || normalized === "system") return "system";
+    if (normalized === "trainee_progress") return "trainee_progress";
+
+    const error = new Error("Invalid mode");
+    error.statusCode = 400;
+    throw error;
+}
+
+function normalizeAdminActivityLogsSearch(searchInput) {
+    if (typeof searchInput !== "string") return "";
+    return searchInput.trim().slice(0, 120);
+}
+
+function normalizeAdminActivityLogCursorDate(value) {
+    const parsed = new Date(value);
     if (Number.isNaN(parsed.getTime())) {
         const error = new Error("Invalid before cursor");
         error.statusCode = 400;
@@ -376,18 +390,112 @@ function normalizeAdminActivityLogsBeforeCursor(beforeInput) {
     return parsed.toISOString();
 }
 
-async function fetchAdminActivityLogs({ batchCode = null, limit, before } = {}) {
+function encodeAdminActivityLogsCursor(occurredAt, eventId) {
+    return Buffer.from(
+        JSON.stringify({
+            occurred_at: occurredAt,
+            event_id: eventId,
+        }),
+        "utf8"
+    ).toString("base64url");
+}
+
+function normalizeAdminActivityLogsBeforeCursor(beforeInput) {
+    if (typeof beforeInput !== "string" || beforeInput.trim() === "") return null;
+
+    const rawCursor = beforeInput.trim();
+
+    try {
+        const decoded = Buffer.from(rawCursor, "base64url").toString("utf8");
+        const parsed = JSON.parse(decoded);
+        if (parsed && typeof parsed === "object" && typeof parsed.occurred_at === "string") {
+            return {
+                occurredAt: normalizeAdminActivityLogCursorDate(parsed.occurred_at),
+                eventId: typeof parsed.event_id === "string" && parsed.event_id.trim() ? parsed.event_id.trim() : null,
+            };
+        }
+    } catch {}
+
+    return {
+        occurredAt: normalizeAdminActivityLogCursorDate(rawCursor),
+        eventId: null,
+    };
+}
+
+function mapAdminActivityLogRow(row) {
+    const occurredAt = row.occurred_at ? new Date(row.occurred_at).toISOString() : new Date().toISOString();
+    const normalizedType =
+        row.type === "system_reset"
+            ? "system_reset"
+            : row.type === "trainee_created"
+              ? "trainee_created"
+              : row.type === "simulation_completed"
+                ? "simulation_completed"
+                : "batch_export";
+    const meta = row.meta && typeof row.meta === "object" ? row.meta : undefined;
+    const item = {
+        event_id:
+            typeof row.event_id === "string" && row.event_id.trim()
+                ? row.event_id
+                : `${normalizedType}:${occurredAt}`,
+        type: normalizedType,
+        occurred_at: occurredAt,
+        batch_code: row.batch_code || null,
+        actor: row.actor || null,
+        message: row.message || "",
+        ...(meta ? { meta } : {}),
+    };
+
+    if (row.trainee_id !== undefined && row.trainee_id !== null) {
+        item.trainee_id = row.trainee_id;
+    }
+    if (row.trainee_name !== undefined && row.trainee_name !== null) {
+        item.trainee_name = row.trainee_name;
+    }
+    if (row.trainee_code !== undefined && row.trainee_code !== null) {
+        item.trainee_code = row.trainee_code;
+    }
+    if (row.trainee_email !== undefined && row.trainee_email !== null) {
+        item.trainee_email = row.trainee_email;
+    }
+    if (row.module_id !== undefined && row.module_id !== null) {
+        item.module_id = row.module_id;
+    }
+    if (row.module_title !== undefined && row.module_title !== null) {
+        item.module_title = row.module_title;
+    }
+    if (row.simulation_id !== undefined && row.simulation_id !== null) {
+        item.simulation_id = row.simulation_id;
+    }
+    if (row.simulation_title !== undefined && row.simulation_title !== null) {
+        item.simulation_title = row.simulation_title;
+    }
+    if (row.status !== undefined && row.status !== null) {
+        item.status = row.status;
+    }
+    if (row.best_score !== undefined) {
+        item.score = row.best_score === null ? null : Number(row.best_score);
+    }
+    if (row.attempt_count !== undefined) {
+        item.attempt_count = row.attempt_count === null ? null : Number(row.attempt_count);
+    }
+
+    return item;
+}
+
+async function fetchSystemAdminActivityLogs({ batchCode = null, limit, before } = {}) {
     const normalizedLimit = normalizeAdminActivityLogsLimit(limit);
     const beforeCursor = normalizeAdminActivityLogsBeforeCursor(before);
 
     const result = await pool.query(
-        `SELECT type, occurred_at, batch_code, actor, message, meta
+        `SELECT event_id, type, occurred_at, batch_code, actor, message, meta
          FROM (
            -- Mapping from audit schema:
            -- batch_exports.exported_at and system_resets.reset_at -> occurred_at,
            -- exported_by_account_id/reset_by_account_id -> actor via accounts.login_email,
            -- batch_code is already stored directly in both audit tables.
            SELECT
+             CONCAT('batch_export:', be.batch_export_id)::TEXT AS event_id,
              'batch_export'::TEXT AS type,
              be.exported_at AS occurred_at,
              COALESCE(b.batch_code, be.batch_code) AS batch_code,
@@ -412,6 +520,7 @@ async function fetchAdminActivityLogs({ batchCode = null, limit, before } = {}) 
            UNION ALL
 
            SELECT
+             CONCAT('system_reset:', sr.reset_id)::TEXT AS event_id,
              'system_reset'::TEXT AS type,
              sr.reset_at AS occurred_at,
              COALESCE(b.batch_code, sr.batch_code) AS batch_code,
@@ -447,32 +556,174 @@ async function fetchAdminActivityLogs({ batchCode = null, limit, before } = {}) 
            LEFT JOIN batches b ON b.batch_code = sr.batch_code
          ) events
          WHERE ($1::TEXT IS NULL OR events.batch_code = $1)
-           AND ($2::TIMESTAMPTZ IS NULL OR events.occurred_at < $2)
-         ORDER BY events.occurred_at DESC
-         LIMIT $3`,
-        [batchCode, beforeCursor, normalizedLimit]
+           AND (
+             $2::TIMESTAMPTZ IS NULL
+             OR events.occurred_at < $2
+             OR ($3::TEXT IS NOT NULL AND events.occurred_at = $2 AND events.event_id < $3)
+           )
+         ORDER BY events.occurred_at DESC, events.event_id DESC
+         LIMIT $4`,
+        [batchCode, beforeCursor?.occurredAt || null, beforeCursor?.eventId || null, normalizedLimit]
     );
 
-    const items = result.rows.map((row) => {
-        const occurredAt = row.occurred_at ? new Date(row.occurred_at).toISOString() : new Date().toISOString();
-        const normalizedType =
-            row.type === "system_reset" ? "system_reset" : row.type === "trainee_created" ? "trainee_created" : "batch_export";
-        const meta = row.meta && typeof row.meta === "object" ? row.meta : undefined;
-        return {
-            type: normalizedType,
-            occurred_at: occurredAt,
-            batch_code: row.batch_code || null,
-            actor: row.actor || null,
-            message: row.message || "",
-            ...(meta ? { meta } : {}),
-        };
-    });
+    const items = result.rows.map(mapAdminActivityLogRow);
+    const lastItem = items.length > 0 ? items[items.length - 1] : null;
 
     return {
         items,
         limit: normalizedLimit,
-        next_before: items.length < normalizedLimit ? null : items[items.length - 1].occurred_at,
+        next_before:
+            items.length < normalizedLimit || !lastItem
+                ? null
+                : encodeAdminActivityLogsCursor(lastItem.occurred_at, lastItem.event_id),
     };
+}
+
+async function fetchTraineeProgressAdminActivityLogs({ batchCode = null, limit, before, search = "" } = {}) {
+    const normalizedLimit = normalizeAdminActivityLogsLimit(limit);
+    const beforeCursor = normalizeAdminActivityLogsBeforeCursor(before);
+    const normalizedSearch = normalizeAdminActivityLogsSearch(search);
+    const searchPattern = normalizedSearch ? `%${normalizedSearch}%` : null;
+    const numericSearchId =
+        /^\d+$/.test(normalizedSearch) && Number.isSafeInteger(Number(normalizedSearch)) ? Number(normalizedSearch) : null;
+
+    const result = await pool.query(
+        `SELECT
+           events.event_id,
+           events.type,
+           events.occurred_at,
+           events.batch_code,
+           events.actor,
+           events.message,
+           events.meta,
+           events.trainee_id,
+           events.trainee_name,
+           events.trainee_code,
+           events.trainee_email,
+           events.module_id,
+           events.module_title,
+           events.simulation_id,
+           events.simulation_title,
+           events.status,
+           events.best_score,
+           events.attempt_count
+         FROM (
+           SELECT
+             CONCAT('simulation_completed:', tsp.trainee_id, ':', tsp.simulation_id)::TEXT AS event_id,
+             'simulation_completed'::TEXT AS type,
+             tsp.completed_at AS occurred_at,
+             b.batch_code,
+             COALESCE(
+               NULLIF(BTRIM(CONCAT_WS(' ', t.first_name, NULLIF(t.middle_name, ''), t.last_name)), ''),
+               NULLIF(t.trainee_code, ''),
+               NULLIF(COALESCE(a.login_email, t.email), ''),
+               CONCAT('Trainee #', t.trainee_id::TEXT)
+             ) AS actor,
+             CONCAT(
+               COALESCE(
+                 NULLIF(BTRIM(CONCAT_WS(' ', t.first_name, NULLIF(t.middle_name, ''), t.last_name)), ''),
+                 NULLIF(t.trainee_code, ''),
+                 NULLIF(COALESCE(a.login_email, t.email), ''),
+                 CONCAT('Trainee #', t.trainee_id::TEXT)
+               ),
+               ' completed ',
+               COALESCE(NULLIF(s.title, ''), CONCAT('Simulation ', s.simulation_code)),
+               CASE
+                 WHEN NULLIF(m.title, '') IS NULL THEN '.'
+                 ELSE CONCAT(' in ', m.title, '.')
+               END
+             ) AS message,
+             jsonb_build_object(
+               'status', tsp.status,
+               'score', tsp.best_score,
+               'attempt_count', tsp.attempts_count,
+               'trainee_code', t.trainee_code,
+               'trainee_email', COALESCE(a.login_email, t.email),
+               'module_title', m.title,
+               'simulation_title', s.title
+             ) AS meta,
+             tsp.trainee_id,
+             COALESCE(
+               NULLIF(BTRIM(CONCAT_WS(' ', t.first_name, NULLIF(t.middle_name, ''), t.last_name)), ''),
+               NULLIF(t.trainee_code, ''),
+               NULLIF(COALESCE(a.login_email, t.email), ''),
+               CONCAT('Trainee #', t.trainee_id::TEXT)
+             ) AS trainee_name,
+             t.trainee_code,
+             COALESCE(a.login_email, t.email) AS trainee_email,
+             m.module_id,
+             m.title AS module_title,
+             s.simulation_id,
+             s.title AS simulation_title,
+             tsp.status,
+             tsp.best_score,
+             tsp.attempts_count AS attempt_count
+           FROM trainee_simulation_progress tsp
+           JOIN trainees t ON t.trainee_id = tsp.trainee_id
+           JOIN batches b ON b.batch_id = t.batch_id
+           JOIN simulations s ON s.simulation_id = tsp.simulation_id
+           LEFT JOIN modules m ON m.module_id = s.module_id
+           LEFT JOIN accounts a ON a.trainee_id = t.trainee_id
+           WHERE tsp.status = 'COMPLETED'
+             AND tsp.completed_at IS NOT NULL
+             AND ($1::TEXT IS NULL OR b.batch_code = $1)
+             AND (
+               $2::TEXT IS NULL
+               OR t.trainee_code ILIKE $2
+               OR t.email ILIKE $2
+               OR COALESCE(a.login_email, '') ILIKE $2
+               OR t.first_name ILIKE $2
+               OR COALESCE(t.middle_name, '') ILIKE $2
+               OR t.last_name ILIKE $2
+               OR CONCAT_WS(' ', t.first_name, t.middle_name, t.last_name) ILIKE $2
+               OR ($3::BIGINT IS NOT NULL AND t.trainee_id = $3)
+             )
+         ) events
+         WHERE (
+             $4::TIMESTAMPTZ IS NULL
+             OR events.occurred_at < $4
+             OR ($5::TEXT IS NOT NULL AND events.occurred_at = $4 AND events.event_id < $5)
+         )
+         ORDER BY events.occurred_at DESC, events.event_id DESC
+         LIMIT $6`,
+        [
+            batchCode,
+            searchPattern,
+            numericSearchId,
+            beforeCursor?.occurredAt || null,
+            beforeCursor?.eventId || null,
+            normalizedLimit,
+        ]
+    );
+
+    const items = result.rows.map(mapAdminActivityLogRow);
+    const lastItem = items.length > 0 ? items[items.length - 1] : null;
+
+    return {
+        items,
+        limit: normalizedLimit,
+        next_before:
+            items.length < normalizedLimit || !lastItem
+                ? null
+                : encodeAdminActivityLogsCursor(lastItem.occurred_at, lastItem.event_id),
+    };
+}
+
+async function fetchAdminActivityLogs({ mode = "system", batchCode = null, limit, before, search = "" } = {}) {
+    if (mode === "trainee_progress") {
+        return fetchTraineeProgressAdminActivityLogs({
+            batchCode,
+            limit,
+            before,
+            search,
+        });
+    }
+
+    return fetchSystemAdminActivityLogs({
+        batchCode,
+        limit,
+        before,
+    });
 }
 
 function mapAdminTraineeRowToItem(row) {
@@ -2652,45 +2903,57 @@ app.get("/api/admin/dashboard", async (req, res) => {
 Cache verification:
 curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/activity-logs?limit=8" # MISS then HIT
 curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/activity-logs?limit=8" # repeated call should HIT
-curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/activity-logs?before=2026-02-26T00:00:00.000Z" # cursor page bypasses cache
+curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/activity-logs?mode=trainee_progress&search=lee" # trainee progress mode
+curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/activity-logs?before=2026-02-26T00:00:00.000Z" # legacy date cursor still works
 curl -i -H "Authorization: Bearer <TOKEN>" "http://localhost:4000/api/admin/activity-logs?batch_code=BAD-CODE" # 400 invalid format
 */
 app.get("/api/admin/activity-logs", async (req, res) => {
-    const rawBatchCode = Array.isArray(req.query.batch_code) ? req.query.batch_code[0] : req.query.batch_code;
-    const batchCode = typeof rawBatchCode === "string" ? rawBatchCode.trim().toUpperCase() : "";
-    if (batchCode && !validateBatchCodeFormat(batchCode)) {
-        return res.status(400).json({ error: "Invalid batch_code format" });
-    }
-    const scopedBatchCode = batchCode || null;
-
-    const rawBefore = Array.isArray(req.query.before) ? req.query.before[0] : req.query.before;
-    const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
-    const normalizedLimit = normalizeAdminActivityLogsLimit(rawLimit);
-    const hasBeforeCursor = typeof rawBefore === "string" && rawBefore.trim() !== "";
-    const cacheKey = `admin_activity_logs|batch:${scopedBatchCode || "ALL"}|limit:${normalizedLimit}`;
-
-    if (!hasBeforeCursor) {
-        const cachedPayload = cacheGet(adminActivityLogsCache, cacheKey);
-        if (cachedPayload) {
-            setCacheHeaders(res, "HIT", cacheKey);
-            return res.json(cachedPayload);
-        }
-    }
-
-    setCacheHeaders(res, "MISS", hasBeforeCursor ? `${cacheKey}|before_cursor` : cacheKey);
-
     try {
+        const rawMode = Array.isArray(req.query.mode) ? req.query.mode[0] : req.query.mode;
+        const mode = normalizeAdminActivityLogsMode(rawMode);
+
+        const rawBatchCode = Array.isArray(req.query.batch_code) ? req.query.batch_code[0] : req.query.batch_code;
+        const batchCode = typeof rawBatchCode === "string" ? rawBatchCode.trim().toUpperCase() : "";
+        if (batchCode && !validateBatchCodeFormat(batchCode)) {
+            return res.status(400).json({ error: "Invalid batch_code format" });
+        }
+        const scopedBatchCode = batchCode || null;
+
+        const rawSearch = Array.isArray(req.query.search) ? req.query.search[0] : req.query.search;
+        const normalizedSearch = mode === "trainee_progress" ? normalizeAdminActivityLogsSearch(rawSearch) : "";
+        const scopedSearch = normalizedSearch || null;
+
+        const rawBefore = Array.isArray(req.query.before) ? req.query.before[0] : req.query.before;
+        const rawLimit = Array.isArray(req.query.limit) ? req.query.limit[0] : req.query.limit;
+        const normalizedLimit = normalizeAdminActivityLogsLimit(rawLimit);
+        const hasBeforeCursor = typeof rawBefore === "string" && rawBefore.trim() !== "";
+        const cacheKey = `admin_activity_logs|mode:${mode}|batch:${scopedBatchCode || "ALL"}|search:${scopedSearch || "-"}|limit:${normalizedLimit}`;
+
+        if (!hasBeforeCursor) {
+            const cachedPayload = cacheGet(adminActivityLogsCache, cacheKey);
+            if (cachedPayload) {
+                setCacheHeaders(res, "HIT", cacheKey);
+                return res.json(cachedPayload);
+            }
+        }
+
+        setCacheHeaders(res, "MISS", hasBeforeCursor ? `${cacheKey}|before_cursor` : cacheKey);
+
         if (!hasBeforeCursor) {
             const payload = await getOrCreateInflight(adminActivityLogsInflight, cacheKey, async () => {
                 const feed = await fetchAdminActivityLogs({
+                    mode,
                     batchCode: scopedBatchCode,
                     limit: normalizedLimit,
+                    search: scopedSearch || "",
                 });
 
                 const responseBody = {
                     generated_at: new Date().toISOString(),
                     scope: {
+                        mode,
                         batch_code: scopedBatchCode,
+                        search: scopedSearch,
                     },
                     paging: {
                         limit: feed.limit,
@@ -2707,15 +2970,19 @@ app.get("/api/admin/activity-logs", async (req, res) => {
         }
 
         const feed = await fetchAdminActivityLogs({
+            mode,
             batchCode: scopedBatchCode,
             limit: normalizedLimit,
             before: rawBefore,
+            search: scopedSearch || "",
         });
 
         return res.json({
             generated_at: new Date().toISOString(),
             scope: {
+                mode,
                 batch_code: scopedBatchCode,
+                search: scopedSearch,
             },
             paging: {
                 limit: feed.limit,

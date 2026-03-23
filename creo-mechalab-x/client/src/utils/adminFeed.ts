@@ -24,5 +24,6 @@ export const toAdminFeedText = (item: AdminFeedLikeItem): string => {
 export const toAdminFeedTypeLabel = (type: string): string => {
   if (type === "system_reset") return "System Reset";
   if (type === "trainee_created") return "Trainee Created";
+  if (type === "simulation_completed") return "Simulation Completed";
   return "Batch Export";
 };

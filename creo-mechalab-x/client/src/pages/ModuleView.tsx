@@ -21,6 +21,11 @@ type ModuleLessonOption = {
     type: ResourceType;
 };
 
+type ModuleSimulationLaunch = {
+    simulationId: number;
+    orderNo: number | null;
+};
+
 type ModuleLocationState = {
     pdfUrl?: unknown;
     lessonUrl?: unknown;
@@ -91,6 +96,7 @@ const ModuleView = () => {
 
     const [lessonOptions, setLessonOptions] = useState<ModuleLessonOption[]>([]);
     const [selectedLessonResourceId, setSelectedLessonResourceId] = useState<number | null>(hintedLessonResourceId);
+    const [moduleSimulationLaunch, setModuleSimulationLaunch] = useState<ModuleSimulationLaunch | null>(null);
 
     const [highestUnlockedIndex, setHighestUnlockedIndex] = useState<number>(0);
 
@@ -158,6 +164,7 @@ const ModuleView = () => {
         setPageNumber(1);
         setLessonOptions([]);
         setHighestUnlockedIndex(0);
+        setModuleSimulationLaunch(null);
 
         if (!hasValidModuleId) {
             setResolveError('Invalid module id.');
@@ -184,6 +191,26 @@ const ModuleView = () => {
                 const moduleResources = dashboard.moduleContent.resources.filter(
                     (resource) => toNumber(resource.module_id) === moduleId
                 );
+                const moduleSimulations = dashboard.moduleContent.simulations
+                    .filter((simulation) => toNumber(simulation.module_id) === moduleId)
+                    .map((simulation) => {
+                        const simulationId = toNumber(simulation.simulation_id);
+                        const orderNo = toNumber(simulation.order_no);
+                        if (simulationId < 1) return null;
+
+                        return {
+                            simulationId,
+                            orderNo: orderNo > 0 ? orderNo : null,
+                        } as ModuleSimulationLaunch;
+                    })
+                    .filter((entry): entry is ModuleSimulationLaunch => entry !== null)
+                    .sort((a, b) => {
+                        const leftOrder = a.orderNo ?? Number.MAX_SAFE_INTEGER;
+                        const rightOrder = b.orderNo ?? Number.MAX_SAFE_INTEGER;
+                        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+                        return a.simulationId - b.simulationId;
+                    });
+                setModuleSimulationLaunch(moduleSimulations[0] ?? null);
 
                 const options = moduleResources
                     .map((resource) => {
@@ -454,8 +481,16 @@ const ModuleView = () => {
 
                         {/* --- REPLACED: AWAITING_DATA placeholder with Simulation Launcher --- */}
                         <button
-                            onClick={() => navigate('/simulation/1')}
-                            className="hidden sm:flex items-center gap-2 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 border border-cyan-500/50 px-6 py-2.5 rounded font-black text-xs tracking-widest uppercase transition-all duration-300 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
+                            onClick={() => {
+                                if (!moduleSimulationLaunch) return;
+                                navigate(`/simulation/${moduleSimulationLaunch.simulationId}`, {
+                                    state: {
+                                        simulationOrderNo: moduleSimulationLaunch.orderNo,
+                                    },
+                                });
+                            }}
+                            disabled={!moduleSimulationLaunch}
+                            className="hidden sm:flex items-center gap-2 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-cyan-600 dark:text-cyan-400 border border-cyan-500/50 px-6 py-2.5 rounded font-black text-xs tracking-widest uppercase transition-all duration-300 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
                         >
                             <Target size={16} strokeWidth={2.5} /> LAUNCH SIMULATOR
                         </button>
