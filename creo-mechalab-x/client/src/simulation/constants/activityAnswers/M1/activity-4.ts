@@ -1,11 +1,31 @@
-import activity4Diagram from '../../../../assets/ladder-diagrams/M1/activity-4.png';
-import type { ActivityAnswerDefinition } from '../types';
+import activity3Diagram from '../../../../assets/ladder-diagrams/M1/activity-4.png';
+import { RELAY_PIN_IDS } from '../../pinConfiguration';
+import type { ActivityAnswerDefinition, ActivityConnectionPair } from '../types';
+
+const VPLUS_PINS = Object.values(RELAY_PIN_IDS.vplus);
+const VMINUS_PINS = Object.values(RELAY_PIN_IDS.vminus);
+
+const connectToAny = (sourcePin: string, targetPins: string[]): ActivityConnectionPair[] =>
+    targetPins.map((targetPin) => [sourcePin, targetPin] as ActivityConnectionPair);
 
 export const activity4Answer: ActivityAnswerDefinition = {
-  routeId: '4',
-  title: 'Two Input Switches',
-  instruction: 'Placeholder activity. The ladder diagram is available here, but answer validation and device behavior for this activity are not implemented yet.',
-  diagram: activity4Diagram,
-  isPlaceholder: true,
-  rule: {},
+    routeId: '4',
+    title: 'Parallel Start',
+    instruction: 'Placeholder activity. The ladder diagram is available here, but answer validation and device behavior for this activity are not implemented yet.',
+    diagram: activity3Diagram,
+    isPlaceholder: true,
+    rule: {
+        requiredInputDevices: { button: 1 },
+        requiredOutputDevices: { relayModule: 1, lightIndicator: 1 },
+        requiredComponents: { battery: 1, relayModule: 1, lightIndicator: 1 },
+        minWires: 7,
+        // different combination of connections can work, but these are the ones expected based on the diagram
+        customConnections: [
+            connectToAny(RELAY_PIN_IDS.relay1.terminal9, VPLUS_PINS),
+            connectToAny(RELAY_PIN_IDS.relay1.terminal10, VPLUS_PINS),
+            connectToAny(RELAY_PIN_IDS.relay1.terminal7, VPLUS_PINS),
+            connectToAny(RELAY_PIN_IDS.lights.yellowX2, VMINUS_PINS),
+            connectToAny(RELAY_PIN_IDS.relay1.terminal13, VMINUS_PINS),
+        ],
+    },
 };
