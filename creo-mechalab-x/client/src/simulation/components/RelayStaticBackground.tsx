@@ -289,12 +289,15 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={544} y={380} width={240} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="TERMINALS (RELAY 3)" x={544} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
 
-                <Rect x={60} y={604} width={220} height={54} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                {/* FIXED ALIGNMENT: 12-pin blocks centered beneath the 14-pin blocks */}
+                <Rect x={60} y={604} width={216} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="BUTTON" x={60} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
-                <Rect x={305} y={604} width={220} height={54} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="COUNTER" x={305} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
-                <Rect x={550} y={604} width={220} height={54} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TIMER" x={550} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
+
+                <Rect x={308} y={604} width={216} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="COUNTER" x={308} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
+
+                <Rect x={556} y={604} width={216} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="TIMER" x={556} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
 
                 <Rect x={830} y={100} width={45} height={220} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="SOLENOID 1" x={830} y={85} fontSize={11} fontStyle="bold" fill={textFill} />
@@ -350,14 +353,16 @@ export const RelayStaticBackground = React.memo(({
             {renderTerminalStripBase('vminus', 327, 252, 12, false)}
             {renderTerminalStripBase('signals', 572, 252, 12, false)}
 
-            {/* FIXED ALIGNMENT: 14-pin blocks redistributed evenly */}
+            {/* FIXED ALIGNMENT: 14-pin blocks */}
             {renderTerminalStripBase('relay1_top', 66, 402, 14, false)}
             {renderTerminalStripBase('relay2_top', 314, 402, 14, false)}
             {renderTerminalStripBase('timer_top', 562, 402, 14, false)}
 
-            {renderTerminalStripBase('relay1_bot', 84, 638, 12, false)}
-            {renderTerminalStripBase('relay2_bot', 329, 638, 12, false)}
-            {renderTerminalStripBase('timer_bot', 574, 638, 12, false)}
+            {/* FIXED Y-AXIS: Moved up from 638 to 626 */}
+            {renderTerminalStripBase('relay1_bot', 82, 626, 12, false)}
+            {renderTerminalStripBase('relay2_bot', 330, 626, 12, false)}
+            {renderTerminalStripBase('timer_bot', 578, 626, 12, false)}
+
             {renderTerminalStripBase('solenoid1', 852, 122, 12, true)}
             {renderTerminalStripBase('solenoid2', 852, 422, 12, true)}
 

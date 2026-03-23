@@ -41,9 +41,10 @@ generateTerminalStrip('relay1', 66, 402, 14, false, HW_STYLES.jackYellow, 'Relay
 generateTerminalStrip('relay2', 314, 402, 14, false, HW_STYLES.jackYellow, 'Relay 2 (Top)');
 generateTerminalStrip('relay3', 562, 402, 14, false, HW_STYLES.jackYellow, 'Timer/Ctr (Top)');
 
-generateTerminalStrip('button', 84, 638, 12, false, HW_STYLES.jackYellow, 'Relay 1 (Bot)');
-generateTerminalStrip('counter', 329, 638, 12, false, HW_STYLES.jackYellow, 'Relay 2 (Bot)');
-generateTerminalStrip('timer', 574, 638, 12, false, HW_STYLES.jackYellow, 'Timer/Ctr (Bot)');
+// FIXED Y-AXIS: Moved up from 638 to 626 to fix the awkward vertical gap
+generateTerminalStrip('button', 82, 626, 12, false, HW_STYLES.jackYellow, 'Relay 1 (Bot)');
+generateTerminalStrip('counter', 330, 626, 12, false, HW_STYLES.jackYellow, 'Relay 2 (Bot)');
+generateTerminalStrip('timer', 578, 626, 12, false, HW_STYLES.jackYellow, 'Timer/Ctr (Bot)');
 
 // 3. Right-Side Solenoid Terminals (Vertical)
 generateTerminalStrip('solenoid1', 852, 122, 12, true, HW_STYLES.jackBlue, 'Solenoid 1');
