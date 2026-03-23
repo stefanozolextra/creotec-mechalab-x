@@ -277,12 +277,15 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={320} y={495} width={460} height={30} fill={isDarkMode ? '#334155' : '#e2e8f0'} stroke={isDarkMode ? '#475569' : '#cbd5e1'} strokeWidth={1} cornerRadius={2} />
                 <Line points={[320, 510, 780, 510]} stroke={isDarkMode ? '#1e293b' : '#94a3b8'} strokeWidth={2} dash={[10, 10]} />
 
-                <Rect x={56} y={380} width={244} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (RELAY 1)" x={56} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
-                <Rect x={301} y={380} width={244} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (RELAY 2)" x={301} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
-                <Rect x={546} y={380} width={244} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (RELAY 3)" x={546} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
+                {/* FIXED ALIGNMENT: 14-pin blocks redistributed evenly */}
+                <Rect x={48} y={380} width={240} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="TERMINALS (RELAY 1)" x={48} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
+
+                <Rect x={296} y={380} width={240} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="TERMINALS (RELAY 2)" x={296} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
+
+                <Rect x={544} y={380} width={240} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="TERMINALS (RELAY 3)" x={544} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
 
                 <Rect x={60} y={604} width={220} height={54} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="BUTTON" x={60} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
@@ -344,9 +347,12 @@ export const RelayStaticBackground = React.memo(({
             {renderTerminalStripBase('vplus', 82, 252, 12, false)}
             {renderTerminalStripBase('vminus', 327, 252, 12, false)}
             {renderTerminalStripBase('signals', 572, 252, 12, false)}
-            {renderTerminalStripBase('relay1_top', 76, 402, 14, false)}
-            {renderTerminalStripBase('relay2_top', 321, 402, 14, false)}
-            {renderTerminalStripBase('timer_top', 566, 402, 14, false)}
+
+            {/* FIXED ALIGNMENT: 14-pin blocks redistributed evenly */}
+            {renderTerminalStripBase('relay1_top', 66, 402, 14, false)}
+            {renderTerminalStripBase('relay2_top', 314, 402, 14, false)}
+            {renderTerminalStripBase('timer_top', 562, 402, 14, false)}
+
             {renderTerminalStripBase('relay1_bot', 84, 638, 12, false)}
             {renderTerminalStripBase('relay2_bot', 329, 638, 12, false)}
             {renderTerminalStripBase('timer_bot', 574, 638, 12, false)}

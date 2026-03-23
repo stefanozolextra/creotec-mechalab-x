@@ -34,9 +34,10 @@ generateTerminalStrip('vminus', 327, 252, 12, false, HW_STYLES.jackBlack, '0V- G
 generateTerminalStrip('lights', 572, 252, 12, false, HW_STYLES.jackBlue, 'Signal I/O');
 
 // 2. Bottom-Left Relay & Timer Terminals (Horizontal)
-generateTerminalStrip('relay1', 76, 402, 14, false, HW_STYLES.jackYellow, 'Relay 1 (Top)');
-generateTerminalStrip('relay2', 321, 402, 14, false, HW_STYLES.jackYellow, 'Relay 2 (Top)');
-generateTerminalStrip('relay3', 566, 402, 14, false, HW_STYLES.jackYellow, 'Timer/Ctr (Top)');
+// FIXED ALIGNMENT: 14-pin blocks redistributed evenly
+generateTerminalStrip('relay1', 66, 402, 14, false, HW_STYLES.jackYellow, 'Relay 1 (Top)');
+generateTerminalStrip('relay2', 314, 402, 14, false, HW_STYLES.jackYellow, 'Relay 2 (Top)');
+generateTerminalStrip('relay3', 562, 402, 14, false, HW_STYLES.jackYellow, 'Timer/Ctr (Top)');
 
 generateTerminalStrip('button', 84, 638, 12, false, HW_STYLES.jackYellow, 'Relay 1 (Bot)');
 generateTerminalStrip('counter', 329, 638, 12, false, HW_STYLES.jackYellow, 'Relay 2 (Bot)');
