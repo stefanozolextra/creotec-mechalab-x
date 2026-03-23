@@ -71,23 +71,25 @@ export const RelayStaticBackground = React.memo(({
         </Group>
     );
 
-    const renderMicroSwitch = (x: number, y: number) => (
+    const renderMicroSwitch = (x: number, y: number, rotation = 0) => (
         <Group x={x} y={y} listening={false}>
-            {/* Panel Hole for Wires */}
-            <Circle x={40} y={10} radius={4} fill={holeFill} stroke={holeStroke} strokeWidth={1} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} />
-            {/* Hardwired red electrical wires disappearing into panel */}
-            <Line points={[24, 6, 32, 6, 40, 10]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
-            <Line points={[24, 10, 34, 10, 39, 10]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
+            <Group x={20} y={13} offsetX={20} offsetY={13} rotation={rotation}>
+                {/* Panel Hole for Wires */}
+                <Circle x={40} y={10} radius={4} fill={holeFill} stroke={holeStroke} strokeWidth={1} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} />
+                {/* Hardwired red electrical wires disappearing into panel */}
+                <Line points={[24, 6, 32, 6, 40, 10]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
+                <Line points={[24, 10, 34, 10, 39, 10]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
 
-            {/* Simulated Wooden Mount */}
-            <Rect x={-4} y={-4} width={36} height={26} fill="#8b5a2b" cornerRadius={2} opacity={isDarkMode ? 0.6 : 0.8} />
-            {/* Switch Body */}
-            <Rect width={28} height={18} fill="#111827" cornerRadius={2} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} shadowOffsetY={1} />
-            <Circle x={6} y={6} radius={2} fill="#374151" />
-            <Circle x={22} y={12} radius={2} fill="#374151" />
-            {/* Angled Metal Lever */}
-            <Line points={[2, 18, 16, 28]} stroke="#cbd5e1" strokeWidth={1.5} lineCap="round" />
-            <Circle x={16} y={28} radius={2.5} fill="#f8fafc" stroke="#475569" strokeWidth={1} />
+                {/* Simulated Wooden Mount */}
+                <Rect x={-4} y={-4} width={36} height={26} fill="#8b5a2b" cornerRadius={2} opacity={isDarkMode ? 0.6 : 0.8} />
+                {/* Switch Body */}
+                <Rect width={28} height={18} fill="#111827" cornerRadius={2} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} shadowOffsetY={1} />
+                <Circle x={6} y={6} radius={2} fill="#374151" />
+                <Circle x={22} y={12} radius={2} fill="#374151" />
+                {/* Angled Metal Lever */}
+                <Line points={[2, 18, 16, 28]} stroke="#cbd5e1" strokeWidth={1.5} lineCap="round" />
+                <Circle x={16} y={28} radius={2.5} fill="#f8fafc" stroke="#475569" strokeWidth={1} />
+            </Group>
         </Group>
     );
 
@@ -330,9 +332,9 @@ export const RelayStaticBackground = React.memo(({
                 {renderPneumaticCylinder(920, 490, "CYLINDER B")}
 
                 {/* Limit Switch Mounts & Bodies */}
-                {renderMicroSwitch(1105, 172)}
+                {renderMicroSwitch(1105, 172, 180)}
                 {renderMicroSwitch(1165, 172)}
-                {renderMicroSwitch(1105, 472)}
+                {renderMicroSwitch(1105, 472, 180)}
                 {renderMicroSwitch(1165, 472)}
 
                 {/* 5/2-Way Valves */}
