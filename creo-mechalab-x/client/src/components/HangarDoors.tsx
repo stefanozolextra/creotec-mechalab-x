@@ -64,7 +64,7 @@ export default function HangarDoors({ isClosed }: HangarDoorsProps) {
 
                 {/* Stamped Decal */}
                 <div className="absolute bottom-[20%] left-32 text-slate-300/80 dark:text-slate-900/60 font-black text-8xl tracking-widest origin-left -rotate-90 select-none drop-shadow-sm transition-colors duration-500">
-                    HANGAR_01
+                    MECHATRONICS
                 </div>
 
                 {/* Right Interlock Teeth */}
