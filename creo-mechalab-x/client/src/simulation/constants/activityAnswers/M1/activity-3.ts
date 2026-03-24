@@ -24,12 +24,23 @@ export const activity3Answer: ActivityAnswerDefinition = {
             connectToAny(RELAY_PIN_IDS.button.pb1Terminal23, VPLUS_PINS),
             connectToAny(RELAY_PIN_IDS.relay1.terminal9, VPLUS_PINS),
             connectToAny(RELAY_PIN_IDS.relay1.terminal10, VPLUS_PINS),
-            connectToAny(RELAY_PIN_IDS.lights.yellowX2, VMINUS_PINS),
-            connectToAny(RELAY_PIN_IDS.lights.greenX2, VMINUS_PINS),
+            [
+                ...connectToAny(RELAY_PIN_IDS.lights.yellowX2, VMINUS_PINS),
+                [RELAY_PIN_IDS.lights.yellowX2, RELAY_PIN_IDS.lights.greenX2],
+            ],
+            [
+                ...connectToAny(RELAY_PIN_IDS.lights.greenX2, VMINUS_PINS),
+                [RELAY_PIN_IDS.lights.greenX2, RELAY_PIN_IDS.lights.yellowX2],
+            ],
+
             connectToAny(RELAY_PIN_IDS.relay1.terminal13, VMINUS_PINS),
 
             [RELAY_PIN_IDS.button.pb1Terminal24, RELAY_PIN_IDS.button.pb2Terminal23],
-            [RELAY_PIN_IDS.relay1.terminal5, RELAY_PIN_IDS.button.pb2Terminal24],
+            [
+                [RELAY_PIN_IDS.button.pb1Terminal24, RELAY_PIN_IDS.relay1.terminal5],
+                [RELAY_PIN_IDS.button.pb3Terminal11, RELAY_PIN_IDS.relay1.terminal5],
+            ],
+
             [RELAY_PIN_IDS.button.pb2Terminal24, RELAY_PIN_IDS.button.pb3Terminal11],
 
             [RELAY_PIN_IDS.relay1.terminal6, RELAY_PIN_IDS.lights.greenX1],

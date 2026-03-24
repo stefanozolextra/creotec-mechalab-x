@@ -155,6 +155,43 @@ const resolveCustomConnections = (
   return { issues, requirements };
 };
 
+const canSatisfyRequirementsWithDistinctWires = (
+  requirements: ResolvedConnectionOption[][],
+  wireSet: Set<string>,
+) => {
+  const requirementKeys = requirements
+    .map((requirement) => Array.from(
+      new Set(
+        requirement
+          .map((option) => toWireKey(option.resolvedFromPin, option.resolvedToPin))
+          .filter((key) => wireSet.has(key)),
+      ),
+    ))
+    .sort((left, right) => left.length - right.length);
+
+  const usedKeys = new Set<string>();
+
+  const matchRequirement = (requirementIndex: number): boolean => {
+    if (requirementIndex >= requirementKeys.length) {
+      return true;
+    }
+
+    for (const key of requirementKeys[requirementIndex]) {
+      if (usedKeys.has(key)) continue;
+
+      usedKeys.add(key);
+      if (matchRequirement(requirementIndex + 1)) {
+        return true;
+      }
+      usedKeys.delete(key);
+    }
+
+    return false;
+  };
+
+  return matchRequirement(0);
+};
+
 export const evaluateActivityAnswer = (
   activity: ActivityAnswerDefinition,
   context: ActivityEvaluationContext,
@@ -214,6 +251,23 @@ export const evaluateActivityAnswer = (
       .map((option) => `${option.originalFromPin} <-> ${option.originalToPin}`)
       .join(' OR ');
     issues.push(`Missing one required connection option: ${labels}`);
+  }
+
+  const hasDistinctWireAssignment = canSatisfyRequirementsWithDistinctWires(
+    resolvedCustomConnections.requirements,
+    wireSet,
+  );
+  const hasAllRequirementsIndividuallyMatched = resolvedCustomConnections.requirements.every(
+    (requirement) => requirement.some((option) =>
+      wireSet.has(toWireKey(option.resolvedFromPin, option.resolvedToPin))),
+  );
+
+  if (
+    resolvedCustomConnections.requirements.length
+    && hasAllRequirementsIndividuallyMatched
+    && !hasDistinctWireAssignment
+  ) {
+    issues.push('Add distinct wire connections to satisfy all required paths.');
   }
 
   const validConnectionKeys = new Set(

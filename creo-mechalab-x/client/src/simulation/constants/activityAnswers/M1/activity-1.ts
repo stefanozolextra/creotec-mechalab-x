@@ -20,10 +20,10 @@ export const activity1Answer: ActivityAnswerDefinition = {
     minWires: 7,
     // different combination of connections can work, but these are the ones expected based on the diagram
     customConnections: [
-      [RELAY_PIN_IDS.lights.greenX2, RELAY_PIN_IDS.relay1.terminal4],
+      [RELAY_PIN_IDS.lights.greenX2, RELAY_PIN_IDS.relay1.terminal5],
       connectToAny(RELAY_PIN_IDS.lights.greenX1, VMINUS_PINS),
       connectToAny(RELAY_PIN_IDS.relay1.terminal13, VMINUS_PINS),
-      connectToAny(RELAY_PIN_IDS.relay1.terminal7, VPLUS_PINS),
+      connectToAny(RELAY_PIN_IDS.relay1.terminal9, VPLUS_PINS),
       connectToAny(RELAY_PIN_IDS.button.pb1Terminal23, VPLUS_PINS),
       [RELAY_PIN_IDS.button.pb1Terminal24, RELAY_PIN_IDS.button.pb3Terminal11],
       [RELAY_PIN_IDS.button.pb3Terminal12, RELAY_PIN_IDS.relay1.terminal14],
