@@ -102,10 +102,22 @@ const isCompletedValue = (value: boolean | string | number | null | undefined): 
     return false;
 };
 
+// --- FIX: Now checks both DB and LocalStorage to find the true next activity ---
 const getNextSimulationByModuleId = (
     simulations: SimulationApi[],
     simulationProgressById: Map<number, boolean>
 ): Map<number, number> => {
+
+    const localStates = (() => {
+        try {
+            const stored = localStorage.getItem('creosim_simulation_states');
+            return stored ? JSON.parse(stored) : {};
+        } catch {
+            return {};
+        }
+    })();
+    const localCompletedRouteIds = new Set(Object.keys(localStates));
+
     const grouped = new Map<number, SimulationApi[]>();
 
     for (const simulation of simulations) {
@@ -123,7 +135,11 @@ const getNextSimulationByModuleId = (
         const candidate =
             requiredSimulations.length > 0
                 ? requiredSimulations.find(
-                    (simulation) => !simulationProgressById.get(toNumber(simulation.simulation_id))
+                    (simulation) => {
+                        const isDbCompleted = simulationProgressById.get(toNumber(simulation.simulation_id));
+                        const isLocalCompleted = localCompletedRouteIds.has(String(simulation.order_no));
+                        return !isDbCompleted && !isLocalCompleted;
+                    }
                 ) ?? requiredSimulations[0]
                 : moduleSimulations[0];
 
@@ -134,12 +150,12 @@ const getNextSimulationByModuleId = (
 
     return nextByModule;
 };
+// -------------------------------------------------------------------------------
 
 const Dashboard = () => {
     const navigate = useNavigate();
 
     // --- SMART DOOR STATE ---
-    // Only mount and close the doors if this is the FIRST time entering the dashboard this session
     const [isHangarVisible, setIsHangarVisible] = useState(() => !sessionStorage.getItem('dashboard_entered'));
     const [isHangarClosed, setIsHangarClosed] = useState(() => !sessionStorage.getItem('dashboard_entered'));
     const isLoggingOutRef = useRef(false);
@@ -435,7 +451,7 @@ const Dashboard = () => {
 
         setTimeout(() => {
             sessionStorage.removeItem('dashboard_entered');
-            localStorage.removeItem('creosim_simulation_states'); // <-- WIPE STUDENT PROGRESS FROM LOCAL MEMORY
+            localStorage.removeItem('creosim_simulation_states');
             clearAuthRole();
             navigate('/login', { replace: true });
         }, 1500);
@@ -443,8 +459,6 @@ const Dashboard = () => {
 
     const handleStartSimulation = () => {
         if (!selectedSimulation) return;
-
-        // Navigate using the Activity Number (order_no) instead of the Database Primary Key
         const targetRoute = selectedSimulation.order_no ?? 1;
         navigate(`/simulation/${targetRoute}`);
     };
