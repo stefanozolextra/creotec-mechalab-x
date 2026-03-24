@@ -22,6 +22,7 @@ import magneticContactorDevice from '../assets/devices/magnetic-motor-contactor.
 import relayModuleDevice from '../assets/devices/relay-module.png';
 import rollerLeverDevice from '../assets/devices/roller-lever.png';
 import solenoidValveDevice from '../assets/devices/solenoid-valve.png';
+import timerDevice from '../assets/devices/timer.jpg';
 import { getActivityAnswerByRouteId, ACTIVITY_ANSWERS } from './constants/activityAnswers';
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
@@ -37,6 +38,7 @@ const DEVICE_LIBRARY = [
   { id: 'relay-module', name: 'Relay Module', image: relayModuleDevice },
   { id: 'roller-lever', name: 'Roller Lever', image: rollerLeverDevice },
   { id: 'solenoid-valve', name: 'Solenoid Valve', image: solenoidValveDevice },
+  { id: 'timer', name: 'Timer', image: timerDevice },
 ] as const;
 
 type DeviceId = (typeof DEVICE_LIBRARY)[number]['id'];
@@ -251,9 +253,16 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     }
   }, []);
 
+  const getPinWireCount = useCallback(
+    (pinId: string) => wires.filter((wire) => wire.fromPin === pinId || wire.toPin === pinId).length,
+    [wires],
+  );
+  const isPinAtCapacity = useCallback((pinId: string) => getPinWireCount(pinId) >= 2, [getPinWireCount]);
+
   const handlePortMouseDown = (portId: string) => {
     if (isCompleted) return; // Prevent wiring if completed
     if (selectedWireId) { setSelectedWireId(null); return; }
+    if (isPinAtCapacity(portId)) return;
     setActivePin(portId);
     hideTooltip();
 
@@ -294,7 +303,8 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
       const targetPin = (e.target as { attrs?: { id?: string } }).attrs?.id;
       if (targetPin && targetPin !== activePin && RELAY_PORTS[targetPin]) {
         const isDuplicate = wires.some(w => (w.fromPin === activePin && w.toPin === targetPin) || (w.fromPin === targetPin && w.toPin === activePin));
-        if (!isDuplicate) {
+        const isTargetAtCapacity = isPinAtCapacity(targetPin);
+        if (!isDuplicate && !isTargetAtCapacity && !isPinAtCapacity(activePin)) {
           setWires(prev => {
             const pathPoints = computeOrthogonalPath(activePin, targetPin, RELAY_PORTS, prev.length);
             const flatPoints = pathPoints.flatMap(p => [p.x, p.y]);
@@ -849,8 +859,6 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                     />
 
                     <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
-                      {Object.entries(RELAY_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
-
                       {wires.map((wire) => {
                         const isSelected = selectedWireId === wire.id;
                         const isWrong = wrongWireKeySet.has(toWireKey(wire.fromPin, wire.toPin));
@@ -886,6 +894,8 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                           />
                         );
                       })}
+
+                      {Object.entries(RELAY_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
                     </Layer>
 
                     <Layer scaleX={canvasScale} scaleY={canvasScale} id="overlay-layer" listening={false}>

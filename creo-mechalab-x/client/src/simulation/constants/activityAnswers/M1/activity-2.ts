@@ -19,20 +19,28 @@ export const activity2Answer: ActivityAnswerDefinition = {
     requiredComponents: { battery: 1, relayModule: 1, lightIndicator: 1 },
     minWires: 7,
     customConnections: [
-      [RELAY_PIN_IDS.lights.redX1, RELAY_PIN_IDS.lights.greenX1],
+      //you can connect RX1 to GX1, GX1 to V- or RX1 to V- and GX1 to V-
+      [
+        [RELAY_PIN_IDS.lights.redX1, RELAY_PIN_IDS.lights.greenX1],
+        ...connectToAny(RELAY_PIN_IDS.lights.redX1, VMINUS_PINS),
+        ...connectToAny(RELAY_PIN_IDS.lights.greenX1, VMINUS_PINS),
+      ],
 
-      connectToAny(RELAY_PIN_IDS.lights.greenX1, VMINUS_PINS),
       connectToAny(RELAY_PIN_IDS.relay1.terminal13, VMINUS_PINS),
-      connectToAny(RELAY_PIN_IDS.relay1.terminal7, VPLUS_PINS),
-      connectToAny(RELAY_PIN_IDS.relay1.terminal8, VPLUS_PINS),
-      connectToAny(RELAY_PIN_IDS.button.pb1Terminal23, VPLUS_PINS),
 
-      [RELAY_PIN_IDS.lights.greenX2, RELAY_PIN_IDS.relay1.terminal5],
       [RELAY_PIN_IDS.lights.redX2, RELAY_PIN_IDS.relay1.terminal2],
-      [RELAY_PIN_IDS.relay1.terminal4, RELAY_PIN_IDS.button.pb1Terminal24],
+      [RELAY_PIN_IDS.lights.greenX2, RELAY_PIN_IDS.relay1.terminal6],
+      [RELAY_PIN_IDS.relay1.terminal14, RELAY_PIN_IDS.button.pb3Terminal12],
 
       [RELAY_PIN_IDS.button.pb1Terminal24, RELAY_PIN_IDS.button.pb3Terminal11],
-      [RELAY_PIN_IDS.button.pb3Terminal12, RELAY_PIN_IDS.relay1.terminal14],
+      [
+        [RELAY_PIN_IDS.button.pb1Terminal24, RELAY_PIN_IDS.relay1.terminal5],
+        [RELAY_PIN_IDS.button.pb3Terminal11, RELAY_PIN_IDS.relay1.terminal5],
+      ],
+
+      connectToAny(RELAY_PIN_IDS.button.pb1Terminal23, VPLUS_PINS),
+      connectToAny(RELAY_PIN_IDS.relay1.terminal9, VPLUS_PINS),
+      connectToAny(RELAY_PIN_IDS.relay1.terminal10, VPLUS_PINS),
     ],
   },
 };

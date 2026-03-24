@@ -67,10 +67,10 @@ export const RELAY_PIN_DESCRIPTIONS: Record<string, string> = {
     ...createIndexedPinDescriptions('relay2', ['14', '13', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']),
     ...createIndexedPinDescriptions('relay3', ['14', '13', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']),
     ...createIndexedPinDescriptions('button', ['PB1-23', 'PB1-24', 'PB2-23', 'PB2-24', 'PB3-11', 'PB3-12', 'PB4-11', 'PB4-12', 'ESTOP-11', 'ESTOP-12', '', '']),
-    ...createIndexedPinDescriptions('counter', Array.from({ length: 12 }, (_, index) => `Relay 2 (Bot) ${index + 1}`)),
-    ...createIndexedPinDescriptions('timer', Array.from({ length: 12 }, (_, index) => `Timer/Ctr (Bot) ${index + 1}`)),
-    ...createIndexedPinDescriptions('solenoid1', Array.from({ length: 12 }, (_, index) => `Solenoid 1 ${index + 1}`)),
-    ...createIndexedPinDescriptions('solenoid2', Array.from({ length: 12 }, (_, index) => `Solenoid 2 ${index + 1}`)),
+    ...createIndexedPinDescriptions('counter', ['1', '2', '3', '4', '5', '6', '7', '8', '', '', '', '']),
+    ...createIndexedPinDescriptions('timer', ['1', '2', '3', '4', '5', '6', '7', '8', '', '', '', '']),
+    ...createIndexedPinDescriptions('solenoid1', ['A+ +', 'A+ -', '', 'A- +', 'A- -', '', 'LS1 - COM', 'LS1 - NO', 'LS1 - NC', 'LS2 - COM', 'LS2 - NO', 'LS2 - NC', '', '']),
+    ...createIndexedPinDescriptions('solenoid2', ['B+ +', 'B+ -', '', 'B- +', 'B- -', '', 'LS3 - COM', 'LS3 - NO', 'LS3 - NC', 'LS4 - COM', 'LS4 - NO', 'LS4 - NC', '', '']),
 };
 
 export const applyRelayPinConfiguration = (ports: Record<string, RelayPortLike>) => {

@@ -39,6 +39,7 @@ const DEVICE_RULE_KEY_BY_ID: Record<string, string> = {
   'relay-module': 'relayModule',
   'roller-lever': 'rollerLever',
   'solenoid-valve': 'solenoidValve',
+  timer: 'timer',
 };
 
 const BUILT_IN_COMPONENT_COUNTS: Record<string, number> = {

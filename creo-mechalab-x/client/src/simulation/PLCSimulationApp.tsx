@@ -123,8 +123,15 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
         }
     }, []);
 
+    const getPinWireCount = useCallback(
+        (pinId: string) => wires.filter((wire) => wire.fromPin === pinId || wire.toPin === pinId).length,
+        [wires],
+    );
+    const isPinAtCapacity = useCallback((pinId: string) => getPinWireCount(pinId) >= 2, [getPinWireCount]);
+
     const handlePortMouseDown = useCallback((portId: string) => {
         if (selectedWireId) { setSelectedWireId(null); return; }
+        if (isPinAtCapacity(portId)) return;
         setActivePin(portId);
         hideTooltip();
 
@@ -138,7 +145,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
             ghostWireRef.current.visible(true);
             ghostWireRef.current.getLayer().batchDraw();
         }
-    }, [hideTooltip, selectedWireId]);
+    }, [hideTooltip, isPinAtCapacity, selectedWireId]);
 
     const handlePortMouseEnter = useCallback((e: KonvaEventObject<MouseEvent>, portId: string, config: PlcPortConfig) => {
         const stage = e.target.getStage();
@@ -224,7 +231,8 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
             const targetPin = (e.target as { attrs?: { id?: string } }).attrs?.id;
             if (targetPin && targetPin !== activePin && GOTT_TRAINER_PORTS[targetPin]) {
                 const isDuplicate = wires.some(w => (w.fromPin === activePin && w.toPin === targetPin) || (w.fromPin === targetPin && w.toPin === activePin));
-                if (!isDuplicate) {
+                const isTargetAtCapacity = isPinAtCapacity(targetPin);
+                if (!isDuplicate && !isTargetAtCapacity && !isPinAtCapacity(activePin)) {
                     setWires(prev => {
                         const points = computePLCWirePath(activePin, targetPin, GOTT_TRAINER_PORTS, prev.length);
 
