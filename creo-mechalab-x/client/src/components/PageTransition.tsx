@@ -78,7 +78,8 @@ const PageTransition = ({ children }: Props) => {
             exit="out"
             variants={shouldReduceMotion ? reducedMotionVariants : pageVariants}
             transition={shouldReduceMotion ? reducedMotionTransition : pageTransition}
-            className="w-full h-full"
+            // Add theme-aware background colors to prevent white flashes during opacity cross-fades
+            className="w-full min-h-screen bg-[#f8fafc] dark:bg-slate-900 transition-colors duration-500"
         >
             {children}
         </motion.div>

@@ -20,11 +20,11 @@ import {
 } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Document, Page, pdfjs } from 'react-pdf';
-import CyberTransition from '../components/CyberTransition';
 import { API_BASE_URL } from '../api/http';
 import { clearAuthRole, getAuthToken } from '../utils/auth';
 import { getTraineeDashboard } from '../api/trainees';
 import { resolveSupportedVideoLesson } from '../utils/videoLessons';
+import HangarDoors from '../components/HangarDoors'; // <-- IMPORT HANGAR DOORS
 import type {
     DashboardState,
     ModuleStatusApi,
@@ -137,6 +137,16 @@ const getNextSimulationByModuleId = (
 const Dashboard = () => {
     const navigate = useNavigate();
 
+    // --- DOOR STATE ---
+    // Start true so doors cover the screen instantly on page load, then open.
+    const [isHangarClosed, setIsHangarClosed] = useState(true);
+
+    useEffect(() => {
+        const timer = setTimeout(() => setIsHangarClosed(false), 300);
+        return () => clearTimeout(timer);
+    }, []);
+    // ------------------
+
     const [dashboardState, setDashboardState] = useState<DashboardState>({
         data: null,
         loading: true,
@@ -244,27 +254,19 @@ const Dashboard = () => {
         const data = dashboardState.data;
         if (!data) return [];
 
-        // 1. Sort the modules first so we know their exact sequence
         const sortedModules = [...data.moduleContent.modules].sort(
             (a, b) => toNumber(a.order_no) - toNumber(b.order_no)
         );
 
-        // 2. Map through them and apply the smart unlock logic
         return sortedModules.map((module, index) => {
             const moduleId = toNumber(module.module_id);
             const moduleStatus = moduleStatusByModuleId.get(moduleId);
-
-            // Get the raw status from the database
             let status = getLevelStatus(moduleStatus?.module_status);
 
-            // --- SMART UNLOCK LOGIC ---
-            // If the database says it's locked, we evaluate if it should be unlocked by default
             if (status === 'locked') {
                 if (index === 0) {
-                    // Rule 1: The very first module is ALWAYS unlocked for new users
                     status = 'unlocked';
                 } else {
-                    // Rule 2: Unlock this module automatically if the PREVIOUS module is completed
                     const prevModuleId = toNumber(sortedModules[index - 1].module_id);
                     const prevStatus = getLevelStatus(moduleStatusByModuleId.get(prevModuleId)?.module_status);
 
@@ -279,7 +281,7 @@ const Dashboard = () => {
                 title: module.title,
                 moduleCode: module.module_code,
                 description: module.description,
-                status, // Passes the new smart status to the UI
+                status,
                 score: getScorePercent(moduleStatus),
             };
         });
@@ -410,8 +412,14 @@ const Dashboard = () => {
     }, [selectedLevel]);
 
     const handleLogout = () => {
-        clearAuthRole();
-        navigate('/login', { replace: true });
+        setIsSettingsOpen(false); // Hide settings modal if open
+        setIsHangarClosed(true); // Trigger doors to close
+
+        // Wait for the door animation to finish before destroying session and routing
+        setTimeout(() => {
+            clearAuthRole();
+            navigate('/login', { replace: true });
+        }, 1500);
     };
 
     const handleStartSimulation = () => {
@@ -429,8 +437,7 @@ const Dashboard = () => {
     };
 
     return (
-        // 2. Wrapped everything in CyberTransition!
-        <CyberTransition>
+        <>
             <div className="min-h-screen w-full overflow-x-hidden bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white pb-8 relative transition-colors duration-300 z-0">
 
                 {/* GAME HUD GRID BACKGROUND */}
@@ -860,6 +867,9 @@ const Dashboard = () => {
                 </AnimatePresence>
             </div>
 
+            {/* --- ADD HANGAR DOORS OVERLAY --- */}
+            <HangarDoors isClosed={isHangarClosed} />
+
             <style dangerouslySetInnerHTML={{
                 __html: `
                 @keyframes scan {
@@ -869,7 +879,7 @@ const Dashboard = () => {
                     100% { top: 100%; opacity: 0; }
                 }
             `}} />
-        </CyberTransition>
+        </>
     );
 };
 

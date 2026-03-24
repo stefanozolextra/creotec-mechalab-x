@@ -96,11 +96,10 @@ export default function SimulationView() {
                     </div>
                 </div>
             ) : (
-            <SimulationApp
-                routeId={simulationRouteId}
-                simulationId={routeSimulationId ?? undefined}
-                onNavigateBack={() => navigate('/dashboard')}
-            />
+                <SimulationApp
+                    routeId={simulationRouteId}
+                    onNavigateBack={() => navigate('/dashboard')}
+                />
             )}
         </CyberTransition>
     );
