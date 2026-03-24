@@ -28,6 +28,7 @@ import { getActivityAnswerByRouteId, ACTIVITY_ANSWERS } from './constants/activi
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
 interface SimulationAppProps { routeId?: string; simulationId?: number; initialCompletedRoutes?: string[]; onNavigateBack?: () => void; }
 type Activity2LampMode = 'off' | 'green' | 'red';
+type Activity3LampMode = 'off' | 'green' | 'yellow';
 
 const DEVICE_LIBRARY = [
   { id: 'push-button', name: 'Push Button', image: buttonDevice },
@@ -79,6 +80,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const [pressedManualButtons, setPressedManualButtons] = useState<Record<ManualRelayButtonId, boolean>>(INITIAL_MANUAL_RELAY_BUTTON_STATE);
   const [isActivity1GreenLampLatched, setIsActivity1GreenLampLatched] = useState(false);
   const [activity2LampMode, setActivity2LampMode] = useState<Activity2LampMode>('off');
+  const [activity3LampMode, setActivity3LampMode] = useState<Activity3LampMode>('off');
   const [wires, setWires] = useState<Connection[]>([]);
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
@@ -156,6 +158,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     setPressedManualButtons(INITIAL_MANUAL_RELAY_BUTTON_STATE);
     setIsActivity1GreenLampLatched(false);
     setActivity2LampMode('off');
+    setActivity3LampMode('off');
     setAnswerFeedbackState(null);
   }, [activityPreset.routeId]);
 
@@ -174,8 +177,14 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     if (!nextIsMainSwitchOn) {
       setIsActivity1GreenLampLatched(false);
       setActivity2LampMode('off');
+      setActivity3LampMode('off');
+      return;
     }
-  }, [isMainSwitchOn]);
+
+    if (activityPreset.routeId === '3') {
+      setActivity3LampMode('yellow');
+    }
+  }, [activityPreset.routeId, isMainSwitchOn]);
 
   const handleManualButtonPressChange = useCallback((buttonId: ManualRelayButtonId, isPressed: boolean) => {
     setPressedManualButtons((prev) => (
@@ -202,6 +211,25 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
       }
       if (buttonId === 'start-1' && isMainSwitchOn && isCurrentSetupValid) {
         setActivity2LampMode('green');
+      }
+      return;
+    }
+
+    if (activityPreset.routeId === '3') {
+      if (buttonId === 'stop-1' || buttonId === 'stop-2' || buttonId === 'emergency-stop') {
+        setActivity3LampMode('off');
+        return;
+      }
+
+      if (!isMainSwitchOn || !isCurrentSetupValid) return;
+
+      if (buttonId === 'start-1') {
+        setActivity3LampMode('green');
+        return;
+      }
+
+      if (buttonId === 'start-2') {
+        setActivity3LampMode('yellow');
       }
       return;
     }
@@ -414,6 +442,8 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const isActivity1GreenLampOn = activityPreset.routeId === '1' && isMainSwitchOn && activityEvaluationPreview.passed && isActivity1GreenLampLatched;
   const isActivity2GreenLampOn = activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'green';
   const isActivity2RedLampOn = activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'red';
+  const isActivity3GreenLampOn = activityPreset.routeId === '3' && isMainSwitchOn && activityEvaluationPreview.passed && activity3LampMode === 'green';
+  const isActivity3YellowLampOn = activityPreset.routeId === '3' && isMainSwitchOn && activityEvaluationPreview.passed && activity3LampMode === 'yellow';
 
   const hasNoSelectedDevices = !assignedDevices.input.length && !assignedDevices.output.length;
   const shouldShowOnlyNoDeviceMessage = Boolean(answerFeedback && !answerFeedback.passed && hasNoSelectedDevices);
@@ -820,7 +850,8 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                       canvasScale={canvasScale}
                       isDarkMode={isDarkMode}
                       isMainSwitchOn={isMainSwitchOn}
-                      isGreenLampOn={isActivity1GreenLampOn || isActivity2GreenLampOn}
+                      isGreenLampOn={isActivity1GreenLampOn || isActivity2GreenLampOn || isActivity3GreenLampOn}
+                      isYellowLampOn={isActivity3YellowLampOn}
                       isRedLampOn={isActivity2RedLampOn}
                       manualButtonState={pressedManualButtons}
                       onToggleSwitch={handleToggleSwitch}

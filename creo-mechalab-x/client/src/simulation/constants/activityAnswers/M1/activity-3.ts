@@ -11,9 +11,8 @@ const connectToAny = (sourcePin: string, targetPins: string[]): ActivityConnecti
 export const activity3Answer: ActivityAnswerDefinition = {
     routeId: '3',
     title: 'Series Start',
-    instruction: 'Placeholder activity. The ladder diagram is available here, but answer validation and device behavior for this activity are not implemented yet.',
+    instruction: 'Follow the ladder diagram, place the required devices, and complete the wiring path for the series start circuit. With the main switch on, the yellow lamp should turn on. Pressing START-1 should switch the green lamp on, pressing START-2 should switch the yellow lamp on, and pressing STOP should turn both lamps off.',
     diagram: activity3Diagram,
-    isPlaceholder: true,
     rule: {
         requiredInputDevices: { button: 1 },
         requiredOutputDevices: { relayModule: 1, lightIndicator: 1 },
