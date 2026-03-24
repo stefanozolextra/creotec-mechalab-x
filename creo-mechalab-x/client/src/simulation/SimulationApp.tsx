@@ -26,7 +26,7 @@ import timerDevice from '../assets/devices/timer.jpg';
 import { getActivityAnswerByRouteId, ACTIVITY_ANSWERS } from './constants/activityAnswers';
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
-interface SimulationAppProps { routeId?: string; simulationId?: number; onNavigateBack?: () => void; }
+interface SimulationAppProps { routeId?: string; simulationId?: number; initialCompletedRoutes?: string[]; onNavigateBack?: () => void; }
 type Activity2LampMode = 'off' | 'green' | 'red';
 
 const DEVICE_LIBRARY = [
@@ -45,29 +45,19 @@ type DeviceId = (typeof DEVICE_LIBRARY)[number]['id'];
 type DeviceZone = 'input' | 'output';
 type DeviceDragState = { deviceId: DeviceId; source: DeviceZone | 'library' } | null;
 
-const isDeviceId = (value: string): value is DeviceId =>
-  DEVICE_LIBRARY.some((device) => device.id === value);
-
-const getDeviceById = (deviceId: DeviceId) =>
-  DEVICE_LIBRARY.find((device) => device.id === deviceId) ?? DEVICE_LIBRARY[0];
-
-const toWireKey = (fromPin: string, toPin: string) =>
-  [fromPin, toPin].sort().join('|');
-
-const isWireIssue = (issue: string) =>
-  issue.startsWith('Add at least ')
-  || issue.startsWith('Missing required connection:')
-  || issue.startsWith('Missing one required connection option:');
+const isDeviceId = (value: string): value is DeviceId => DEVICE_LIBRARY.some((device) => device.id === value);
+const getDeviceById = (deviceId: DeviceId) => DEVICE_LIBRARY.find((device) => device.id === deviceId) ?? DEVICE_LIBRARY[0];
+const toWireKey = (fromPin: string, toPin: string) => [fromPin, toPin].sort().join('|');
+const isWireIssue = (issue: string) => issue.startsWith('Add at least ') || issue.startsWith('Missing required connection:') || issue.startsWith('Missing one required connection option:');
 
 const INITIAL_MANUAL_RELAY_BUTTON_STATE: Record<ManualRelayButtonId, boolean> = {
-  'start-1': false,
-  'start-2': false,
-  'stop-1': false,
-  'stop-2': false,
-  'emergency-stop': false,
+  'start-1': false, 'start-2': false, 'stop-1': false, 'stop-2': false, 'emergency-stop': false,
 };
 
-export default function SimulationApp({ routeId, onNavigateBack }: SimulationAppProps) {
+// --- NEW: LOCAL STORAGE KEY ---
+const STORAGE_KEY = 'creosim_simulation_states';
+
+export default function SimulationApp({ routeId, initialCompletedRoutes = [], onNavigateBack }: SimulationAppProps) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
@@ -78,6 +68,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   const [activeDropZone, setActiveDropZone] = useState<DeviceZone | null>(null);
 
   const [isCanvasReady, setIsCanvasReady] = useState(false);
+  const [dbCompletedRoutes] = useState<Set<string>>(new Set(initialCompletedRoutes));
 
   useEffect(() => {
     const timer = setTimeout(() => setIsCanvasReady(true), 700);
@@ -92,12 +83,23 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
-  const [answerFeedbackState, setAnswerFeedbackState] = useState<{
-    signature: string;
-    result: ActivityEvaluationResult;
-  } | null>(null);
+  const [answerFeedbackState, setAnswerFeedbackState] = useState<{ signature: string; result: ActivityEvaluationResult; } | null>(null);
 
-  const [savedStates, setSavedStates] = useState<Record<string, { wires: Connection[], assignedDevices: Record<DeviceZone, DeviceId[]> }>>({});
+  // --- NEW: INITIALIZE FROM LOCAL STORAGE ---
+  const [savedStates, setSavedStates] = useState<Record<string, { wires: Connection[], assignedDevices: Record<DeviceZone, DeviceId[]> }>>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // --- NEW: SYNC TO LOCAL STORAGE ---
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(savedStates));
+  }, [savedStates]);
+
   const [showSuccessAnim, setShowSuccessAnim] = useState(false);
 
   const ghostWireRef = useRef<Konva.Line>(null);
@@ -129,13 +131,14 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   const currentIndex = routeKeys.indexOf(activityPreset.routeId);
   const nextRouteId = currentIndex !== -1 && currentIndex < routeKeys.length - 1 ? routeKeys[currentIndex + 1] : null;
 
-  const isCompleted = !!savedStates[activityPreset.routeId];
+  const isSessionCompleted = !!savedStates[activityPreset.routeId];
 
   const savedStatesRef = useRef(savedStates);
   useEffect(() => {
     savedStatesRef.current = savedStates;
   }, [savedStates]);
 
+  // Load state when switching activities
   useEffect(() => {
     const saved = savedStatesRef.current[activityPreset.routeId];
     if (saved) {
@@ -168,7 +171,6 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   const handleToggleSwitch = useCallback(() => {
     const nextIsMainSwitchOn = !isMainSwitchOn;
     setIsMainSwitchOn(nextIsMainSwitchOn);
-
     if (!nextIsMainSwitchOn) {
       setIsActivity1GreenLampLatched(false);
       setActivity2LampMode('off');
@@ -180,9 +182,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
       prev[buttonId] === isPressed ? prev : { ...prev, [buttonId]: isPressed }
     ));
 
-    if (!isPressed) {
-      return;
-    }
+    if (!isPressed) return;
 
     const isCurrentSetupValid = evaluateActivityAnswer(activityPreset, {
       inputDeviceIds: assignedDevices.input,
@@ -200,17 +200,13 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
         setActivity2LampMode(isMainSwitchOn && isCurrentSetupValid ? 'red' : 'off');
         return;
       }
-
       if (buttonId === 'start-1' && isMainSwitchOn && isCurrentSetupValid) {
         setActivity2LampMode('green');
       }
-
       return;
     }
 
-    if (buttonId !== 'start-1' || !isMainSwitchOn) {
-      return;
-    }
+    if (buttonId !== 'start-1' || !isMainSwitchOn) return;
 
     if (activityPreset.routeId === '1' && isCurrentSetupValid) {
       setIsActivity1GreenLampLatched(true);
@@ -260,7 +256,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   const isPinAtCapacity = useCallback((pinId: string) => getPinWireCount(pinId) >= 2, [getPinWireCount]);
 
   const handlePortMouseDown = (portId: string) => {
-    if (isCompleted) return; // Prevent wiring if completed
+    if (isSessionCompleted) return;
     if (selectedWireId) { setSelectedWireId(null); return; }
     if (isPinAtCapacity(portId)) return;
     setActivePin(portId);
@@ -334,7 +330,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   };
 
   const deleteSelectedWire = useCallback(() => {
-    if (isCompleted || !selectedWireId) return; // Prevent deleting wires if completed
+    if (isSessionCompleted || !selectedWireId) return;
     setWires((prev) => {
       const next = prev.filter((w) => w.id !== selectedWireId);
       setHistoryPast((hp) => [...hp, prev].slice(-50));
@@ -342,10 +338,10 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
       return next;
     });
     setSelectedWireId(null);
-  }, [selectedWireId, isCompleted]);
+  }, [selectedWireId, isSessionCompleted]);
 
   const handleWireColorChange = useCallback((nextColor: string) => {
-    if (isCompleted) return; // Prevent color change if completed
+    if (isSessionCompleted) return;
     setWireColor(nextColor);
     if (!selectedWireId) return;
 
@@ -361,13 +357,13 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
         wire.id === selectedWireId ? { ...wire, color: nextColor } : wire,
       );
     });
-  }, [selectedWireId, isCompleted]);
+  }, [selectedWireId, isSessionCompleted]);
 
-  const handleUndo = () => { if (isCompleted || !historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
-  const handleRedo = () => { if (isCompleted || !historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
+  const handleUndo = () => { if (isSessionCompleted || !historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
+  const handleRedo = () => { if (isSessionCompleted || !historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
 
   const handleResetBoard = () => {
-    if (isCompleted) return; // Prevent reset if completed
+    if (isSessionCompleted) return;
     setHistoryPast(prev => [...prev, wires].slice(-50));
     setHistoryFuture([]);
     setWires([]);
@@ -400,8 +396,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     [activityPreset.routeId, assignedDevices, wires],
   );
 
-  const answerFeedback =
-    answerFeedbackState?.signature === answerSignature ? answerFeedbackState.result : null;
+  const answerFeedback = answerFeedbackState?.signature === answerSignature ? answerFeedbackState.result : null;
   const answerPercent = answerFeedback?.passed ? '100%' : '0%';
   const wrongWireKeySet = useMemo(
     () => new Set((answerFeedback?.wrongConnections ?? []).map(({ fromPin, toPin }) => toWireKey(fromPin, toPin))),
@@ -416,63 +411,31 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
     [activityPreset, assignedDevices, wires],
   );
 
-  const isActivity1GreenLampOn =
-    activityPreset.routeId === '1'
-    && isMainSwitchOn
-    && activityEvaluationPreview.passed
-    && isActivity1GreenLampLatched;
-  const isActivity2GreenLampOn =
-    activityPreset.routeId === '2'
-    && isMainSwitchOn
-    && activityEvaluationPreview.passed
-    && activity2LampMode === 'green';
-  const isActivity2RedLampOn =
-    activityPreset.routeId === '2'
-    && isMainSwitchOn
-    && activityEvaluationPreview.passed
-    && activity2LampMode === 'red';
+  const isActivity1GreenLampOn = activityPreset.routeId === '1' && isMainSwitchOn && activityEvaluationPreview.passed && isActivity1GreenLampLatched;
+  const isActivity2GreenLampOn = activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'green';
+  const isActivity2RedLampOn = activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'red';
 
-  const hasNoSelectedDevices =
-    !assignedDevices.input.length
-    && !assignedDevices.output.length;
-  const shouldShowOnlyNoDeviceMessage = Boolean(
-    answerFeedback && !answerFeedback.passed && hasNoSelectedDevices,
-  );
-  const shouldShowOnlyWrongWireMessage = Boolean(
-    answerFeedback
-    && !answerFeedback.passed
-    && !shouldShowOnlyNoDeviceMessage
-    && answerFeedback.wrongConnections.length,
-  );
-  const shouldShowOnlyMissingWireMessage = Boolean(
-    answerFeedback
-    && !answerFeedback.passed
-    && !shouldShowOnlyNoDeviceMessage
-    && !shouldShowOnlyWrongWireMessage
-    && answerFeedback.issues.length
-    && answerFeedback.issues.every(isWireIssue),
-  );
+  const hasNoSelectedDevices = !assignedDevices.input.length && !assignedDevices.output.length;
+  const shouldShowOnlyNoDeviceMessage = Boolean(answerFeedback && !answerFeedback.passed && hasNoSelectedDevices);
+  const shouldShowOnlyWrongWireMessage = Boolean(answerFeedback && !answerFeedback.passed && !shouldShowOnlyNoDeviceMessage && answerFeedback.wrongConnections.length);
+  const shouldShowOnlyMissingWireMessage = Boolean(answerFeedback && !answerFeedback.passed && !shouldShowOnlyNoDeviceMessage && !shouldShowOnlyWrongWireMessage && answerFeedback.issues.length && answerFeedback.issues.every(isWireIssue));
 
   const placeDeviceInZone = useCallback((deviceId: DeviceId, zone: DeviceZone) => {
     setAssignedDevices((previous) => {
       const nextInput = previous.input.filter((entry) => entry !== deviceId);
       const nextOutput = previous.output.filter((entry) => entry !== deviceId);
-
-      if (zone === 'input') {
-        return { input: [...nextInput, deviceId], output: nextOutput };
-      }
-
+      if (zone === 'input') return { input: [...nextInput, deviceId], output: nextOutput };
       return { input: nextInput, output: [...nextOutput, deviceId] };
     });
   }, []);
 
   const removeDeviceFromZones = useCallback((deviceId: DeviceId) => {
-    if (isCompleted) return;
+    if (isSessionCompleted) return;
     setAssignedDevices((previous) => ({
       input: previous.input.filter((entry) => entry !== deviceId),
       output: previous.output.filter((entry) => entry !== deviceId),
     }));
-  }, [isCompleted]);
+  }, [isSessionCompleted]);
 
   const handleCheckAnswer = useCallback(() => {
     const result = evaluateActivityAnswer(activityPreset, {
@@ -481,10 +444,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
       wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
     });
 
-    setAnswerFeedbackState({
-      signature: answerSignature,
-      result,
-    });
+    setAnswerFeedbackState({ signature: answerSignature, result });
 
     if (result.passed) {
       setSavedStates((prev) => ({
@@ -498,7 +458,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
 
   const handleDeviceDragStart = useCallback(
     (deviceId: DeviceId, source: DeviceZone | 'library', event: DragEvent<HTMLElement>) => {
-      if (isCompleted) {
+      if (isSessionCompleted) {
         event.preventDefault();
         return;
       }
@@ -506,7 +466,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
       event.dataTransfer.setData('text/plain', deviceId);
       setDragState({ deviceId, source });
     },
-    [isCompleted],
+    [isSessionCompleted],
   );
 
   const handleDeviceDragEnd = useCallback(() => {
@@ -515,21 +475,21 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
   }, []);
 
   const handleDropZoneDragOver = useCallback((zone: DeviceZone, event: DragEvent<HTMLDivElement>) => {
-    if (isCompleted) return;
+    if (isSessionCompleted) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'move';
     setActiveDropZone(zone);
-  }, [isCompleted]);
+  }, [isSessionCompleted]);
 
   const handleDropZoneLeave = useCallback((zone: DeviceZone) => {
-    if (isCompleted) return;
+    if (isSessionCompleted) return;
     setActiveDropZone((current) => (current === zone ? null : current));
-  }, [isCompleted]);
+  }, [isSessionCompleted]);
 
   const handleDropZoneDrop = useCallback(
     (zone: DeviceZone, event: DragEvent<HTMLDivElement>) => {
       event.preventDefault();
-      if (isCompleted) return;
+      if (isSessionCompleted) return;
 
       const rawDeviceId = event.dataTransfer.getData('text/plain').trim();
       const deviceId = isDeviceId(rawDeviceId) ? rawDeviceId : dragState?.deviceId;
@@ -539,7 +499,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
       setDragState(null);
       setActiveDropZone(null);
     },
-    [dragState, placeDeviceInZone, isCompleted],
+    [dragState, placeDeviceInZone, isSessionCompleted],
   );
 
   const renderHardwareJack = (portId: string, isActive: boolean) => {
@@ -557,11 +517,11 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
           onMouseDown={() => handlePortMouseDown(portId)}
           onMouseEnter={(e) => {
             const stage = e.target.getStage();
-            if (stage) stage.container().style.cursor = isCompleted ? 'default' : 'crosshair';
+            if (stage) stage.container().style.cursor = isSessionCompleted ? 'default' : 'crosshair';
 
             const shouldPreviewPin = activePin !== portId;
 
-            if (hoverRingRef.current && shouldPreviewPin && !isCompleted) {
+            if (hoverRingRef.current && shouldPreviewPin && !isSessionCompleted) {
               hoverRingRef.current.position({ x: pos.x, y: pos.y });
               hoverRingRef.current.visible(true);
               hoverRingRef.current.getLayer()?.batchDraw();
@@ -588,7 +548,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
 
   const renderDeviceDropZone = (zone: DeviceZone, title: string) => {
     const devices = assignedDevices[zone];
-    const isActive = activeDropZone === zone && !isCompleted;
+    const isActive = activeDropZone === zone && !isSessionCompleted;
 
     return (
       <div
@@ -609,15 +569,15 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
               return (
                 <div
                   key={`${zone}-${device.id}`}
-                  draggable={!isCompleted}
+                  draggable={!isSessionCompleted}
                   onDragStart={(event) => handleDeviceDragStart(device.id, zone, event)}
                   onDragEnd={handleDeviceDragEnd}
-                  className={`group relative flex items-center justify-center rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-800 h-12 w-12 ${isCompleted ? 'cursor-default' : 'cursor-grab hover:border-cyan-400 dark:hover:border-cyan-500'}`}
+                  className={`group relative flex items-center justify-center rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-800 h-12 w-12 ${isSessionCompleted ? 'cursor-default' : 'cursor-grab hover:border-cyan-400 dark:hover:border-cyan-500'}`}
                   title={device.name}
                 >
                   <img src={device.image} alt={device.name} className="h-full w-full object-contain" />
 
-                  {!isCompleted && (
+                  {!isSessionCompleted && (
                     <button
                       type="button"
                       onClick={() => removeDeviceFromZones(device.id)}
@@ -635,6 +595,9 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
       </div>
     );
   };
+
+  const isNodeCompletedInDB = dbCompletedRoutes.has(activityPreset.routeId);
+  const canProceedToNext = isSessionCompleted || isNodeCompletedInDB || answerFeedback?.passed;
 
   return (
     <PortraitGuard>
@@ -660,7 +623,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
             </div>
 
             <div className="flex items-center gap-3">
-              {(isCompleted || answerFeedback?.passed) && nextRouteId && (
+              {(canProceedToNext) && nextRouteId && (
                 <button
                   type="button"
                   onClick={() => navigate(`/simulation/${nextRouteId}`)}
@@ -671,14 +634,14 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
               )}
 
               <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner">
-                <button onClick={deleteSelectedWire} disabled={!selectedWireId || isCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
+                <button onClick={deleteSelectedWire} disabled={!selectedWireId || isSessionCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
                 <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
-                <button onClick={handleUndo} disabled={!historyPast.length || isCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Undo"><Undo2 size={16} /></button>
-                <button onClick={handleRedo} disabled={!historyFuture.length || isCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Redo"><Redo2 size={16} /></button>
+                <button onClick={handleUndo} disabled={!historyPast.length || isSessionCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Undo"><Undo2 size={16} /></button>
+                <button onClick={handleRedo} disabled={!historyFuture.length || isSessionCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Redo"><Redo2 size={16} /></button>
                 <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
                 <div className="px-2 flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full shadow-inner border border-slate-400" style={{ backgroundColor: wireColor }} />
-                  <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} disabled={isCompleted} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1 disabled:opacity-50">
+                  <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} disabled={isSessionCompleted} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1 disabled:opacity-50">
                     <option value="#e74c3c" className="bg-white dark:bg-slate-900">24V Red</option>
                     <option value="#111827" className="bg-white dark:bg-slate-900">0V Black</option>
                     <option value="#3498db" className="bg-white dark:bg-slate-900">Signal Blue</option>
@@ -687,7 +650,7 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                   </select>
                 </div>
               </div>
-              <button type="button" onClick={handleResetBoard} disabled={isCompleted} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm disabled:opacity-50">
+              <button type="button" onClick={handleResetBoard} disabled={isSessionCompleted} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm disabled:opacity-50">
                 <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden xl:inline">Clear Board</span>
               </button>
               <button type="button" onClick={toggleTheme} className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm">
@@ -714,17 +677,17 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                   <div className="flex items-start justify-between gap-4">
                     <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Ladder Diagram</h4>
                     <div
-                      className={`inline-flex min-w-[56px] items-center justify-center rounded-xl border px-3 py-2 text-xs font-black ${isCompleted || answerFeedback?.passed
+                      className={`inline-flex min-w-[56px] items-center justify-center rounded-xl border px-3 py-2 text-xs font-black ${isSessionCompleted || answerFeedback?.passed
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
                         : 'border-rose-200 bg-rose-50 text-rose-500 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300'
                         }`}
                     >
-                      {isCompleted ? '100%' : answerPercent}
+                      {isSessionCompleted ? '100%' : answerPercent}
                     </div>
                   </div>
 
                   <div className="mt-4 flex flex-col gap-3">
-                    {isCompleted ? (
+                    {isSessionCompleted ? (
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200 shadow-sm flex items-center justify-between">
                         <span className="font-black tracking-wide uppercase">Activity Cleared</span>
                         <CheckCircle2 size={20} className="text-emerald-500" strokeWidth={3} />
@@ -790,11 +753,19 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
             </aside>
 
             <div className="flex-1 relative flex items-center justify-center p-6">
+
+              {/* TOP NAVIGATION HUD */}
               <div className="absolute top-10 left-1/2 -translate-x-1/2 z-30 flex items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-2.5 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-lg">
                 {routeKeys.map((key, index) => {
-                  const isNodeCompleted = !!savedStates[key];
+
+                  // SMART NODE PARSING
+                  const isNodeCompleted = !!savedStates[key] || dbCompletedRoutes.has(key);
                   const isCurrent = key === activityPreset.routeId;
-                  const isUnlocked = isNodeCompleted || isCurrent || (index > 0 && !!savedStates[routeKeys[index - 1]]);
+                  const prevNodeKey = index > 0 ? routeKeys[index - 1] : null;
+                  const prevCompleted = prevNodeKey ? (!!savedStates[prevNodeKey] || dbCompletedRoutes.has(prevNodeKey)) : true;
+
+                  const isUnlocked = index === 0 || isNodeCompleted || isCurrent || prevCompleted;
+
                   const activityTitle = getActivityAnswerByRouteId(key).title;
 
                   let nodeClasses = "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ";
@@ -813,8 +784,6 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                   } else {
                     nodeClasses += "bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60 ";
                   }
-
-                  const prevCompleted = index > 0 && !!savedStates[routeKeys[index - 1]];
 
                   return (
                     <div key={key} className="flex items-center">
@@ -876,18 +845,18 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                             shadowBlur={isSelected ? 8 : isWrong ? 10 : 4}
                             shadowOffsetY={isSelected ? 0 : 4}
                             onMouseDown={(e) => {
-                              if (isCompleted) return;
+                              if (isSessionCompleted) return;
                               e.cancelBubble = true;
                               setSelectedWireId(wire.id);
                               setWireColor(wire.color);
                             }}
                             onMouseEnter={(e) => {
-                              if (isCompleted) return;
+                              if (isSessionCompleted) return;
                               const container = e.target.getStage()?.container();
                               if (container) container.style.cursor = 'pointer';
                             }}
                             onMouseLeave={(e) => {
-                              if (isCompleted) return;
+                              if (isSessionCompleted) return;
                               const container = e.target.getStage()?.container();
                               if (container) container.style.cursor = 'default';
                             }}
@@ -954,17 +923,17 @@ export default function SimulationApp({ routeId, onNavigateBack }: SimulationApp
                         <button
                           key={device.name}
                           type="button"
-                          draggable={!isCompleted}
+                          draggable={!isSessionCompleted}
                           onDragStart={(event) => handleDeviceDragStart(device.id, 'library', event)}
                           onDragEnd={handleDeviceDragEnd}
-                          className={`group relative flex h-[124px] flex-col items-center justify-start rounded-2xl border bg-white px-2 pt-3 pb-2 text-center shadow-sm transition-all dark:bg-slate-900/70 ${isCompleted ? 'cursor-default opacity-80 border-slate-200 dark:border-slate-700' : 'hover:-translate-y-0.5 hover:shadow-md'
+                          className={`group relative flex h-[124px] flex-col items-center justify-start rounded-2xl border bg-white px-2 pt-3 pb-2 text-center shadow-sm transition-all dark:bg-slate-900/70 ${isSessionCompleted ? 'cursor-default opacity-80 border-slate-200 dark:border-slate-700' : 'hover:-translate-y-0.5 hover:shadow-md'
                             } ${assignedDeviceIds.has(device.id)
                               ? 'border-emerald-400 dark:border-emerald-500/50'
                               : 'border-slate-200 hover:border-cyan-400 dark:border-slate-700 dark:hover:border-cyan-500/70'
                             }`}
                         >
                           <div className="flex shrink-0 h-12 w-12 items-center justify-center rounded-xl bg-slate-50 p-2 dark:bg-slate-800/80">
-                            <img src={device.image} alt={device.name} className={`h-full w-full object-contain ${isCompleted ? 'grayscale' : ''}`} />
+                            <img src={device.image} alt={device.name} className={`h-full w-full object-contain ${isSessionCompleted ? 'grayscale' : ''}`} />
                           </div>
 
                           <span className="mt-2 text-[10px] font-bold leading-[1.15] text-slate-700 group-hover:text-slate-900 dark:text-slate-200 dark:group-hover:text-white line-clamp-2">

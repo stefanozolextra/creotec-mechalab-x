@@ -1,103 +1,79 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import CyberTransition from '../components/CyberTransition';
 import SimulationApp from '../simulation/SimulationApp';
 import { getTraineeDashboard } from '../api/trainees';
 
-type SimulationLocationState = {
-    simulationOrderNo?: unknown;
-} | null;
-
-const toPositiveInt = (value: unknown): number | null => {
-    const parsed = Number(value);
-    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-};
-
 export default function SimulationView() {
     const { id } = useParams();
     const navigate = useNavigate();
-    const location = useLocation();
 
-    const locationState = (location.state as SimulationLocationState) ?? null;
-    const routeSimulationId = toPositiveInt(id);
-    const hintedOrderNo = toPositiveInt(locationState?.simulationOrderNo);
+    // The route ID is directly the Activity Number (1, 2, 3, 4, 5)
+    const simulationRouteId = id ?? '1';
 
-    const [resolvedActivityRouteId, setResolvedActivityRouteId] = useState<string | null>(() => {
-        if (hintedOrderNo) return String(hintedOrderNo);
-        if (routeSimulationId && routeSimulationId <= 2) return String(routeSimulationId);
-        return null;
-    });
-    const [isResolvingActivity, setIsResolvingActivity] = useState<boolean>(() => !hintedOrderNo && !!routeSimulationId && routeSimulationId > 2);
+    const [completedRoutes, setCompletedRoutes] = useState<string[]>([]);
+    const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
-        if (hintedOrderNo) {
-            setResolvedActivityRouteId(String(hintedOrderNo));
-            setIsResolvingActivity(false);
-            return;
-        }
-
-        if (routeSimulationId === null) {
-            setResolvedActivityRouteId(id ?? '1');
-            setIsResolvingActivity(false);
-            return;
-        }
-
-        if (routeSimulationId <= 2) {
-            setResolvedActivityRouteId(String(routeSimulationId));
-            setIsResolvingActivity(false);
-            return;
-        }
-
         let active = true;
         const controller = new AbortController();
 
-        const resolveActivityRouteId = async () => {
-            setIsResolvingActivity(true);
-
+        const fetchProgress = async () => {
             try {
+                // Ping the backend to get the exact trainee progress
                 const dashboard = await getTraineeDashboard({ signal: controller.signal });
-                if (!active || controller.signal.aborted) return;
+                if (!active) return;
 
-                const simulation = dashboard.moduleContent.simulations.find(
-                    (entry) => toPositiveInt(entry.simulation_id) === routeSimulationId,
-                );
-                const orderNo = simulation ? toPositiveInt(simulation.order_no) : null;
-                setResolvedActivityRouteId(orderNo ? String(orderNo) : String(routeSimulationId));
-            } catch {
-                if (!active || controller.signal.aborted) return;
-                setResolvedActivityRouteId(String(routeSimulationId));
+                // 1. Map the raw database simulation_ids to their completion status
+                const progressMap = new Map<number, boolean>();
+                dashboard.simulationProgress.forEach(p => {
+                    const isCompleted = Number(p.is_completed) === 1 || p.is_completed === true || String(p.is_completed).toLowerCase() === 'true';
+                    progressMap.set(Number(p.simulation_id), isCompleted);
+                });
+
+                // 2. Cross-reference the completed IDs with the Activity Numbers (order_no)
+                const completedOrderNos: string[] = [];
+                dashboard.moduleContent.simulations.forEach(s => {
+                    if (progressMap.get(Number(s.simulation_id))) {
+                        const orderNo = Number(s.order_no);
+                        if (orderNo > 0) {
+                            completedOrderNos.push(String(orderNo));
+                        }
+                    }
+                });
+
+                setCompletedRoutes(completedOrderNos);
+            } catch (e) {
+                console.error("Failed to sync simulation progress", e);
             } finally {
-                if (active && !controller.signal.aborted) {
-                    setIsResolvingActivity(false);
+                if (active) {
+                    setIsLoading(false);
                 }
             }
         };
 
-        void resolveActivityRouteId();
+        fetchProgress();
 
         return () => {
             active = false;
             controller.abort();
         };
-    }, [hintedOrderNo, id, routeSimulationId]);
-
-    const simulationRouteId = useMemo(
-        () => resolvedActivityRouteId ?? (id || undefined),
-        [resolvedActivityRouteId, id],
-    );
+    }, []);
 
     return (
         <CyberTransition>
-            {isResolvingActivity && !resolvedActivityRouteId ? (
+            {isLoading ? (
                 <div className="flex min-h-screen items-center justify-center bg-slate-950 px-6 text-center text-slate-200">
                     <div>
+                        <div className="w-10 h-10 border-4 border-slate-700 border-t-cyan-500 rounded-full animate-spin mx-auto mb-6"></div>
                         <p className="text-xs font-black uppercase tracking-[0.3em] text-cyan-400">Simulation Loader</p>
-                        <p className="mt-3 text-sm font-semibold text-slate-300">Resolving activity layout...</p>
+                        <p className="mt-3 text-sm font-semibold text-slate-300">Syncing trainee progress...</p>
                     </div>
                 </div>
             ) : (
                 <SimulationApp
                     routeId={simulationRouteId}
+                    initialCompletedRoutes={completedRoutes}
                     onNavigateBack={() => navigate('/dashboard')}
                 />
             )}

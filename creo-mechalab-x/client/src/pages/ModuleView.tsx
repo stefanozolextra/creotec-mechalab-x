@@ -39,6 +39,14 @@ const toNumber = (value: string | number | null | undefined): number => {
     return Number.isFinite(parsed) ? parsed : 0;
 };
 
+// --- FIX: Added completion check helper to match Dashboard logic ---
+const isCompletedValue = (value: boolean | string | number | null | undefined): boolean => {
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') return value.toLowerCase() === 'true';
+    if (typeof value === 'number') return value === 1;
+    return false;
+};
+
 const getErrorMessage = (error: unknown, fallback: string): string => {
     if (error instanceof Error && error.message) return error.message;
     return fallback;
@@ -191,26 +199,40 @@ const ModuleView = () => {
                 const moduleResources = dashboard.moduleContent.resources.filter(
                     (resource) => toNumber(resource.module_id) === moduleId
                 );
-                const moduleSimulations = dashboard.moduleContent.simulations
-                    .filter((simulation) => toNumber(simulation.module_id) === moduleId)
-                    .map((simulation) => {
-                        const simulationId = toNumber(simulation.simulation_id);
-                        const orderNo = toNumber(simulation.order_no);
-                        if (simulationId < 1) return null;
 
-                        return {
-                            simulationId,
-                            orderNo: orderNo > 0 ? orderNo : null,
-                        } as ModuleSimulationLaunch;
-                    })
-                    .filter((entry): entry is ModuleSimulationLaunch => entry !== null)
+                // --- FIX: Smart Simulation Launcher Routing ---
+                // We map out the progress first, exactly like the Dashboard does
+                const progressMap = new Map<number, boolean>();
+                dashboard.simulationProgress.forEach((p) => {
+                    progressMap.set(toNumber(p.simulation_id), isCompletedValue(p.is_completed));
+                });
+
+                // Get all simulations for this module and sort them
+                const rawSimulations = dashboard.moduleContent.simulations
+                    .filter((simulation) => toNumber(simulation.module_id) === moduleId)
                     .sort((a, b) => {
-                        const leftOrder = a.orderNo ?? Number.MAX_SAFE_INTEGER;
-                        const rightOrder = b.orderNo ?? Number.MAX_SAFE_INTEGER;
-                        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
-                        return a.simulationId - b.simulationId;
+                        const leftOrder = toNumber(a.order_no) || Number.MAX_SAFE_INTEGER;
+                        const rightOrder = toNumber(b.order_no) || Number.MAX_SAFE_INTEGER;
+                        return leftOrder - rightOrder;
                     });
-                setModuleSimulationLaunch(moduleSimulations[0] ?? null);
+
+                const requiredSimulations = rawSimulations.filter(s => s.is_required);
+
+                // Find the first uncompleted simulation to launch, fallback to [0]
+                const candidate = requiredSimulations.length > 0
+                    ? requiredSimulations.find(s => !progressMap.get(toNumber(s.simulation_id))) ?? requiredSimulations[0]
+                    : rawSimulations[0];
+
+                if (candidate && toNumber(candidate.simulation_id) > 0) {
+                    const orderNo = toNumber(candidate.order_no);
+                    setModuleSimulationLaunch({
+                        simulationId: toNumber(candidate.simulation_id),
+                        orderNo: orderNo > 0 ? orderNo : null,
+                    });
+                } else {
+                    setModuleSimulationLaunch(null);
+                }
+                // ------------------------------------------------
 
                 const options = moduleResources
                     .map((resource) => {
@@ -483,19 +505,17 @@ const ModuleView = () => {
                         <button
                             onClick={() => {
                                 if (!moduleSimulationLaunch) return;
-                                navigate(`/simulation/${moduleSimulationLaunch.simulationId}`, {
-                                    state: {
-                                        simulationOrderNo: moduleSimulationLaunch.orderNo,
-                                    },
-                                });
+
+                                // Navigate using the Activity Number (orderNo) instead of the Database Primary Key
+                                const targetRoute = moduleSimulationLaunch.orderNo ?? 1;
+                                navigate(`/simulation/${targetRoute}`);
                             }}
                             disabled={!moduleSimulationLaunch}
                             className="hidden sm:flex items-center gap-2 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-cyan-600 dark:text-cyan-400 border border-cyan-500/50 px-6 py-2.5 rounded font-black text-xs tracking-widest uppercase transition-all duration-300 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
                         >
                             <Target size={16} strokeWidth={2.5} /> LAUNCH SIMULATOR
                         </button>
-                        {/* ------------------------------------------------------------------ */}
-                    </div>
+                        {/* ------------------------------------------------------------------ */}                    </div>
                 </header>
 
                 <main className="flex-1 flex flex-col lg:flex-row gap-6 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full relative z-10">

@@ -426,29 +426,27 @@ const Dashboard = () => {
 
     const handleLogout = () => {
         isLoggingOutRef.current = true;
-        setIsSettingsOpen(false); // Hide settings modal if open
-        setIsHangarVisible(true); // Mount doors back to the DOM
+        setIsSettingsOpen(false);
+        setIsHangarVisible(true);
 
-        // Give React a millisecond to commit the mounted doors to the DOM, then slide them shut
         setTimeout(() => {
             setIsHangarClosed(true);
         }, 50);
 
-        // Wait for the door animation to finish before destroying session and routing
         setTimeout(() => {
-            sessionStorage.removeItem('dashboard_entered'); // Reset for next login
+            sessionStorage.removeItem('dashboard_entered');
+            localStorage.removeItem('creosim_simulation_states'); // <-- WIPE STUDENT PROGRESS FROM LOCAL MEMORY
             clearAuthRole();
             navigate('/login', { replace: true });
         }, 1500);
     };
 
     const handleStartSimulation = () => {
-        if (!selectedSimulationId) return;
-        navigate(`/simulation/${selectedSimulationId}`, {
-            state: {
-                simulationOrderNo: selectedSimulation?.order_no ?? null,
-            },
-        });
+        if (!selectedSimulation) return;
+
+        // Navigate using the Activity Number (order_no) instead of the Database Primary Key
+        const targetRoute = selectedSimulation.order_no ?? 1;
+        navigate(`/simulation/${targetRoute}`);
     };
 
     const handleViewModule = () => {
