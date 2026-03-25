@@ -26,6 +26,7 @@ import { getTraineeDashboard } from '../api/trainees';
 import { resolveSupportedVideoLesson } from '../utils/videoLessons';
 import HangarDoors from '../components/HangarDoors';
 import CyberTransition from '../components/CyberTransition';
+import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
 import type {
     DashboardState,
     ModuleStatusApi,
@@ -206,7 +207,48 @@ const Dashboard = () => {
             document.documentElement.classList.remove('dark');
         }
     };
+    // 2. ADD TUTORIAL STATE
+    const [showTutorial, setShowTutorial] = useState(false);
 
+    // 3. CHECK LOCAL STORAGE ON MOUNT
+    useEffect(() => {
+        // Wait for the hangar doors to open before showing the tutorial
+        const timer = setTimeout(() => {
+            const hasSeenTutorial = localStorage.getItem('creosim_tutorial_dashboard');
+            if (!hasSeenTutorial) {
+                setShowTutorial(true);
+            }
+        }, 2000);
+
+        return () => clearTimeout(timer);
+    }, []);
+
+    // 4. DEFINE TUTORIAL STEPS
+    const tutorialSteps: TutorialStep[] = [
+        {
+            message: "Welcome Cadet! I am your mechatronics diagnostic assistant. It looks like it is your first time accessing the CREOSim central core."
+        },
+        {
+            targetId: "tour-header-controls",
+            message: "Up here is your command ribbon. You can toggle your visual optics (Dark/Light mode), view your cadet details, or safely log out."
+        },
+        {
+            targetId: "tour-training-protocols",
+            message: "This is your Training Protocol timeline. It lists all the modules assigned to your cohort. Modules must be completed sequentially."
+        },
+        {
+            targetId: "tour-briefing-panel",
+            message: "When you select a module, your briefing appears here. You can review the theory manual or initiate the hands-on simulation directly from this panel."
+        },
+        {
+            message: "That covers the basics! Select your first unlocked protocol to begin your training sequence. Good luck, Cadet!"
+        }
+    ];
+
+    const handleCompleteTutorial = () => {
+        setShowTutorial(false);
+        localStorage.setItem('creosim_tutorial_dashboard', 'true');
+    };
     const loadDashboard = useCallback(async () => {
         requestControllerRef.current?.abort();
         const controller = new AbortController();
@@ -472,7 +514,6 @@ const Dashboard = () => {
         <>
             <CyberTransition>
                 <div className="min-h-screen w-full overflow-x-hidden bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white pb-8 relative transition-colors duration-300 z-0">
-
                     {/* GAME HUD GRID BACKGROUND */}
                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:32px_32px] dark:bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] pointer-events-none -z-10" />
 
@@ -911,7 +952,14 @@ const Dashboard = () => {
                 `}} />
             </CyberTransition>
 
-            {/* --- CONDITIONALLY RENDER DOORS OUTSIDE CYBERTRANSITION --- */}
+            {/* 8. RENDER TUTORIAL GUIDE IF ACTIVE */}
+            {showTutorial && (
+                <TutorialGuide
+                    steps={tutorialSteps}
+                    onComplete={handleCompleteTutorial}
+                />
+            )}
+
             {isHangarVisible && <HangarDoors isClosed={isHangarClosed} />}
         </>
     );
