@@ -297,7 +297,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     }
 
     if (activityPreset.routeId === '5') {
-      if (buttonId === 'stop-1' || buttonId === 'stop-2' || buttonId === 'emergency-stop') {
+      if (buttonId === 'stop-1' || buttonId === 'emergency-stop') {
         resetActivity5Runtime();
         return;
       }
