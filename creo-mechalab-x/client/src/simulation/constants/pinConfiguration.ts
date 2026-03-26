@@ -27,6 +27,11 @@ const createRelayTerminalIds = (prefix: 'relay1' | 'relay2' | 'relay3') => ({
     terminal12: `${prefix}_14`,
 } as const);
 
+const counterPinIds = createIndexedPinIds('counter', 'terminal', 12);
+const timerPinIds = createIndexedPinIds('timer', 'terminal', 12);
+const solenoid1PinIds = createIndexedPinIds('solenoid1', 'terminal', 12);
+const solenoid2PinIds = createIndexedPinIds('solenoid2', 'terminal', 12);
+
 export const RELAY_PIN_IDS = {
     vplus: createIndexedPinIds('vplus', 'supply', 12),
     vminus: createIndexedPinIds('vminus', 'ground', 12),
@@ -43,6 +48,12 @@ export const RELAY_PIN_IDS = {
     relay1: createRelayTerminalIds('relay1'),
     relay2: createRelayTerminalIds('relay2'),
     relay3: createRelayTerminalIds('relay3'),
+    counter: counterPinIds,
+    counter1: counterPinIds,
+    timer: timerPinIds,
+    timer1: timerPinIds,
+    solenoid1: solenoid1PinIds,
+    solenoid2: solenoid2PinIds,
     button: {
         pb1Terminal23: 'button_1',
         pb1Terminal24: 'button_2',

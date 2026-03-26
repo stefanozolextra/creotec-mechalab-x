@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent, type DragEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Stage, Layer, Circle, Line, Rect, Text, Group } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
@@ -29,6 +29,10 @@ interface Connection { id: string; fromPin: string; toPin: string; color: string
 interface SimulationAppProps { routeId?: string; simulationId?: number; initialCompletedRoutes?: string[]; onNavigateBack?: () => void; }
 type Activity2LampMode = 'off' | 'green' | 'red';
 type Activity3LampMode = 'off' | 'green' | 'yellow';
+type Activity4LampMode = 'off' | 'green' | 'yellow';
+type Activity5TimerStatus = 'idle' | 'timing' | 'done';
+
+const DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS = 2;
 
 const DEVICE_LIBRARY = [
   { id: 'push-button', name: 'Push Button', image: buttonDevice },
@@ -81,6 +85,10 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const [isActivity1GreenLampLatched, setIsActivity1GreenLampLatched] = useState(false);
   const [activity2LampMode, setActivity2LampMode] = useState<Activity2LampMode>('off');
   const [activity3LampMode, setActivity3LampMode] = useState<Activity3LampMode>('off');
+  const [activity4LampMode, setActivity4LampMode] = useState<Activity4LampMode>('off');
+  const [activity5RelayEnergized, setActivity5RelayEnergized] = useState(false);
+  const [activity5TimerStatus, setActivity5TimerStatus] = useState<Activity5TimerStatus>('idle');
+  const [activity5TimerDelayInput, setActivity5TimerDelayInput] = useState(String(DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS));
   const [wires, setWires] = useState<Connection[]>([]);
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
@@ -112,6 +120,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
 
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
   const rafRef = useRef<number | null>(null);
+  const activity5TimerTimeoutRef = useRef<number | null>(null);
 
   const [historyPast, setHistoryPast] = useState<Connection[][]>([]);
   const [historyFuture, setHistoryFuture] = useState<Connection[][]>([]);
@@ -128,6 +137,12 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const canvasScale = Math.max(0.1, Math.min(availableCanvasWidth / BASE_CANVAS_WIDTH, availableCanvasHeight / BASE_CANVAS_HEIGHT));
 
   const activityPreset = getActivityAnswerByRouteId(routeId);
+  const activity5TimerDelaySeconds = useMemo(() => {
+    const parsedValue = Number.parseFloat(activity5TimerDelayInput);
+    return Number.isFinite(parsedValue) && parsedValue >= 0
+      ? parsedValue
+      : DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS;
+  }, [activity5TimerDelayInput]);
 
   const routeKeys = Object.keys(ACTIVITY_ANSWERS);
   const currentIndex = routeKeys.indexOf(activityPreset.routeId);
@@ -140,8 +155,26 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     savedStatesRef.current = savedStates;
   }, [savedStates]);
 
+  const clearActivity5TimerTimeout = useCallback(() => {
+    if (activity5TimerTimeoutRef.current !== null) {
+      window.clearTimeout(activity5TimerTimeoutRef.current);
+      activity5TimerTimeoutRef.current = null;
+    }
+  }, []);
+
+  const resetActivity5Runtime = useCallback(() => {
+    clearActivity5TimerTimeout();
+    setActivity5RelayEnergized(false);
+    setActivity5TimerStatus('idle');
+  }, [clearActivity5TimerTimeout]);
+
+  useEffect(() => () => {
+    clearActivity5TimerTimeout();
+  }, [clearActivity5TimerTimeout]);
+
   // Load state when switching activities
   useEffect(() => {
+    resetActivity5Runtime();
     const saved = savedStatesRef.current[activityPreset.routeId];
     if (saved) {
       setWires(saved.wires);
@@ -159,8 +192,9 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     setIsActivity1GreenLampLatched(false);
     setActivity2LampMode('off');
     setActivity3LampMode('off');
+    setActivity4LampMode('off');
     setAnswerFeedbackState(null);
-  }, [activityPreset.routeId]);
+  }, [activityPreset.routeId, resetActivity5Runtime]);
 
   useEffect(() => {
     const handleResize = () => { if (containerRef.current) setViewport({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight }); };
@@ -178,13 +212,29 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
       setIsActivity1GreenLampLatched(false);
       setActivity2LampMode('off');
       setActivity3LampMode('off');
+      setActivity4LampMode('off');
+      resetActivity5Runtime();
       return;
     }
 
     if (activityPreset.routeId === '3') {
       setActivity3LampMode('yellow');
     }
-  }, [activityPreset.routeId, isMainSwitchOn]);
+  }, [activityPreset.routeId, isMainSwitchOn, resetActivity5Runtime]);
+
+  const handleActivity5TimerDelayChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    setActivity5TimerDelayInput(event.target.value);
+  }, []);
+
+  const handleActivity5TimerDelayBlur = useCallback(() => {
+    const parsedValue = Number.parseFloat(activity5TimerDelayInput);
+    if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+      setActivity5TimerDelayInput(String(DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS));
+      return;
+    }
+
+    setActivity5TimerDelayInput(String(parsedValue));
+  }, [activity5TimerDelayInput]);
 
   const handleManualButtonPressChange = useCallback((buttonId: ManualRelayButtonId, isPressed: boolean) => {
     setPressedManualButtons((prev) => (
@@ -234,12 +284,54 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
       return;
     }
 
+    if (activityPreset.routeId === '4') {
+      if (buttonId === 'stop-1' || buttonId === 'emergency-stop') {
+        setActivity4LampMode(isMainSwitchOn && isCurrentSetupValid ? 'yellow' : 'off');
+        return;
+      }
+
+      if ((buttonId === 'start-1' || buttonId === 'start-2') && isMainSwitchOn && isCurrentSetupValid) {
+        setActivity4LampMode('green');
+      }
+      return;
+    }
+
+    if (activityPreset.routeId === '5') {
+      if (buttonId === 'stop-1' || buttonId === 'stop-2' || buttonId === 'emergency-stop') {
+        resetActivity5Runtime();
+        return;
+      }
+
+      if (buttonId === 'start-1' && isMainSwitchOn && isCurrentSetupValid) {
+        setActivity5RelayEnergized(true);
+
+        if (activity5TimerStatus !== 'idle') {
+          return;
+        }
+
+        clearActivity5TimerTimeout();
+        const delayMs = Math.max(0, activity5TimerDelaySeconds * 1000);
+
+        if (delayMs === 0) {
+          setActivity5TimerStatus('done');
+          return;
+        }
+
+        setActivity5TimerStatus('timing');
+        activity5TimerTimeoutRef.current = window.setTimeout(() => {
+          activity5TimerTimeoutRef.current = null;
+          setActivity5TimerStatus('done');
+        }, delayMs);
+      }
+      return;
+    }
+
     if (buttonId !== 'start-1' || !isMainSwitchOn) return;
 
     if (activityPreset.routeId === '1' && isCurrentSetupValid) {
       setIsActivity1GreenLampLatched(true);
     }
-  }, [activityPreset, assignedDevices.input, assignedDevices.output, isMainSwitchOn, wires]);
+  }, [activity5TimerDelaySeconds, activity5TimerStatus, activityPreset, assignedDevices.input, assignedDevices.output, clearActivity5TimerTimeout, isMainSwitchOn, resetActivity5Runtime, wires]);
 
   const handleBackNavigation = () => {
     if (onNavigateBack) {
@@ -401,6 +493,9 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     setPressedManualButtons(INITIAL_MANUAL_RELAY_BUTTON_STATE);
     setIsActivity1GreenLampLatched(false);
     setActivity2LampMode('off');
+    setActivity3LampMode('off');
+    setActivity4LampMode('off');
+    resetActivity5Runtime();
   };
 
   useEffect(() => {
@@ -444,6 +539,15 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const isActivity2RedLampOn = activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'red';
   const isActivity3GreenLampOn = activityPreset.routeId === '3' && isMainSwitchOn && activityEvaluationPreview.passed && activity3LampMode === 'green';
   const isActivity3YellowLampOn = activityPreset.routeId === '3' && isMainSwitchOn && activityEvaluationPreview.passed && activity3LampMode === 'yellow';
+  const isActivity4GreenLampOn = activityPreset.routeId === '4' && isMainSwitchOn && activityEvaluationPreview.passed && activity4LampMode === 'green';
+  const isActivity4YellowLampOn = activityPreset.routeId === '4' && isMainSwitchOn && activityEvaluationPreview.passed && activity4LampMode === 'yellow';
+  const isActivity5GreenLampOn = activityPreset.routeId === '5' && isMainSwitchOn && activityEvaluationPreview.passed && activity5TimerStatus === 'done';
+  const isActivity5YellowLampOn = activityPreset.routeId === '5' && isMainSwitchOn && activityEvaluationPreview.passed && activity5TimerStatus !== 'done';
+  const activity5TimerStatusLabel = activity5TimerStatus === 'idle'
+    ? 'Idle / Reset'
+    : activity5TimerStatus === 'timing'
+      ? 'Timing'
+      : 'Delay Complete';
 
   const hasNoSelectedDevices = !assignedDevices.input.length && !assignedDevices.output.length;
   const shouldShowOnlyNoDeviceMessage = Boolean(answerFeedback && !answerFeedback.passed && hasNoSelectedDevices);
@@ -703,6 +807,69 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                   </div>
                 </section>
 
+                {activityPreset.routeId === '5' && (
+                  <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Timer Setup</h4>
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">T1 runs as an on-delay timer after R1 latches.</p>
+                      </div>
+                      <div className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${activity5TimerStatus === 'done'
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                        : activity5TimerStatus === 'timing'
+                          ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
+                          : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300'
+                        }`}>
+                        {activity5TimerStatusLabel}
+                      </div>
+                    </div>
+
+                    <label className="mt-4 block text-[10px] font-black uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400" htmlFor="activity-5-delay">
+                      Delay Value
+                    </label>
+                    <div className="mt-2 flex items-center gap-3">
+                      <input
+                        id="activity-5-delay"
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        inputMode="decimal"
+                        value={activity5TimerDelayInput}
+                        onChange={handleActivity5TimerDelayChange}
+                        onBlur={handleActivity5TimerDelayBlur}
+                        disabled={activity5RelayEnergized}
+                        className="w-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-900 outline-none transition-colors focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                      <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">seconds</span>
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                        <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">R1</p>
+                        <p className={`mt-1 text-sm font-black ${activity5RelayEnergized ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                          {activity5RelayEnergized ? 'ON' : 'OFF'}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                        <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">T1</p>
+                        <p className="mt-1 text-sm font-black text-slate-700 dark:text-slate-200">{activity5TimerStatusLabel}</p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                        <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Green</p>
+                        <p className={`mt-1 text-sm font-black ${isActivity5GreenLampOn ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                          {isActivity5GreenLampOn ? 'ON' : 'OFF'}
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                        <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Yellow</p>
+                        <p className={`mt-1 text-sm font-black ${isActivity5YellowLampOn ? 'text-amber-600 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                          {isActivity5YellowLampOn ? 'ON' : 'OFF'}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+                )}
+
                 <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40 flex flex-col">
                   <div className="flex items-start justify-between gap-4">
                     <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Ladder Diagram</h4>
@@ -850,8 +1017,8 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                       canvasScale={canvasScale}
                       isDarkMode={isDarkMode}
                       isMainSwitchOn={isMainSwitchOn}
-                      isGreenLampOn={isActivity1GreenLampOn || isActivity2GreenLampOn || isActivity3GreenLampOn}
-                      isYellowLampOn={isActivity3YellowLampOn}
+                      isGreenLampOn={isActivity1GreenLampOn || isActivity2GreenLampOn || isActivity3GreenLampOn || isActivity4GreenLampOn || isActivity5GreenLampOn}
+                      isYellowLampOn={isActivity3YellowLampOn || isActivity4YellowLampOn || isActivity5YellowLampOn}
                       isRedLampOn={isActivity2RedLampOn}
                       manualButtonState={pressedManualButtons}
                       onToggleSwitch={handleToggleSwitch}
