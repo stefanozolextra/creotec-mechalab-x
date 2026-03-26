@@ -13,6 +13,7 @@ interface RelayStaticBackgroundProps {
     isGreenLampOn: boolean;
     isYellowLampOn: boolean;
     isRedLampOn: boolean;
+    timerDisplayText?: string;
     manualButtonState: Record<ManualRelayButtonId, boolean>;
     onToggleSwitch: () => void;
     onManualButtonPressChange: (buttonId: ManualRelayButtonId, isPressed: boolean) => void;
@@ -27,6 +28,7 @@ export const RelayStaticBackground = React.memo(({
     isGreenLampOn,
     isYellowLampOn,
     isRedLampOn,
+    timerDisplayText,
     manualButtonState,
     onToggleSwitch,
     onManualButtonPressChange
@@ -330,7 +332,7 @@ export const RelayStaticBackground = React.memo(({
                 <Group x={675} y={465}>
                     <Rect width={80} height={90} fill="#f8fafc" stroke="#cbd5e1" strokeWidth={2} cornerRadius={4} shadowColor="rgba(0,0,0,0.2)" shadowBlur={4} shadowOffsetY={2} />
                     <Rect x={10} y={10} width={60} height={30} fill="#0f172a" cornerRadius={2} />
-                    <Text text="00.00" x={18} y={16} fill="#ef4444" fontSize={18} fontFamily={HW_STYLES.technicalMono} />
+                    <Text text={timerDisplayText ?? '00.00'} x={10} y={16} width={60} align="center" fill="#ef4444" fontSize={18} fontFamily={HW_STYLES.technicalMono} />
                     <Text text="TIMER/CTR" x={12} y={60} fill="#64748b" fontSize={10} fontStyle="bold" />
                 </Group>
 

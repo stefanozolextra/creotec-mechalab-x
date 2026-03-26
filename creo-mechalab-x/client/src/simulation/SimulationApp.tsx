@@ -33,6 +33,9 @@ type Activity4LampMode = 'off' | 'green' | 'yellow';
 type Activity5TimerStatus = 'idle' | 'timing' | 'done';
 
 const DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS = 2;
+const TIMER_WIDGET_BOUNDS = { x: 675, y: 465, width: 80, height: 90 };
+
+const formatActivity5TimerDisplay = (seconds: number) => Math.max(0, seconds).toFixed(2).padStart(5, '0');
 
 const DEVICE_LIBRARY = [
   { id: 'push-button', name: 'Push Button', image: buttonDevice },
@@ -89,6 +92,8 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const [activity5RelayEnergized, setActivity5RelayEnergized] = useState(false);
   const [activity5TimerStatus, setActivity5TimerStatus] = useState<Activity5TimerStatus>('idle');
   const [activity5TimerDelayInput, setActivity5TimerDelayInput] = useState(String(DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS));
+  const [activity5TimerRemainingMs, setActivity5TimerRemainingMs] = useState<number | null>(null);
+  const [isActivity5TimerPopupOpen, setIsActivity5TimerPopupOpen] = useState(false);
   const [wires, setWires] = useState<Connection[]>([]);
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
@@ -121,6 +126,9 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
   const rafRef = useRef<number | null>(null);
   const activity5TimerTimeoutRef = useRef<number | null>(null);
+  const activity5TimerIntervalRef = useRef<number | null>(null);
+  const activity5TimerTriggerRef = useRef<HTMLButtonElement>(null);
+  const activity5TimerPopupRef = useRef<HTMLDivElement>(null);
 
   const [historyPast, setHistoryPast] = useState<Connection[][]>([]);
   const [historyFuture, setHistoryFuture] = useState<Connection[][]>([]);
@@ -162,19 +170,30 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     }
   }, []);
 
+  const clearActivity5TimerInterval = useCallback(() => {
+    if (activity5TimerIntervalRef.current !== null) {
+      window.clearInterval(activity5TimerIntervalRef.current);
+      activity5TimerIntervalRef.current = null;
+    }
+  }, []);
+
   const resetActivity5Runtime = useCallback(() => {
     clearActivity5TimerTimeout();
+    clearActivity5TimerInterval();
     setActivity5RelayEnergized(false);
     setActivity5TimerStatus('idle');
-  }, [clearActivity5TimerTimeout]);
+    setActivity5TimerRemainingMs(null);
+  }, [clearActivity5TimerInterval, clearActivity5TimerTimeout]);
 
   useEffect(() => () => {
     clearActivity5TimerTimeout();
-  }, [clearActivity5TimerTimeout]);
+    clearActivity5TimerInterval();
+  }, [clearActivity5TimerInterval, clearActivity5TimerTimeout]);
 
   // Load state when switching activities
   useEffect(() => {
     resetActivity5Runtime();
+    setIsActivity5TimerPopupOpen(false);
     const saved = savedStatesRef.current[activityPreset.routeId];
     if (saved) {
       setWires(saved.wires);
@@ -310,16 +329,30 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
         }
 
         clearActivity5TimerTimeout();
+        clearActivity5TimerInterval();
         const delayMs = Math.max(0, activity5TimerDelaySeconds * 1000);
 
         if (delayMs === 0) {
+          setActivity5TimerRemainingMs(0);
           setActivity5TimerStatus('done');
           return;
         }
 
+        setActivity5TimerRemainingMs(delayMs);
         setActivity5TimerStatus('timing');
+        const deadlineMs = Date.now() + delayMs;
+        activity5TimerIntervalRef.current = window.setInterval(() => {
+          const remainingMs = Math.max(0, deadlineMs - Date.now());
+          setActivity5TimerRemainingMs(remainingMs);
+
+          if (remainingMs === 0) {
+            clearActivity5TimerInterval();
+          }
+        }, 50);
         activity5TimerTimeoutRef.current = window.setTimeout(() => {
+          clearActivity5TimerInterval();
           activity5TimerTimeoutRef.current = null;
+          setActivity5TimerRemainingMs(0);
           setActivity5TimerStatus('done');
         }, delayMs);
       }
@@ -331,7 +364,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     if (activityPreset.routeId === '1' && isCurrentSetupValid) {
       setIsActivity1GreenLampLatched(true);
     }
-  }, [activity5TimerDelaySeconds, activity5TimerStatus, activityPreset, assignedDevices.input, assignedDevices.output, clearActivity5TimerTimeout, isMainSwitchOn, resetActivity5Runtime, wires]);
+  }, [activity5TimerDelaySeconds, activity5TimerStatus, activityPreset, assignedDevices.input, assignedDevices.output, clearActivity5TimerInterval, clearActivity5TimerTimeout, isMainSwitchOn, resetActivity5Runtime, wires]);
 
   const handleBackNavigation = () => {
     if (onNavigateBack) {
@@ -499,10 +532,55 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   };
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedWire(); } };
+    const onKeyDown = (e: KeyboardEvent) => {
+      const eventTarget = e.target;
+      if (eventTarget instanceof HTMLElement) {
+        const tagName = eventTarget.tagName;
+        if (eventTarget.isContentEditable || tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') {
+          return;
+        }
+      }
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        deleteSelectedWire();
+      }
+    };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [deleteSelectedWire]);
+
+  useEffect(() => {
+    if (!isActivity5TimerPopupOpen) {
+      return;
+    }
+
+    const handlePointerDown = (event: MouseEvent) => {
+      const eventTarget = event.target;
+      if (!(eventTarget instanceof Node)) {
+        return;
+      }
+
+      if (activity5TimerPopupRef.current?.contains(eventTarget) || activity5TimerTriggerRef.current?.contains(eventTarget)) {
+        return;
+      }
+
+      setIsActivity5TimerPopupOpen(false);
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsActivity5TimerPopupOpen(false);
+      }
+    };
+
+    window.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isActivity5TimerPopupOpen]);
 
   const assignedDeviceIds = useMemo(
     () => new Set([...assignedDevices.input, ...assignedDevices.output]),
@@ -543,6 +621,13 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const isActivity4YellowLampOn = activityPreset.routeId === '4' && isMainSwitchOn && activityEvaluationPreview.passed && activity4LampMode === 'yellow';
   const isActivity5GreenLampOn = activityPreset.routeId === '5' && isMainSwitchOn && activityEvaluationPreview.passed && activity5TimerStatus === 'done';
   const isActivity5YellowLampOn = activityPreset.routeId === '5' && isMainSwitchOn && activityEvaluationPreview.passed && activity5TimerStatus !== 'done';
+  const activity5TimerDisplayText = activityPreset.routeId !== '5'
+    ? '00.00'
+    : activity5TimerStatus === 'done'
+      ? '00.00'
+      : activity5TimerStatus === 'timing'
+        ? formatActivity5TimerDisplay((activity5TimerRemainingMs ?? 0) / 1000)
+        : formatActivity5TimerDisplay(activity5TimerDelaySeconds);
   const activity5TimerStatusLabel = activity5TimerStatus === 'idle'
     ? 'Idle / Reset'
     : activity5TimerStatus === 'timing'
@@ -811,8 +896,8 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                   <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Timer Setup</h4>
-                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">T1 runs as an on-delay timer after R1 latches.</p>
+                        <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Timer Runtime</h4>
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Click the TIMER/CTR device for runtime and setup. T1 runs as an on-delay timer after R1 latches.</p>
                       </div>
                       <div className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${activity5TimerStatus === 'done'
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
@@ -822,25 +907,6 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                         }`}>
                         {activity5TimerStatusLabel}
                       </div>
-                    </div>
-
-                    <label className="mt-4 block text-[10px] font-black uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400" htmlFor="activity-5-delay">
-                      Delay Value
-                    </label>
-                    <div className="mt-2 flex items-center gap-3">
-                      <input
-                        id="activity-5-delay"
-                        type="number"
-                        min="0"
-                        step="0.1"
-                        inputMode="decimal"
-                        value={activity5TimerDelayInput}
-                        onChange={handleActivity5TimerDelayChange}
-                        onBlur={handleActivity5TimerDelayBlur}
-                        disabled={activity5RelayEnergized}
-                        className="w-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-900 outline-none transition-colors focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                      />
-                      <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">seconds</span>
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
@@ -853,6 +919,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                       <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
                         <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">T1</p>
                         <p className="mt-1 text-sm font-black text-slate-700 dark:text-slate-200">{activity5TimerStatusLabel}</p>
+                        <p className="mt-1 font-mono text-[11px] font-black tracking-[0.18em] text-slate-500 dark:text-slate-400">{activity5TimerDisplayText}</p>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
                         <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Green</p>
@@ -1001,6 +1068,106 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
               </div>
 
               <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
+                {isCanvasReady && activityPreset.routeId === '5' && (
+                  <>
+                    <button
+                      ref={activity5TimerTriggerRef}
+                      type="button"
+                      aria-haspopup="dialog"
+                      aria-expanded={isActivity5TimerPopupOpen}
+                      aria-label="Open timer runtime and setup"
+                      title="Open timer runtime/setup"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setIsActivity5TimerPopupOpen((previous) => !previous);
+                      }}
+                      className={`absolute z-20 rounded-[8px] outline-none transition-all ${isActivity5TimerPopupOpen
+                        ? 'bg-cyan-400/10 ring-2 ring-cyan-400/70'
+                        : 'hover:bg-cyan-400/5'
+                        }`}
+                      style={{
+                        left: TIMER_WIDGET_BOUNDS.x * canvasScale,
+                        top: TIMER_WIDGET_BOUNDS.y * canvasScale,
+                        width: TIMER_WIDGET_BOUNDS.width * canvasScale,
+                        height: TIMER_WIDGET_BOUNDS.height * canvasScale,
+                      }}
+                    />
+
+                    {isActivity5TimerPopupOpen && (
+                      <div
+                        ref={activity5TimerPopupRef}
+                        role="dialog"
+                        aria-modal="false"
+                        aria-label="Timer runtime and setup"
+                        className="absolute z-30 w-[260px] max-w-[calc(100%-24px)] -translate-x-1/2 -translate-y-full rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)] backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95"
+                        style={{
+                          left: (TIMER_WIDGET_BOUNDS.x + (TIMER_WIDGET_BOUNDS.width / 2)) * canvasScale,
+                          top: Math.max(24, (TIMER_WIDGET_BOUNDS.y - 12) * canvasScale),
+                        }}
+                      >
+                        <div className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-slate-200 bg-white/95 dark:border-slate-700 dark:bg-slate-900/95" />
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-600 dark:text-cyan-300">Timer Runtime</p>
+                            <h4 className="mt-1 text-base font-black text-slate-900 dark:text-white">TIMER/CTR Setup</h4>
+                            <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">Review the live countdown and set the on-delay value before pressing START-1.</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setIsActivity5TimerPopupOpen(false)}
+                            className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 transition-colors hover:border-cyan-300 hover:text-cyan-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-cyan-500 dark:hover:text-cyan-300"
+                          >
+                            Close
+                          </button>
+                        </div>
+
+                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
+                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Display</p>
+                          <p className="mt-2 text-center font-mono text-2xl font-black tracking-[0.18em] text-rose-500">{activity5TimerDisplayText}</p>
+                        </div>
+
+                        <label className="mt-4 block text-[10px] font-black uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400" htmlFor="activity-5-delay-popup">
+                          Delay Value
+                        </label>
+                        <div className="mt-2 flex items-center gap-3">
+                          <input
+                            id="activity-5-delay-popup"
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            inputMode="decimal"
+                            value={activity5TimerDelayInput}
+                            onChange={handleActivity5TimerDelayChange}
+                            onBlur={handleActivity5TimerDelayBlur}
+                            disabled={activity5RelayEnergized || isSessionCompleted}
+                            className="w-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-900 outline-none transition-colors focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                          />
+                          <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">seconds</span>
+                        </div>
+                        <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+                          {activity5RelayEnergized
+                            ? 'Delay setup is locked while the timer is active.'
+                            : isSessionCompleted
+                              ? 'This activity is already completed, so the timer setup is read-only.'
+                              : 'Change the preset delay here, then press START-1 to begin the countdown.'}
+                        </p>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                            <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">R1</p>
+                            <p className={`mt-1 text-sm font-black ${activity5RelayEnergized ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                              {activity5RelayEnergized ? 'ON' : 'OFF'}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                            <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">T1</p>
+                            <p className="mt-1 text-sm font-black text-slate-700 dark:text-slate-200">{activity5TimerStatusLabel}</p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
 
                 {!isCanvasReady ? (
                   <div className="flex flex-col items-center justify-center h-full space-y-4">
@@ -1020,6 +1187,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                       isGreenLampOn={isActivity1GreenLampOn || isActivity2GreenLampOn || isActivity3GreenLampOn || isActivity4GreenLampOn || isActivity5GreenLampOn}
                       isYellowLampOn={isActivity3YellowLampOn || isActivity4YellowLampOn || isActivity5YellowLampOn}
                       isRedLampOn={isActivity2RedLampOn}
+                      timerDisplayText={activity5TimerDisplayText}
                       manualButtonState={pressedManualButtons}
                       onToggleSwitch={handleToggleSwitch}
                       onManualButtonPressChange={handleManualButtonPressChange}
