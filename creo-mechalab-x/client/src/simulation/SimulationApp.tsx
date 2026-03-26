@@ -4,7 +4,6 @@ import { Stage, Layer, Circle, Line, Rect, Text, Group } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 import type Konva from 'konva';
 
-// Lucide Icons for Taskbar
 import { ArrowLeft, Play, Trash2, Undo2, Redo2, Sun, Moon, RefreshCw, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
 import './SimulationApp.css';
 
@@ -24,6 +23,9 @@ import rollerLeverDevice from '../assets/devices/roller-lever.png';
 import solenoidValveDevice from '../assets/devices/solenoid-valve.png';
 import timerDevice from '../assets/devices/timer.jpg';
 import { getActivityAnswerByRouteId, ACTIVITY_ANSWERS } from './constants/activityAnswers';
+
+// IMPORT THE GUIDE
+import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
 interface SimulationAppProps { routeId?: string; simulationId?: number; initialCompletedRoutes?: string[]; onNavigateBack?: () => void; }
@@ -59,16 +61,35 @@ const INITIAL_MANUAL_RELAY_BUTTON_STATE: Record<ManualRelayButtonId, boolean> = 
   'start-1': false, 'start-2': false, 'stop-1': false, 'stop-2': false, 'emergency-stop': false,
 };
 
-// --- NEW: LOCAL STORAGE KEY ---
 const STORAGE_KEY = 'creosim_simulation_states';
 
 export default function SimulationApp({ routeId, initialCompletedRoutes = [], onNavigateBack }: SimulationAppProps) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // 1. Move activityPreset up here so we can use it for initial state
+  const activityPreset = getActivityAnswerByRouteId(routeId);
+
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [isDeviceDrawerOpen, setIsDeviceDrawerOpen] = useState(true);
-  const [assignedDevices, setAssignedDevices] = useState<Record<DeviceZone, DeviceId[]>>({ input: [], output: [] });
+
+  // 2. Keep savedStates here
+  const [savedStates, setSavedStates] = useState<Record<string, { wires: Connection[], assignedDevices: Record<DeviceZone, DeviceId[]> }>>(() => {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // 3. Initialize devices directly from the saved state
+  const [assignedDevices, setAssignedDevices] = useState<Record<DeviceZone, DeviceId[]>>(() => {
+    const saved = savedStates[activityPreset.routeId];
+    return saved ? saved.assignedDevices : { input: [], output: [] };
+  });
+
   const [dragState, setDragState] = useState<DeviceDragState>(null);
   const [activeDropZone, setActiveDropZone] = useState<DeviceZone | null>(null);
 
@@ -89,23 +110,17 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const [activity5RelayEnergized, setActivity5RelayEnergized] = useState(false);
   const [activity5TimerStatus, setActivity5TimerStatus] = useState<Activity5TimerStatus>('idle');
   const [activity5TimerDelayInput, setActivity5TimerDelayInput] = useState(String(DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS));
-  const [wires, setWires] = useState<Connection[]>([]);
+
+  // 4. Initialize wires directly from the saved state
+  const [wires, setWires] = useState<Connection[]>(() => {
+    const saved = savedStates[activityPreset.routeId];
+    return saved ? saved.wires : [];
+  });
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
   const [answerFeedbackState, setAnswerFeedbackState] = useState<{ signature: string; result: ActivityEvaluationResult; } | null>(null);
 
-  // --- NEW: INITIALIZE FROM LOCAL STORAGE ---
-  const [savedStates, setSavedStates] = useState<Record<string, { wires: Connection[], assignedDevices: Record<DeviceZone, DeviceId[]> }>>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      return stored ? JSON.parse(stored) : {};
-    } catch {
-      return {};
-    }
-  });
-
-  // --- NEW: SYNC TO LOCAL STORAGE ---
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(savedStates));
   }, [savedStates]);
@@ -135,8 +150,6 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const availableCanvasWidth = viewport.width - GUIDE_PANEL_WIDTH - PADDING * 2;
   const availableCanvasHeight = viewport.height - PADDING * 2;
   const canvasScale = Math.max(0.1, Math.min(availableCanvasWidth / BASE_CANVAS_WIDTH, availableCanvasHeight / BASE_CANVAS_HEIGHT));
-
-  const activityPreset = getActivityAnswerByRouteId(routeId);
   const activity5TimerDelaySeconds = useMemo(() => {
     const parsedValue = Number.parseFloat(activity5TimerDelayInput);
     return Number.isFinite(parsedValue) && parsedValue >= 0
@@ -149,11 +162,6 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const nextRouteId = currentIndex !== -1 && currentIndex < routeKeys.length - 1 ? routeKeys[currentIndex + 1] : null;
 
   const isSessionCompleted = !!savedStates[activityPreset.routeId];
-
-  const savedStatesRef = useRef(savedStates);
-  useEffect(() => {
-    savedStatesRef.current = savedStates;
-  }, [savedStates]);
 
   const clearActivity5TimerTimeout = useCallback(() => {
     if (activity5TimerTimeoutRef.current !== null) {
@@ -171,30 +179,6 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   useEffect(() => () => {
     clearActivity5TimerTimeout();
   }, [clearActivity5TimerTimeout]);
-
-  // Load state when switching activities
-  useEffect(() => {
-    resetActivity5Runtime();
-    const saved = savedStatesRef.current[activityPreset.routeId];
-    if (saved) {
-      setWires(saved.wires);
-      setAssignedDevices(saved.assignedDevices);
-    } else {
-      setWires([]);
-      setAssignedDevices({ input: [], output: [] });
-    }
-    setHistoryPast([]);
-    setHistoryFuture([]);
-    setSelectedWireId(null);
-    setActivePin(null);
-    setIsMainSwitchOn(false);
-    setPressedManualButtons(INITIAL_MANUAL_RELAY_BUTTON_STATE);
-    setIsActivity1GreenLampLatched(false);
-    setActivity2LampMode('off');
-    setActivity3LampMode('off');
-    setActivity4LampMode('off');
-    setAnswerFeedbackState(null);
-  }, [activityPreset.routeId, resetActivity5Runtime]);
 
   useEffect(() => {
     const handleResize = () => { if (containerRef.current) setViewport({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight }); };
@@ -733,6 +717,15 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const isNodeCompletedInDB = dbCompletedRoutes.has(activityPreset.routeId);
   const canProceedToNext = isSessionCompleted || isNodeCompletedInDB || answerFeedback?.passed;
 
+  // TUTORIAL STEPS
+  const tutorialSteps: TutorialStep[] = [
+    { message: "Welcome to the Electro-Pneumatic Simulation Environment. This is your interactive workbench." },
+    { targetId: "tour-sim-controls", message: "This panel contains your active schematic, validation controls, and Drop Zones for placing devices." },
+    { targetId: "tour-sim-toolbox", message: "Your Device Library is located here. Drag and drop sensors, relays, and switches into the appropriate Drop Zones." },
+    { targetId: "tour-sim-workspace", message: "This is the main routing board. Once devices are placed, click the terminal pins to route electrical wires according to your schematic." },
+    { targetId: "tour-sim-hud", message: "Use this HUD to track your progress and navigate between activities. Proceed when ready." }
+  ];
+
   return (
     <PortraitGuard>
       <CyberTransition>
@@ -794,7 +787,9 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
           </header>
 
           <main className="relative flex-1 flex flex-row w-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-950" ref={containerRef}>
-            <aside className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
+
+            {/* ADD ID HERE */}
+            <aside id="tour-sim-controls" className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
               <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-800/50">
                 <h2 className="font-black text-slate-900 dark:text-white text-[1.35rem]">Controls</h2>
               </div>
@@ -951,8 +946,8 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
 
             <div className="flex-1 relative flex items-center justify-center p-6">
 
-              {/* TOP NAVIGATION HUD */}
-              <div className="absolute top-10 left-1/2 -translate-x-1/2 z-30 flex items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-2.5 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-lg">
+              {/* TOP NAVIGATION HUD - ADD ID HERE */}
+              <div id="tour-sim-hud" className="absolute top-10 left-1/2 -translate-x-1/2 z-30 flex items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-2.5 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-lg">
                 {routeKeys.map((key, index) => {
 
                   // SMART NODE PARSING
@@ -1000,7 +995,8 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                 })}
               </div>
 
-              <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
+              {/* STAGE CONTAINER - ADD ID HERE */}
+              <div id="tour-sim-workspace" className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
 
                 {!isCanvasReady ? (
                   <div className="flex flex-col items-center justify-center h-full space-y-4">
@@ -1092,7 +1088,9 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
               )}
             </div>
 
+            {/* DEVICE DRAWER - ADD ID HERE */}
             <aside
+              id="tour-sim-toolbox"
               className="absolute inset-y-0 right-0 z-20 border-l border-slate-200 bg-white shadow-[-18px_0_30px_-22px_rgba(15,23,42,0.6)] transition-[width] duration-300 dark:border-slate-800 dark:bg-slate-900"
               style={{ width: isDeviceDrawerOpen ? DEVICE_DRAWER_OPEN_WIDTH : DEVICE_DRAWER_COLLAPSED_WIDTH }}
             >
@@ -1172,6 +1170,12 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
               )}
             </aside>
           </main>
+
+          {/* THE SELF MANAGED GUIDE! */}
+          <TutorialGuide
+            steps={tutorialSteps}
+            storageKey="creosim_tutorial_simulation_ep"
+          />
         </div>
       </CyberTransition>
     </PortraitGuard>

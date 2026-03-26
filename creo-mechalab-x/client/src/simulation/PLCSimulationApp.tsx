@@ -11,6 +11,9 @@ import { computePLCWirePath } from './utils/plcWireRouting';
 import { HW_STYLES, GOTT_TRAINER_PORTS, PLC_SOLENOID_LABELS, REED_LIGHT_OFFSET_Y, type PlcPortConfig } from './config/plcBoardLayout';
 import { PlcPanelBackground, PlcPanelText, PlcHardwareJack } from './components/plcBoardUI';
 
+// IMPORT THE GUIDE
+import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
+
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
 interface PLCSimulationAppProps { routeId?: string; onNavigateBack?: () => void; }
 
@@ -308,6 +311,15 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [deleteSelectedWire]);
 
+    // TUTORIAL STEPS
+    const tutorialSteps: TutorialStep[] = [
+        { message: "Welcome to the GOTT PLC Trainer. Here you will simulate physical hardware wiring for PLC controllers." },
+        { targetId: "tour-plc-guide", message: "Your Hardware Guide dictates the specific wiring tasks you must complete to power and configure the system." },
+        { targetId: "tour-plc-workspace", message: "This is your main interface. Click the terminal jacks to route wires between the power supply, PLC inputs/outputs, and relays." },
+        { targetId: "tour-plc-toolbar", message: "Use these tools to change your wire colors, delete incorrect routes, or clear the board." },
+        { message: "Be careful not to cross-wire the 24V and 0V lines. Good luck, Cadet." }
+    ];
+
     return (
         <PortraitGuard>
             <CyberTransition>
@@ -321,7 +333,8 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                 <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: GOTT PLC Trainer • Task: {routeId || 'Default'}</p>
                             </div>
                         </div>
-                        <div className="flex items-center gap-3">
+                        {/* TOOLBAR - ADD ID HERE */}
+                        <div id="tour-plc-toolbar" className="flex items-center gap-3">
                             <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner">
                                 <button onClick={deleteSelectedWire} disabled={!selectedWireId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
                                 <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
@@ -349,7 +362,9 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                     </header>
 
                     <main className="flex-1 flex flex-row w-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-950" ref={containerRef}>
-                        <aside className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
+
+                        {/* HARDWARE GUIDE - ADD ID HERE */}
+                        <aside id="tour-plc-guide" className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
                             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-800/50">
                                 <h3 className="font-black text-slate-800 dark:text-cyan-400 uppercase tracking-widest text-sm">Hardware Guide</h3>
                             </div>
@@ -368,7 +383,9 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                         </aside>
 
                         <div className="flex-1 relative flex items-center justify-center p-6">
-                            <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
+
+                            {/* MAIN CANVAS - ADD ID HERE */}
+                            <div id="tour-plc-workspace" className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
 
                                 {!isCanvasReady ? (
                                     <div className="flex flex-col items-center justify-center h-full space-y-4">
@@ -660,6 +677,12 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                             </div>
                         </div>
                     </main>
+
+                    {/* THE SELF MANAGED GUIDE! */}
+                    <TutorialGuide
+                        steps={tutorialSteps}
+                        storageKey="creosim_tutorial_simulation_plc"
+                    />
                 </div>
             </CyberTransition>
         </PortraitGuard>

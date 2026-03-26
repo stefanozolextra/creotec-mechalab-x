@@ -72,6 +72,7 @@ export default function SimulationView() {
                 </div>
             ) : (
                 <SimulationApp
+                    key={simulationRouteId}
                     routeId={simulationRouteId}
                     initialCompletedRoutes={completedRoutes}
                     onNavigateBack={() => navigate('/dashboard')}
