@@ -16,6 +16,6 @@ export const ACTIVITY_ANSWERS: Record<string, ActivityAnswerDefinition> = {
 export const DEFAULT_ACTIVITY_ANSWER = activity1Answer;
 
 export const getActivityAnswerByRouteId = (routeId?: string): ActivityAnswerDefinition =>
-  (routeId && ACTIVITY_ANSWERS[routeId]) ?? DEFAULT_ACTIVITY_ANSWER;
+  routeId ? (ACTIVITY_ANSWERS[routeId] ?? DEFAULT_ACTIVITY_ANSWER) : DEFAULT_ACTIVITY_ANSWER;
 
 export type { ActivityAnswerDefinition };
