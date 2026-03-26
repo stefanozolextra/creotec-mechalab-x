@@ -226,7 +226,7 @@ const Dashboard = () => {
     // 4. DEFINE TUTORIAL STEPS
     const tutorialSteps: TutorialStep[] = [
         {
-            message: "Welcome Cadet! I am your mechatronics diagnostic assistant. It looks like it is your first time accessing the CREOSim central core."
+            message: "Welcome Cadet! I am A.S.S.I.S.T., your mechatronics diagnostic companion. Let's get you oriented."
         },
         {
             targetId: "tour-header-controls",
@@ -238,13 +238,20 @@ const Dashboard = () => {
         },
         {
             targetId: "tour-briefing-panel",
-            message: "When you select a module, your briefing appears here. You can review the theory manual or initiate the hands-on simulation directly from this panel."
+            message: "When you select a module, your briefing and technical specifications appear here in the side panel."
+        },
+        {
+            targetId: "tour-simulation-btn", // NEW TARGET
+            message: "When you are ready, click 'Initiate Simulation' to enter the hands-on electro-pneumatic routing environment."
+        },
+        {
+            targetId: "tour-lesson-btn", // NEW TARGET
+            message: "If you need to review the theory, diagrams, or video lectures, you can open the Lesson Content directly from here."
         },
         {
             message: "That covers the basics! Select your first unlocked protocol to begin your training sequence. Good luck, Cadet!"
         }
     ];
-
     const handleCompleteTutorial = () => {
         setShowTutorial(false);
         localStorage.setItem('creosim_tutorial_dashboard', 'true');
@@ -518,8 +525,10 @@ const Dashboard = () => {
                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:32px_32px] dark:bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] pointer-events-none -z-10" />
 
                     {/* HEADER - HUD BAR */}
-                    <header className="border-b-2 border-slate-300 dark:border-cyan-900/50 bg-white/95 dark:bg-[#0B1120]/95 backdrop-blur-md sticky top-0 z-50 px-3 sm:px-6 py-3 flex justify-between items-center shadow-[0_4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_4px_20px_rgba(6,182,212,0.1)] transition-colors duration-300">
-
+                    <header
+                        id="tour-header-controls"
+                        className="border-b-2 border-slate-300 dark:border-cyan-900/50 bg-white/95 dark:bg-[#0B1120]/95 backdrop-blur-md sticky top-0 z-50 px-3 sm:px-6 py-3 flex justify-between items-center shadow-[0_4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_4px_20px_rgba(6,182,212,0.1)] transition-colors duration-300"
+                    >
                         {/* Logo & Trainee Info */}
                         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                             <div className="bg-cyan-500/10 p-1.5 sm:p-2 border-l-2 border-cyan-500 transition-colors shrink-0 flex items-center justify-center -skew-x-6">
@@ -577,7 +586,9 @@ const Dashboard = () => {
                     <main className="max-w-7xl mx-auto p-3 sm:p-6 flex flex-col md:grid md:grid-cols-12 gap-4 sm:gap-6 lg:gap-8 mt-2 sm:mt-4">
 
                         {/* MODULES TIMELINE LIST */}
-                        <div className="md:col-span-7 xl:col-span-8 relative">
+                        <div
+                            id="tour-training-protocols"
+                            className="md:col-span-7 xl:col-span-8 relative">
 
                             <div className="flex items-center justify-between mb-4 sm:mb-6 border-b border-slate-300 dark:border-slate-800 pb-2">
                                 <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2 sm:gap-3">
@@ -734,7 +745,9 @@ const Dashboard = () => {
                         </div>
 
                         {/* SIDE PANEL DETAILS (Hidden on mobile) */}
-                        <div className="hidden md:block md:col-span-5 xl:col-span-4">
+                        <div
+                            id="tour-briefing-panel"
+                            className="hidden md:block md:col-span-5 xl:col-span-4">
                             <div className="sticky top-24 z-10">
 
                                 <div className="flex items-center justify-between mb-6 border-b border-slate-300 dark:border-slate-800 pb-2">
@@ -843,6 +856,7 @@ const Dashboard = () => {
 
                                             <div className="space-y-3 lg:space-y-4">
                                                 <button
+                                                    id="tour-simulation-btn" // <-- ADD THIS ID
                                                     type="button"
                                                     onClick={handleStartSimulation}
                                                     disabled={!selectedSimulationId}
@@ -854,6 +868,7 @@ const Dashboard = () => {
                                                 </button>
 
                                                 <button
+                                                    id="tour-lesson-btn" // <-- ADD THIS ID
                                                     type="button"
                                                     onClick={handleViewModule}
                                                     disabled={!selectedModuleHasLessonContent}
