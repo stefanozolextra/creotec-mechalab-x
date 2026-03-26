@@ -115,7 +115,10 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const [activity5TimerDelayInput, setActivity5TimerDelayInput] = useState(String(DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS));
   const [activity5TimerRemainingMs, setActivity5TimerRemainingMs] = useState<number | null>(null);
   const [isActivity5TimerPopupOpen, setIsActivity5TimerPopupOpen] = useState(false);
-  const [wires, setWires] = useState<Connection[]>([]);
+  const [wires, setWires] = useState<Connection[]>(() => {
+    const saved = savedStates[activityPreset.routeId];
+    return saved ? saved.wires : [];
+  });
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
   const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
@@ -192,31 +195,6 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     clearActivity5TimerTimeout();
     clearActivity5TimerInterval();
   }, [clearActivity5TimerInterval, clearActivity5TimerTimeout]);
-
-  // Load state when switching activities
-  useEffect(() => {
-    resetActivity5Runtime();
-    setIsActivity5TimerPopupOpen(false);
-    const saved = savedStatesRef.current[activityPreset.routeId];
-    if (saved) {
-      setWires(saved.wires);
-      setAssignedDevices(saved.assignedDevices);
-    } else {
-      setWires([]);
-      setAssignedDevices({ input: [], output: [] });
-    }
-    setHistoryPast([]);
-    setHistoryFuture([]);
-    setSelectedWireId(null);
-    setActivePin(null);
-    setIsMainSwitchOn(false);
-    setPressedManualButtons(INITIAL_MANUAL_RELAY_BUTTON_STATE);
-    setIsActivity1GreenLampLatched(false);
-    setActivity2LampMode('off');
-    setActivity3LampMode('off');
-    setActivity4LampMode('off');
-    setAnswerFeedbackState(null);
-  }, [activityPreset.routeId, resetActivity5Runtime]);
 
   useEffect(() => {
     const handleResize = () => { if (containerRef.current) setViewport({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight }); };
