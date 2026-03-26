@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Loader2, Moon, Sun, Target, CheckCircle2, Lock } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Loader2, Moon, Sun, Target, CheckCircle2, Lock, } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import CyberTransition from '../components/CyberTransition';
 import { API_BASE_URL } from '../api/http';
@@ -9,6 +9,7 @@ import { getAuthToken } from '../utils/auth';
 import { setNativeSecureScreen } from '../utils/nativeSecureScreen';
 import { resolveSupportedVideoLesson } from '../utils/videoLessons';
 import type { ResourceType } from '../types/traineeDashboard';
+import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -107,6 +108,28 @@ const ModuleView = () => {
 
     const authToken = getAuthToken();
     const previewPaneRef = useRef<HTMLDivElement | null>(null);
+
+    // 4. DEFINE THE SCRIPT FOR THE MODULE VIEW
+    const tutorialSteps: TutorialStep[] = [
+        {
+            message: "Welcome to the Theoretical Interface. Here you will review the technical manuals and diagrams before touching the hardware."
+        },
+        {
+            targetId: "tour-module-sidebar",
+            message: "This panel displays your lesson chapters and topics. Progress through them sequentially to unlock the simulation."
+        },
+        {
+            targetId: "tour-module-content",
+            message: "The main viewport displays your video feeds, schematics, and textual documentation."
+        },
+        {
+            targetId: "tour-module-actions",
+            message: "Once you have absorbed the material, use these controls to proceed to the next chapter or initiate the hands-on simulation."
+        },
+        {
+            message: "Review the documentation carefully. Mistakes in the simulation can cause system faults. Proceed when ready."
+        }
+    ];
 
     const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
         if (typeof document !== 'undefined') {
@@ -495,6 +518,7 @@ const ModuleView = () => {
                     </div>
 
                     <div className="flex items-center gap-6">
+
                         <button
                             onClick={toggleTheme}
                             className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors hidden sm:block focus:outline-none"
@@ -517,7 +541,9 @@ const ModuleView = () => {
                 </header>
 
                 <main className="flex-1 flex flex-col lg:flex-row gap-6 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full relative z-10">
-                    <aside className="w-full lg:w-[360px] flex-shrink-0 flex flex-col lg:h-[calc(100vh-140px)]">
+                    <aside
+                        id="tour-module-sidebar"
+                        className="w-full lg:w-[360px] flex-shrink-0 flex flex-col lg:h-[calc(100vh-140px)]">
                         <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
                             <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
                             <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />
@@ -580,7 +606,9 @@ const ModuleView = () => {
                         </div>
                     </aside>
 
-                    <section className="flex-1 flex flex-col h-[600px] lg:h-[calc(100vh-140px)] relative">
+                    <section
+                        id="tour-module-content"
+                        className="flex-1 flex flex-col h-[600px] lg:h-[calc(100vh-140px)] relative">
                         <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
                             <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
                             <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />
@@ -717,7 +745,9 @@ const ModuleView = () => {
                             </div>
 
                             {resolvedLessonType === 'PDF' && numPages && !isResolvingLesson && !resolveError && !viewerError && documentFile && (
-                                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-6 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-3 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] transition-all">
+                                <div
+                                    id="tour-module-actions"
+                                    className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-6 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-3 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] transition-all">
 
                                     {pageNumber === 1 && hasPrevLesson ? (
                                         <button
@@ -765,6 +795,13 @@ const ModuleView = () => {
                     </section>
                 </main>
             </div>
+            {/* The Guide Component handles its own floating button, 
+                  animations, and local storage automatically! 
+                */}
+            <TutorialGuide
+                steps={tutorialSteps}
+                storageKey="creosim_tutorial_module"
+            />
         </CyberTransition>
     );
 };
