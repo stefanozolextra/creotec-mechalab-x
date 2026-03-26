@@ -541,7 +541,9 @@ const ModuleView = () => {
                 </header>
 
                 <main className="flex-1 flex flex-col lg:flex-row gap-6 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full relative z-10">
-                    <aside className="w-full lg:w-[360px] flex-shrink-0 flex flex-col lg:h-[calc(100vh-140px)]">
+                    <aside
+                        id="tour-module-sidebar"
+                        className="w-full lg:w-[360px] flex-shrink-0 flex flex-col lg:h-[calc(100vh-140px)]">
                         <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
                             <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
                             <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />
@@ -604,7 +606,9 @@ const ModuleView = () => {
                         </div>
                     </aside>
 
-                    <section className="flex-1 flex flex-col h-[600px] lg:h-[calc(100vh-140px)] relative">
+                    <section
+                        id="tour-module-content"
+                        className="flex-1 flex flex-col h-[600px] lg:h-[calc(100vh-140px)] relative">
                         <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
                             <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
                             <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />
@@ -741,7 +745,9 @@ const ModuleView = () => {
                             </div>
 
                             {resolvedLessonType === 'PDF' && numPages && !isResolvingLesson && !resolveError && !viewerError && documentFile && (
-                                <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-6 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-3 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] transition-all">
+                                <div
+                                    id="tour-module-actions"
+                                    className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-6 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-3 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] transition-all">
 
                                     {pageNumber === 1 && hasPrevLesson ? (
                                         <button
