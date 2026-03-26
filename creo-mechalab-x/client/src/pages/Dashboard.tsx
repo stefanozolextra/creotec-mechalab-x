@@ -26,6 +26,7 @@ import { getTraineeDashboard } from '../api/trainees';
 import { resolveSupportedVideoLesson } from '../utils/videoLessons';
 import HangarDoors from '../components/HangarDoors';
 import CyberTransition from '../components/CyberTransition';
+import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
 import type {
     DashboardState,
     ModuleStatusApi,
@@ -102,10 +103,22 @@ const isCompletedValue = (value: boolean | string | number | null | undefined): 
     return false;
 };
 
+// --- FIX: Now checks both DB and LocalStorage to find the true next activity ---
 const getNextSimulationByModuleId = (
     simulations: SimulationApi[],
     simulationProgressById: Map<number, boolean>
 ): Map<number, number> => {
+
+    const localStates = (() => {
+        try {
+            const stored = localStorage.getItem('creosim_simulation_states');
+            return stored ? JSON.parse(stored) : {};
+        } catch {
+            return {};
+        }
+    })();
+    const localCompletedRouteIds = new Set(Object.keys(localStates));
+
     const grouped = new Map<number, SimulationApi[]>();
 
     for (const simulation of simulations) {
@@ -123,7 +136,11 @@ const getNextSimulationByModuleId = (
         const candidate =
             requiredSimulations.length > 0
                 ? requiredSimulations.find(
-                    (simulation) => !simulationProgressById.get(toNumber(simulation.simulation_id))
+                    (simulation) => {
+                        const isDbCompleted = simulationProgressById.get(toNumber(simulation.simulation_id));
+                        const isLocalCompleted = localCompletedRouteIds.has(String(simulation.order_no));
+                        return !isDbCompleted && !isLocalCompleted;
+                    }
                 ) ?? requiredSimulations[0]
                 : moduleSimulations[0];
 
@@ -134,12 +151,12 @@ const getNextSimulationByModuleId = (
 
     return nextByModule;
 };
+// -------------------------------------------------------------------------------
 
 const Dashboard = () => {
     const navigate = useNavigate();
 
     // --- SMART DOOR STATE ---
-    // Only mount and close the doors if this is the FIRST time entering the dashboard this session
     const [isHangarVisible, setIsHangarVisible] = useState(() => !sessionStorage.getItem('dashboard_entered'));
     const [isHangarClosed, setIsHangarClosed] = useState(() => !sessionStorage.getItem('dashboard_entered'));
     const isLoggingOutRef = useRef(false);
@@ -190,7 +207,55 @@ const Dashboard = () => {
             document.documentElement.classList.remove('dark');
         }
     };
+    // 2. ADD TUTORIAL STATE
+    const [showTutorial, setShowTutorial] = useState(false);
 
+    // 3. CHECK LOCAL STORAGE ON MOUNT
+    useEffect(() => {
+        // Wait for the hangar doors to open before showing the tutorial
+        const timer = setTimeout(() => {
+            const hasSeenTutorial = localStorage.getItem('creosim_tutorial_dashboard');
+            if (!hasSeenTutorial) {
+                setShowTutorial(true);
+            }
+        }, 2000);
+
+        return () => clearTimeout(timer);
+    }, []);
+
+    // 4. DEFINE TUTORIAL STEPS
+    const tutorialSteps: TutorialStep[] = [
+        {
+            message: "Welcome Cadet! I am A.S.S.I.S.T., your mechatronics diagnostic companion. Let's get you oriented."
+        },
+        {
+            targetId: "tour-header-controls",
+            message: "Up here is your command ribbon. You can toggle your visual optics (Dark/Light mode), view your cadet details, or safely log out."
+        },
+        {
+            targetId: "tour-training-protocols",
+            message: "This is your Training Protocol timeline. It lists all the modules assigned to your cohort. Modules must be completed sequentially."
+        },
+        {
+            targetId: "tour-briefing-panel",
+            message: "When you select a module, your briefing and technical specifications appear here in the side panel."
+        },
+        {
+            targetId: "tour-simulation-btn", // NEW TARGET
+            message: "When you are ready, click 'Initiate Simulation' to enter the hands-on electro-pneumatic routing environment."
+        },
+        {
+            targetId: "tour-lesson-btn", // NEW TARGET
+            message: "If you need to review the theory, diagrams, or video lectures, you can open the Lesson Content directly from here."
+        },
+        {
+            message: "That covers the basics! Select your first unlocked protocol to begin your training sequence. Good luck, Cadet!"
+        }
+    ];
+    const handleCompleteTutorial = () => {
+        setShowTutorial(false);
+        localStorage.setItem('creosim_tutorial_dashboard', 'true');
+    };
     const loadDashboard = useCallback(async () => {
         requestControllerRef.current?.abort();
         const controller = new AbortController();
@@ -435,7 +500,7 @@ const Dashboard = () => {
 
         setTimeout(() => {
             sessionStorage.removeItem('dashboard_entered');
-            localStorage.removeItem('creosim_simulation_states'); // <-- WIPE STUDENT PROGRESS FROM LOCAL MEMORY
+            localStorage.removeItem('creosim_simulation_states');
             clearAuthRole();
             navigate('/login', { replace: true });
         }, 1500);
@@ -443,8 +508,6 @@ const Dashboard = () => {
 
     const handleStartSimulation = () => {
         if (!selectedSimulation) return;
-
-        // Navigate using the Activity Number (order_no) instead of the Database Primary Key
         const targetRoute = selectedSimulation.order_no ?? 1;
         navigate(`/simulation/${targetRoute}`);
     };
@@ -458,13 +521,14 @@ const Dashboard = () => {
         <>
             <CyberTransition>
                 <div className="min-h-screen w-full overflow-x-hidden bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white pb-8 relative transition-colors duration-300 z-0">
-
                     {/* GAME HUD GRID BACKGROUND */}
                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:32px_32px] dark:bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] pointer-events-none -z-10" />
 
                     {/* HEADER - HUD BAR */}
-                    <header className="border-b-2 border-slate-300 dark:border-cyan-900/50 bg-white/95 dark:bg-[#0B1120]/95 backdrop-blur-md sticky top-0 z-50 px-3 sm:px-6 py-3 flex justify-between items-center shadow-[0_4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_4px_20px_rgba(6,182,212,0.1)] transition-colors duration-300">
-
+                    <header
+                        id="tour-header-controls"
+                        className="border-b-2 border-slate-300 dark:border-cyan-900/50 bg-white/95 dark:bg-[#0B1120]/95 backdrop-blur-md sticky top-0 z-50 px-3 sm:px-6 py-3 flex justify-between items-center shadow-[0_4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_4px_20px_rgba(6,182,212,0.1)] transition-colors duration-300"
+                    >
                         {/* Logo & Trainee Info */}
                         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                             <div className="bg-cyan-500/10 p-1.5 sm:p-2 border-l-2 border-cyan-500 transition-colors shrink-0 flex items-center justify-center -skew-x-6">
@@ -522,7 +586,9 @@ const Dashboard = () => {
                     <main className="max-w-7xl mx-auto p-3 sm:p-6 flex flex-col md:grid md:grid-cols-12 gap-4 sm:gap-6 lg:gap-8 mt-2 sm:mt-4">
 
                         {/* MODULES TIMELINE LIST */}
-                        <div className="md:col-span-7 xl:col-span-8 relative">
+                        <div
+                            id="tour-training-protocols"
+                            className="md:col-span-7 xl:col-span-8 relative">
 
                             <div className="flex items-center justify-between mb-4 sm:mb-6 border-b border-slate-300 dark:border-slate-800 pb-2">
                                 <h2 className="text-base sm:text-lg font-black text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2 sm:gap-3">
@@ -679,7 +745,9 @@ const Dashboard = () => {
                         </div>
 
                         {/* SIDE PANEL DETAILS (Hidden on mobile) */}
-                        <div className="hidden md:block md:col-span-5 xl:col-span-4">
+                        <div
+                            id="tour-briefing-panel"
+                            className="hidden md:block md:col-span-5 xl:col-span-4">
                             <div className="sticky top-24 z-10">
 
                                 <div className="flex items-center justify-between mb-6 border-b border-slate-300 dark:border-slate-800 pb-2">
@@ -788,6 +856,7 @@ const Dashboard = () => {
 
                                             <div className="space-y-3 lg:space-y-4">
                                                 <button
+                                                    id="tour-simulation-btn" // <-- ADD THIS ID
                                                     type="button"
                                                     onClick={handleStartSimulation}
                                                     disabled={!selectedSimulationId}
@@ -799,6 +868,7 @@ const Dashboard = () => {
                                                 </button>
 
                                                 <button
+                                                    id="tour-lesson-btn" // <-- ADD THIS ID
                                                     type="button"
                                                     onClick={handleViewModule}
                                                     disabled={!selectedModuleHasLessonContent}
@@ -897,7 +967,14 @@ const Dashboard = () => {
                 `}} />
             </CyberTransition>
 
-            {/* --- CONDITIONALLY RENDER DOORS OUTSIDE CYBERTRANSITION --- */}
+            {/* 8. RENDER TUTORIAL GUIDE IF ACTIVE */}
+            {showTutorial && (
+                <TutorialGuide
+                    steps={tutorialSteps}
+                    onComplete={handleCompleteTutorial}
+                />
+            )}
+
             {isHangarVisible && <HangarDoors isClosed={isHangarClosed} />}
         </>
     );

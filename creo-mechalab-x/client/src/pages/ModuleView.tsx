@@ -3,7 +3,6 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Loader2, Moon, Sun, Target, CheckCircle2, Lock } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import CyberTransition from '../components/CyberTransition';
-// import ReactAntiCapture from '../components/AntiCapture';
 import { API_BASE_URL } from '../api/http';
 import { getTraineeDashboard } from '../api/trainees';
 import { getAuthToken } from '../utils/auth';
@@ -39,7 +38,6 @@ const toNumber = (value: string | number | null | undefined): number => {
     return Number.isFinite(parsed) ? parsed : 0;
 };
 
-// --- FIX: Added completion check helper to match Dashboard logic ---
 const isCompletedValue = (value: boolean | string | number | null | undefined): boolean => {
     if (typeof value === 'boolean') return value;
     if (typeof value === 'string') return value.toLowerCase() === 'true';
@@ -91,7 +89,6 @@ const ModuleView = () => {
     const [numPages, setNumPages] = useState<number | null>(null);
     const [pageNumber, setPageNumber] = useState<number>(1);
 
-    // --- RESPONSIVE DIMENSION TRACKING ---
     const [viewerDims, setViewerDims] = useState({ width: 800, height: 600 });
 
     const [isResolvingLesson, setIsResolvingLesson] = useState(true);
@@ -200,14 +197,22 @@ const ModuleView = () => {
                     (resource) => toNumber(resource.module_id) === moduleId
                 );
 
-                // --- FIX: Smart Simulation Launcher Routing ---
-                // We map out the progress first, exactly like the Dashboard does
+                // --- FIX: Checks both DB and LocalStorage to find the true next activity ---
                 const progressMap = new Map<number, boolean>();
                 dashboard.simulationProgress.forEach((p) => {
                     progressMap.set(toNumber(p.simulation_id), isCompletedValue(p.is_completed));
                 });
 
-                // Get all simulations for this module and sort them
+                const localStates = (() => {
+                    try {
+                        const stored = localStorage.getItem('creosim_simulation_states');
+                        return stored ? JSON.parse(stored) : {};
+                    } catch {
+                        return {};
+                    }
+                })();
+                const localCompletedRouteIds = new Set(Object.keys(localStates));
+
                 const rawSimulations = dashboard.moduleContent.simulations
                     .filter((simulation) => toNumber(simulation.module_id) === moduleId)
                     .sort((a, b) => {
@@ -218,9 +223,12 @@ const ModuleView = () => {
 
                 const requiredSimulations = rawSimulations.filter(s => s.is_required);
 
-                // Find the first uncompleted simulation to launch, fallback to [0]
                 const candidate = requiredSimulations.length > 0
-                    ? requiredSimulations.find(s => !progressMap.get(toNumber(s.simulation_id))) ?? requiredSimulations[0]
+                    ? requiredSimulations.find(s => {
+                        const isDbCompleted = progressMap.get(toNumber(s.simulation_id));
+                        const isLocalCompleted = localCompletedRouteIds.has(String(s.order_no));
+                        return !isDbCompleted && !isLocalCompleted;
+                    }) ?? requiredSimulations[0]
                     : rawSimulations[0];
 
                 if (candidate && toNumber(candidate.simulation_id) > 0) {
@@ -232,7 +240,7 @@ const ModuleView = () => {
                 } else {
                     setModuleSimulationLaunch(null);
                 }
-                // ------------------------------------------------
+                // -------------------------------------------------------------------------
 
                 const options = moduleResources
                     .map((resource) => {
@@ -374,7 +382,6 @@ const ModuleView = () => {
         });
     }, [numPages]);
 
-    // --- NEXT / PREV LESSON LOGIC ---
     const hasNextLesson = selectedLessonIndex !== -1 && selectedLessonIndex < lessonOptions.length - 1;
     const hasPrevLesson = selectedLessonIndex > 0;
 
@@ -389,9 +396,7 @@ const ModuleView = () => {
             setSelectedLessonResourceId(lessonOptions[selectedLessonIndex - 1].resourceId);
         }
     }, [hasPrevLesson, lessonOptions, selectedLessonIndex]);
-    // -------------------------
 
-    // --- SMART KEYBOARD NAVIGATION ---
     useEffect(() => {
         if (resolvedLessonType !== 'PDF' || numPages === null) return;
 
@@ -416,7 +421,6 @@ const ModuleView = () => {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [resolvedLessonType, numPages, pageNumber, changePage, hasNextLesson, goToNextLesson, hasPrevLesson, goToPrevLesson]);
-    // -----------------------------------------
 
     const selectedLessonIndexRef = useRef(selectedLessonIndex);
     useEffect(() => {
@@ -465,13 +469,10 @@ const ModuleView = () => {
     return (
         <CyberTransition>
             <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#050810] font-sans select-none transition-colors duration-300 relative z-0">
-                {/* Dual-theme Grid Background */}
                 <div className="absolute inset-0 bg-[linear-gradient(to_right,#cbd5e140_1px,transparent_1px),linear-gradient(to_bottom,#cbd5e140_1px,transparent_1px)] dark:bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none -z-10" />
 
-                {/* Top Cyan Accent Line */}
                 <div className="h-1 w-full bg-cyan-500 relative z-20" />
 
-                {/* Header */}
                 <header className="bg-white dark:bg-[#0A0E17] border-b border-slate-200 dark:border-slate-800/60 px-6 py-4 flex items-center justify-between z-20 sticky top-0 shadow-sm transition-colors duration-300">
                     <div className="flex items-center gap-4 min-w-0 sm:gap-8">
                         <button
@@ -501,12 +502,9 @@ const ModuleView = () => {
                             {isDarkMode ? <Sun size={22} /> : <Moon size={22} />}
                         </button>
 
-                        {/* --- REPLACED: AWAITING_DATA placeholder with Simulation Launcher --- */}
                         <button
                             onClick={() => {
                                 if (!moduleSimulationLaunch) return;
-
-                                // Navigate using the Activity Number (orderNo) instead of the Database Primary Key
                                 const targetRoute = moduleSimulationLaunch.orderNo ?? 1;
                                 navigate(`/simulation/${targetRoute}`);
                             }}
@@ -515,15 +513,12 @@ const ModuleView = () => {
                         >
                             <Target size={16} strokeWidth={2.5} /> LAUNCH SIMULATOR
                         </button>
-                        {/* ------------------------------------------------------------------ */}                    </div>
+                    </div>
                 </header>
 
                 <main className="flex-1 flex flex-col lg:flex-row gap-6 p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto w-full relative z-10">
-
-                    {/* Sidebar - Module List */}
                     <aside className="w-full lg:w-[360px] flex-shrink-0 flex flex-col lg:h-[calc(100vh-140px)]">
                         <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
-                            {/* Corner Accents */}
                             <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
                             <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />
 
@@ -541,7 +536,6 @@ const ModuleView = () => {
                                 ) : lessonOptions.length > 0 ? (
                                     lessonOptions.map((option, index) => {
                                         const isSelected = option.resourceId === selectedLessonResourceId;
-
                                         const isLocked = index > highestUnlockedIndex;
                                         const isCompleted = index < highestUnlockedIndex;
 
@@ -586,7 +580,6 @@ const ModuleView = () => {
                         </div>
                     </aside>
 
-                    {/* Main Content Area */}
                     <section className="flex-1 flex flex-col h-[600px] lg:h-[calc(100vh-140px)] relative">
                         <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
                             <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
@@ -612,7 +605,6 @@ const ModuleView = () => {
                                 </div>
                             ) : null}
 
-                            {/* Lesson Viewer / Error States */}
                             <div
                                 ref={previewPaneRef}
                                 className="flex-1 overflow-auto p-4 sm:p-6 lg:p-10 flex flex-col items-center justify-center bg-slate-50/30 dark:bg-[#0A0E17] relative transition-colors duration-300 min-h-0"
@@ -724,7 +716,6 @@ const ModuleView = () => {
                                 )}
                             </div>
 
-                            {/* DYNAMIC OVERLAY NAVIGATION FOR PDF */}
                             {resolvedLessonType === 'PDF' && numPages && !isResolvingLesson && !resolveError && !viewerError && documentFile && (
                                 <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-6 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-3 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-[0_8px_30px_rgb(0,0,0,0.12)] dark:shadow-[0_8px_30px_rgb(0,0,0,0.4)] transition-all">
 
@@ -770,7 +761,6 @@ const ModuleView = () => {
                                     )}
                                 </div>
                             )}
-
                         </div>
                     </section>
                 </main>
