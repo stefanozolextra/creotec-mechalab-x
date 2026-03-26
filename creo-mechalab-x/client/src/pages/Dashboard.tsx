@@ -207,21 +207,6 @@ const Dashboard = () => {
             document.documentElement.classList.remove('dark');
         }
     };
-    // 2. ADD TUTORIAL STATE
-    const [showTutorial, setShowTutorial] = useState(false);
-
-    // 3. CHECK LOCAL STORAGE ON MOUNT
-    useEffect(() => {
-        // Wait for the hangar doors to open before showing the tutorial
-        const timer = setTimeout(() => {
-            const hasSeenTutorial = localStorage.getItem('creosim_tutorial_dashboard');
-            if (!hasSeenTutorial) {
-                setShowTutorial(true);
-            }
-        }, 2000);
-
-        return () => clearTimeout(timer);
-    }, []);
 
     // 4. DEFINE TUTORIAL STEPS
     const tutorialSteps: TutorialStep[] = [
@@ -252,10 +237,7 @@ const Dashboard = () => {
             message: "That covers the basics! Select your first unlocked protocol to begin your training sequence. Good luck, Cadet!"
         }
     ];
-    const handleCompleteTutorial = () => {
-        setShowTutorial(false);
-        localStorage.setItem('creosim_tutorial_dashboard', 'true');
-    };
+
     const loadDashboard = useCallback(async () => {
         requestControllerRef.current?.abort();
         const controller = new AbortController();
@@ -614,7 +596,7 @@ const Dashboard = () => {
                                         <button
                                             type="button"
                                             onClick={() => void loadDashboard()}
-                                            className="bg-red-500 hover:bg-red-600 text-white px-4 sm:px-6 py-2 uppercase font-black tracking-widest text-[10px] sm:text-xs transition-colors"
+                                            className="bg-red-50 hover:bg-red-600 text-white px-4 sm:px-6 py-2 uppercase font-black tracking-widest text-[10px] sm:text-xs transition-colors"
                                         >
                                             Re-establish Connection
                                         </button>
@@ -856,7 +838,7 @@ const Dashboard = () => {
 
                                             <div className="space-y-3 lg:space-y-4">
                                                 <button
-                                                    id="tour-simulation-btn" // <-- ADD THIS ID
+                                                    id="tour-simulation-btn"
                                                     type="button"
                                                     onClick={handleStartSimulation}
                                                     disabled={!selectedSimulationId}
@@ -868,7 +850,7 @@ const Dashboard = () => {
                                                 </button>
 
                                                 <button
-                                                    id="tour-lesson-btn" // <-- ADD THIS ID
+                                                    id="tour-lesson-btn"
                                                     type="button"
                                                     onClick={handleViewModule}
                                                     disabled={!selectedModuleHasLessonContent}
@@ -967,13 +949,11 @@ const Dashboard = () => {
                 `}} />
             </CyberTransition>
 
-            {/* 8. RENDER TUTORIAL GUIDE IF ACTIVE */}
-            {showTutorial && (
-                <TutorialGuide
-                    steps={tutorialSteps}
-                    onComplete={handleCompleteTutorial}
-                />
-            )}
+            {/* RENDER TUTORIAL GUIDE - Self-managed component! */}
+            <TutorialGuide
+                steps={tutorialSteps}
+                storageKey="creosim_tutorial_dashboard"
+            />
 
             {isHangarVisible && <HangarDoors isClosed={isHangarClosed} />}
         </>

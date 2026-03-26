@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Loader2, Moon, Sun, Target, CheckCircle2, Lock } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Loader2, Moon, Sun, Target, CheckCircle2, Lock, } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import CyberTransition from '../components/CyberTransition';
 import { API_BASE_URL } from '../api/http';
@@ -9,6 +9,7 @@ import { getAuthToken } from '../utils/auth';
 import { setNativeSecureScreen } from '../utils/nativeSecureScreen';
 import { resolveSupportedVideoLesson } from '../utils/videoLessons';
 import type { ResourceType } from '../types/traineeDashboard';
+import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -107,6 +108,28 @@ const ModuleView = () => {
 
     const authToken = getAuthToken();
     const previewPaneRef = useRef<HTMLDivElement | null>(null);
+
+    // 4. DEFINE THE SCRIPT FOR THE MODULE VIEW
+    const tutorialSteps: TutorialStep[] = [
+        {
+            message: "Welcome to the Theoretical Interface. Here you will review the technical manuals and diagrams before touching the hardware."
+        },
+        {
+            targetId: "tour-module-sidebar",
+            message: "This panel displays your lesson chapters and topics. Progress through them sequentially to unlock the simulation."
+        },
+        {
+            targetId: "tour-module-content",
+            message: "The main viewport displays your video feeds, schematics, and textual documentation."
+        },
+        {
+            targetId: "tour-module-actions",
+            message: "Once you have absorbed the material, use these controls to proceed to the next chapter or initiate the hands-on simulation."
+        },
+        {
+            message: "Review the documentation carefully. Mistakes in the simulation can cause system faults. Proceed when ready."
+        }
+    ];
 
     const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
         if (typeof document !== 'undefined') {
@@ -495,6 +518,7 @@ const ModuleView = () => {
                     </div>
 
                     <div className="flex items-center gap-6">
+
                         <button
                             onClick={toggleTheme}
                             className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors hidden sm:block focus:outline-none"
@@ -765,6 +789,13 @@ const ModuleView = () => {
                     </section>
                 </main>
             </div>
+            {/* The Guide Component handles its own floating button, 
+                  animations, and local storage automatically! 
+                */}
+            <TutorialGuide
+                steps={tutorialSteps}
+                storageKey="creosim_tutorial_module"
+            />
         </CyberTransition>
     );
 };
