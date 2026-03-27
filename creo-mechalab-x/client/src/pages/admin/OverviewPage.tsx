@@ -1,12 +1,12 @@
 import { Users, Activity, BookOpen, Bell, History, ArrowRight, AlertTriangle, Loader2, Filter } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getAdminActivityLogs } from "../../api/adminActivityLogs";
+import { getAdminActivityLogs, getAdminTraineeProgressActivityLogs } from "../../api/adminActivityLogs";
 import { listAdminBatches } from "../../api/adminBatches";
 import { getAdminDashboard } from "../../api/adminDashboard";
 import { ApiError } from "../../api/http";
 import { formatAdminFeedTime, toAdminFeedText } from "../../utils/adminFeed";
-import type { AdminActivityLogItem } from "../../types/adminActivityLogs";
+import type { AdminActivityLogItem, AdminTraineeProgressLogItem } from "../../types/adminActivityLogs";
 import type { AdminBatchItem } from "../../types/adminBatch";
 import type { AdminDashboardResponse } from "../../types/adminDashboard";
 
@@ -15,6 +15,7 @@ const SELECTED_BATCH_STORAGE_KEY = "mechalabx.selectedBatchCode";
 const DASHBOARD_SCOPE_ALL_KEY = "__ALL__";
 const DASHBOARD_FEED_DISPLAY_LIMIT = 10;
 const DASHBOARD_FEED_FETCH_LIMIT = 20;
+const DASHBOARD_ACTIVITY_PREVIEW_LIMIT = 8;
 
 const feedIconsByType: Record<string, string> = {
   batch_export: "📤",
@@ -24,6 +25,7 @@ const feedIconsByType: Record<string, string> = {
 const activityColorsByType: Record<string, string> = {
   batch_export: "bg-blue-400",
   system_reset: "bg-orange-400",
+  simulation_completed: "bg-emerald-400",
 };
 
 const emptyDashboard: AdminDashboardResponse = {
@@ -75,11 +77,15 @@ export default function OverviewPage() {
   const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<AdminDashboardResponse>(emptyDashboard);
   const [feedItems, setFeedItems] = useState<AdminActivityLogItem[]>([]);
+  const [activityPreviewItems, setActivityPreviewItems] = useState<AdminTraineeProgressLogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activityPreviewLoading, setActivityPreviewLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [feedError, setFeedError] = useState<string | null>(null);
+  const [activityPreviewError, setActivityPreviewError] = useState<string | null>(null);
   const [reloadSeq, setReloadSeq] = useState(0);
   const [feedRetrying, setFeedRetrying] = useState(false);
+  const [activityPreviewRetrying, setActivityPreviewRetrying] = useState(false);
   const [batchOptions, setBatchOptions] = useState<AdminBatchItem[]>([]);
 
   const [selectedBatch, setSelectedBatch] = useState<string>(() => readStoredBatchCode());
@@ -90,6 +96,10 @@ export default function OverviewPage() {
   const dashboardLoadControllerRef = useRef<AbortController | null>(null);
   const feedRetryControllerRef = useRef<AbortController | null>(null);
   const feedRetryRequestKeyRef = useRef<string | null>(null);
+  const activityPreviewLoadControllerRef = useRef<AbortController | null>(null);
+  const activityPreviewRetryControllerRef = useRef<AbortController | null>(null);
+  const activityPreviewRequestKeyRef = useRef<string | null>(null);
+  const activityPreviewRetryRequestKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -97,6 +107,8 @@ export default function OverviewPage() {
       isMountedRef.current = false;
       dashboardLoadControllerRef.current?.abort();
       feedRetryControllerRef.current?.abort();
+      activityPreviewLoadControllerRef.current?.abort();
+      activityPreviewRetryControllerRef.current?.abort();
     };
   }, []);
 
@@ -175,6 +187,50 @@ export default function OverviewPage() {
     void load();
   }, [selectedBatch, reloadSeq]);
 
+  useEffect(() => {
+    const requestKey = `${selectedBatch || DASHBOARD_SCOPE_ALL_KEY}|activity-preview`;
+    activityPreviewRequestKeyRef.current = requestKey;
+
+    activityPreviewLoadControllerRef.current?.abort();
+    activityPreviewRetryControllerRef.current?.abort();
+    const controller = new AbortController();
+    activityPreviewLoadControllerRef.current = controller;
+
+    const loadPreview = async () => {
+      setActivityPreviewLoading(true);
+      setActivityPreviewRetrying(false);
+      setActivityPreviewError(null);
+      setActivityPreviewItems([]);
+
+      try {
+        const response = await getAdminTraineeProgressActivityLogs({
+          batchCode: selectedBatch || undefined,
+          limit: DASHBOARD_ACTIVITY_PREVIEW_LIMIT,
+          signal: controller.signal,
+        });
+        if (!isMountedRef.current || controller.signal.aborted) return;
+        if (activityPreviewRequestKeyRef.current !== requestKey) return;
+        setActivityPreviewItems(response.items);
+      } catch (previewError) {
+        if (!isMountedRef.current || controller.signal.aborted) return;
+        if (activityPreviewRequestKeyRef.current !== requestKey) return;
+        setActivityPreviewItems([]);
+        setActivityPreviewError(toErrorMessage(previewError));
+      } finally {
+        if (
+          isMountedRef.current &&
+          !controller.signal.aborted &&
+          activityPreviewRequestKeyRef.current === requestKey
+        ) {
+          setActivityPreviewLoading(false);
+          setActivityPreviewRetrying(false);
+        }
+      }
+    };
+
+    void loadPreview();
+  }, [selectedBatch]);
+
   const handleRetry = () => {
     setReloadSeq((current) => current + 1);
   };
@@ -206,6 +262,46 @@ export default function OverviewPage() {
     } finally {
       if (isMountedRef.current && !controller.signal.aborted && feedRetryRequestKeyRef.current === requestKey) {
         setFeedRetrying(false);
+      }
+    }
+  };
+
+  const handleRetryActivityPreview = async () => {
+    const requestKey = `${selectedBatch || DASHBOARD_SCOPE_ALL_KEY}|activity-preview-retry|${Date.now()}`;
+    activityPreviewRetryRequestKeyRef.current = requestKey;
+
+    activityPreviewLoadControllerRef.current?.abort();
+    activityPreviewRetryControllerRef.current?.abort();
+    const controller = new AbortController();
+    activityPreviewRetryControllerRef.current = controller;
+
+    setActivityPreviewRetrying(true);
+    setActivityPreviewLoading(true);
+    setActivityPreviewError(null);
+    setActivityPreviewItems([]);
+
+    try {
+      const response = await getAdminTraineeProgressActivityLogs({
+        batchCode: selectedBatch || undefined,
+        limit: DASHBOARD_ACTIVITY_PREVIEW_LIMIT,
+        signal: controller.signal,
+      });
+      if (!isMountedRef.current || controller.signal.aborted) return;
+      if (activityPreviewRetryRequestKeyRef.current !== requestKey) return;
+      setActivityPreviewItems(response.items);
+    } catch (previewError) {
+      if (!isMountedRef.current || controller.signal.aborted) return;
+      if (activityPreviewRetryRequestKeyRef.current !== requestKey) return;
+      setActivityPreviewItems([]);
+      setActivityPreviewError(toErrorMessage(previewError));
+    } finally {
+      if (
+        isMountedRef.current &&
+        !controller.signal.aborted &&
+        activityPreviewRetryRequestKeyRef.current === requestKey
+      ) {
+        setActivityPreviewLoading(false);
+        setActivityPreviewRetrying(false);
       }
     }
   };
@@ -496,24 +592,61 @@ export default function OverviewPage() {
           <div className="flex-1 overflow-y-auto space-y-4 pr-2 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700 relative">
             <div className="absolute left-[11px] top-2 bottom-2 w-px bg-slate-100 dark:bg-slate-800 -z-10"></div>
 
-            {!feedError && feedPreviewItems.length > 0 && feedPreviewItems.map((act, i) => (
-              <div key={`act-${act.type}-${act.occurred_at}-${i}`} className="flex gap-3 items-start relative z-10">
-                <div className="pt-1 shrink-0 bg-white dark:bg-[#1E293B] py-1">
-                  <div className={`w-2.5 h-2.5 rounded-full ring-[3px] ring-white dark:ring-[#1E293B] ${activityColorsByType[act.type] || "bg-slate-300 dark:bg-slate-600"}`} />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-700 dark:text-slate-300 leading-snug">
-                    {toAdminFeedText(act)}
-                  </p>
-                  <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mt-1">
-                    {formatAdminFeedTime(act.occurred_at)} {act.actor ? `• ${act.actor}` : ""}
-                  </p>
-                </div>
+            {activityPreviewError && !activityPreviewLoading && (
+              <div className="flex flex-col gap-2 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10 p-3 text-center">
+                <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400">Activity preview offline.</p>
+                <button
+                  onClick={() => void handleRetryActivityPreview()}
+                  disabled={activityPreviewRetrying}
+                  className="px-3 py-1.5 rounded-lg text-[10px] font-bold text-white bg-amber-600 hover:bg-amber-700 disabled:opacity-50 transition-colors mx-auto"
+                >
+                  {activityPreviewRetrying ? "Reconnecting..." : "Reconnect"}
+                </button>
               </div>
-            ))}
+            )}
 
-            {!feedError && feedPreviewItems.length === 0 && !loading && (
-              <p className="text-xs font-bold text-slate-400 text-center mt-10 opacity-60">No recent activities.</p>
+            {!activityPreviewError && activityPreviewItems.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-center text-slate-400 opacity-60">
+                <History size={24} className="mb-2" />
+                <p className="text-xs font-bold">
+                  {activityPreviewLoading ? "Loading trainee progress..." : "No trainee progress activity."}
+                </p>
+              </div>
+            ) : (
+              activityPreviewItems.map((act) => (
+                <div key={act.event_id} className="flex gap-3 items-start relative z-10">
+                  <div className="pt-1 shrink-0 bg-white dark:bg-[#1E293B] py-1">
+                    <div className={`w-2.5 h-2.5 rounded-full ring-[3px] ring-white dark:ring-[#1E293B] ${activityColorsByType[act.type] || "bg-slate-300 dark:bg-slate-600"}`} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-bold text-slate-700 dark:text-slate-300 leading-snug">
+                      {act.message}
+                    </p>
+
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                      {act.batch_code && (
+                        <span className="inline-flex items-center rounded-md bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 text-slate-500 dark:text-slate-300">
+                          {act.batch_code}
+                        </span>
+                      )}
+                      {act.simulation_title && (
+                        <span className="inline-flex items-center rounded-md bg-emerald-50 dark:bg-emerald-500/10 px-1.5 py-0.5 text-emerald-600 dark:text-emerald-300">
+                          {act.simulation_title}
+                        </span>
+                      )}
+                      {act.status && (
+                        <span className="inline-flex items-center rounded-md bg-slate-50 dark:bg-slate-800/80 px-1.5 py-0.5 text-slate-500 dark:text-slate-300">
+                          {act.status.replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </div>
+
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mt-1">
+                      {formatAdminFeedTime(act.occurred_at)} {act.trainee_name || act.actor ? `• ${act.trainee_name || act.actor}` : ""}
+                    </p>
+                  </div>
+                </div>
+              ))
             )}
           </div>
         </div>
