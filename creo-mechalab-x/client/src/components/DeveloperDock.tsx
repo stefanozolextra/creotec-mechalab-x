@@ -21,10 +21,13 @@ const DeveloperDock: React.FC = () => {
     const isAdminView = location.pathname.startsWith('/admin');
 
     return (
-        <div className="fixed bottom-6 right-6 z-[9999] font-mono select-none flex flex-col items-end gap-3">
+        /* CHANGED: 'right-6' to 'left-6' and 'items-end' to 'items-start' */
+        <div className="fixed bottom-6 left-6 z-[9999] font-mono select-none flex flex-col items-start gap-3">
+            
             {/* Expanded Action Menu */}
             {isExpanded && (
-                <div className="bg-black/95 border border-green-500/50 p-3 rounded-lg shadow-[0_0_20px_rgba(34,197,94,0.2)] backdrop-blur-md flex flex-col gap-2 min-w-[220px] origin-bottom-right animate-in fade-in slide-in-from-bottom-4 duration-200">
+                /* CHANGED: 'origin-bottom-right' to 'origin-bottom-left' */
+                <div className="bg-black/95 border border-green-500/50 p-3 rounded-lg shadow-[0_0_20px_rgba(34,197,94,0.2)] backdrop-blur-md flex flex-col gap-2 min-w-[220px] origin-bottom-left animate-in fade-in slide-in-from-bottom-4 duration-200">
                     <div className="text-green-500 text-xs tracking-[0.2em] uppercase mb-1 border-b border-green-500/30 pb-2 text-center font-bold">
                         System Override
                     </div>
@@ -34,6 +37,7 @@ const DeveloperDock: React.FC = () => {
                             navigate(isAdminView ? '/dashboard' : '/admin/dashboard');
                             setIsExpanded(false);
                         }}
+                        /* CHANGED: 'text-right' to 'text-left' and 'flex-row-reverse' or standard flex to ensure icon is on the opposite side */
                         className="w-full py-2.5 px-3 bg-green-500/10 hover:bg-green-500/25 text-green-400 text-sm border border-green-500/30 transition-all rounded text-left flex justify-between items-center group"
                     >
                         <span className="group-hover:translate-x-1 transition-transform">
