@@ -211,7 +211,7 @@ const Dashboard = () => {
     // 4. DEFINE TUTORIAL STEPS
     const tutorialSteps: TutorialStep[] = [
         {
-            message: "Welcome Cadet! I am A.S.S.I.S.T., your mechatronics diagnostic companion. Let's get you oriented."
+            message: "System initialized. I am M.A.X, your Mechatronics Assistant eXaminer. I will guide you through the CREOSim environment."
         },
         {
             targetId: "tour-header-controls",

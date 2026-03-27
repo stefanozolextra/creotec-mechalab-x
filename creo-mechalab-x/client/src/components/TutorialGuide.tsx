@@ -134,7 +134,7 @@ export default function TutorialGuide({ steps, storageKey }: TutorialGuideProps)
                     onClick={() => setIsExpanded(true)}
                     className="fixed bottom-6 right-6 z-[9999] w-14 h-14 bg-slate-800 dark:bg-slate-800/80 backdrop-blur-md border border-cyan-500/40 shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_25px_rgba(6,182,212,0.6)] hover:bg-cyan-600 hover:-translate-y-1 active:scale-95 flex items-center justify-center group cursor-pointer transition-colors duration-300"
                     style={{ borderRadius: 9999 }}
-                    title="System Guide"
+                    title="M.A.X. System Guide"
                 >
                     <motion.div
                         initial={{ opacity: 0, scale: 0.5 }}
@@ -198,13 +198,18 @@ export default function TutorialGuide({ steps, storageKey }: TutorialGuideProps)
                                 className="w-24 h-24 sm:w-32 sm:h-32 bg-slate-800 border-2 border-cyan-500 flex-shrink-0 flex items-center justify-center shadow-[0_0_20px_rgba(6,182,212,0.4)] relative z-10"
                                 style={{ borderRadius: 9999 }}
                             >
+                                {/* M.A.X. Avatar Upgrade! */}
                                 <motion.div
                                     initial={{ scale: 0 }}
                                     animate={{ scale: 1 }}
                                     exit={{ scale: 0, opacity: 0 }}
                                     transition={{ duration: 0.2 }}
-                                    className="w-8 h-8 rounded-full bg-cyan-400 animate-pulse shadow-[0_0_15px_rgba(34,211,238,0.8)]"
-                                />
+                                    className="w-10 h-10 rounded-full bg-cyan-950 border border-cyan-400 flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.8)] relative"
+                                >
+                                    <span className="text-cyan-400 font-bold text-lg">M</span>
+                                    <span className="absolute top-0 right-0 w-2 h-2 bg-cyan-400 rounded-full animate-ping opacity-75"></span>
+                                </motion.div>
+                                
                                 <motion.p
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
@@ -212,7 +217,7 @@ export default function TutorialGuide({ steps, storageKey }: TutorialGuideProps)
                                     transition={{ duration: 0.2 }}
                                     className="absolute -bottom-6 text-[10px] font-black tracking-widest text-cyan-500 uppercase"
                                 >
-                                    A.S.S.I.S.T.
+                                    M.A.X.
                                 </motion.p>
                             </motion.div>
 
@@ -223,23 +228,17 @@ export default function TutorialGuide({ steps, storageKey }: TutorialGuideProps)
                                 animate={{ opacity: 1, x: 0, scale: 1 }}
                                 exit={{ opacity: 0, x: -20, scale: 0.9, transition: { duration: 0.3 } }}
                                 transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 20 }}
-                                // FIX: Removed rigid height/width. 
-                                // Added `w-auto`, `min-w-[280px]` (to prevent the header buttons from squishing), and `max-w` to cap how wide it can get.
                                 className="w-auto min-w-[280px] sm:min-w-[320px] max-w-[300px] sm:max-w-[400px] md:max-w-[480px] bg-slate-900/95 backdrop-blur-xl border border-cyan-500/50 p-5 rounded-2xl shadow-2xl relative mb-4 origin-bottom-left"
                             >
                                 <button onClick={handleComplete} className="absolute -top-3 -right-3 bg-slate-800 border border-slate-600 rounded-full p-1 text-slate-400 hover:text-white hover:bg-red-500 transition-colors" title="Close">
                                     <X size={16} />
                                 </button>
 
-                                <h4 className="text-cyan-400 font-black text-xs uppercase tracking-widest mb-2 flex items-center gap-2">
-                                    <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse" />
-                                    System Guide
+                                <h4 className="text-cyan-400 font-black text-[10px] sm:text-xs uppercase tracking-widest mb-2 flex items-center gap-2">
+                                    <span className="w-2 h-2 bg-cyan-400 rounded-full animate-pulse flex-shrink-0" />
+                                    Mechatronics Assistant eXaminer
                                 </h4>
 
-                                {/* FIX: CSS Grid Trick! 
-                                    Both text blocks occupy the exact same cell. 
-                                    The invisible text forces the container to snap to its final size instantly!
-                                */}
                                 <div className="grid text-slate-200 text-sm sm:text-base font-medium leading-relaxed mb-1">
                                     {/* Invisible full text */}
                                     <p className="col-start-1 row-start-1 invisible pointer-events-none select-none" aria-hidden="true">
