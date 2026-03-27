@@ -10,7 +10,6 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ModuleView from './pages/ModuleView';
 import SimulationView from './pages/SimulationView';
-// import PLCSimulationApp from './simulation/PLCSimulationApp';
 import NotFound from './pages/NotFound';
 
 // Admin Components
@@ -24,12 +23,12 @@ import ActivityLogsPage from './pages/admin/ActivityLogsPage';
 
 // Security Utilities
 import { getAuthRole, type AuthRole } from './utils/auth';
+import GodModeListener from './components/GodModeListener';
+import DeveloperDock from './components/DeveloperDock';
 
-/* SECTION: ROUTING ARCHITECTURE & SECURITY LOGIC
-   - USE: Determines where a user should land based on their role.
-*/
-const getLandingRoute = (role: AuthRole): '/dashboard' | '/admin/dashboard' => {
-  return role === 'admin' ? '/admin/dashboard' : '/dashboard';
+/* SECTION: ROUTING ARCHITECTURE & SECURITY LOGIC */
+const getLandingRoute = (role: string): '/dashboard' | '/admin/dashboard' => {
+  return role === 'admin' || role === 'developer' ? '/admin/dashboard' : '/dashboard';
 };
 
 interface RequireAuthProps {
@@ -37,17 +36,20 @@ interface RequireAuthProps {
   role?: AuthRole;
 }
 
-/* SECTION: AUTHENTICATION WRAPPER
-   - USE: Protects URLs from unauthorized access.
-   - HOW IT WORKS: If a user has no role, they are kicked back to '/login'. 
-     If they try to access the wrong role's page, they are redirected to their proper dashboard.
-*/
+/* SECTION: AUTHENTICATION WRAPPER */
 const RequireAuth = ({ children, role }: RequireAuthProps) => {
   const currentRole = getAuthRole();
+
   if (!currentRole) {
     return <Navigate to="/login" replace />;
   }
 
+  // 🌟 GOD MODE OVERRIDE: Let the Developer access EVERYTHING 🌟
+  if (currentRole === 'developer') {
+    return children;
+  }
+
+  // Standard route protection for normal users
   if (role && currentRole !== role) {
     return <Navigate to={getLandingRoute(currentRole)} replace />;
   }
@@ -55,17 +57,13 @@ const RequireAuth = ({ children, role }: RequireAuthProps) => {
   return children;
 };
 
-/* SECTION: ANIMATION WRAPPER (AnimatedRoutes)
-   - USE: Syncs page transitions with URL changes.
-   - HOW IT WORKS: 'useLocation' tracks the current path to trigger Framer Motion animations.
-*/
+/* SECTION: ANIMATION WRAPPER (AnimatedRoutes) */
 const AnimatedRoutes = () => {
   const location = useLocation();
   const currentRole = getAuthRole();
 
   return (
     <AnimatePresence mode="wait">
-      {/* KEY FIX: Split limits animation triggers to the top-level route changes */}
       <Routes location={location} key={location.pathname.split('/')[1]}>
 
         {/* DEFAULT & LOGIN ROUTES */}
@@ -84,9 +82,7 @@ const AnimatedRoutes = () => {
           element={currentRole ? <Navigate to={getLandingRoute(currentRole)} replace /> : <Login />}
         />
 
-        {/* SECTION: TRAINEE PROTECTED ROUTES
-            - USE: Pages accessible only to students. 
-        */}
+        {/* SECTION: TRAINEE PROTECTED ROUTES */}
         <Route
           path="/dashboard"
           element={
@@ -108,14 +104,11 @@ const AnimatedRoutes = () => {
           element={
             <RequireAuth role="trainee">
               <SimulationView />
-              {/* <PLCSimulationApp /> */}
             </RequireAuth>
           }
         />
 
-        {/* SECTION: ADMIN PROTECTED ROUTES
-            - USE: Nested layout for the Admin Control Panel.
-        */}
+        {/* SECTION: ADMIN PROTECTED ROUTES */}
         <Route
           path="/admin"
           element={
@@ -131,14 +124,9 @@ const AnimatedRoutes = () => {
           <Route path="reports" element={<ReportsPage />} />
           <Route path="lessons" element={<LessonsPage />} />
           <Route path="activity-logs" element={<ActivityLogsPage />} />
-
-          {/* THE FIX: Absolute redirect path stops the infinite loop */}
           <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
         </Route>
 
-        {/* SECTION: CATCH-ALL (404 BEHAVIOR)
-            - USE: If a user types a URL that doesn't exist, kick them to the root logic.
-        */}
         <Route path="*" element={<NotFound />} />
       </Routes>
     </AnimatePresence>
@@ -149,6 +137,8 @@ const AnimatedRoutes = () => {
 function App() {
   return (
     <Router>
+      <GodModeListener />
+      <DeveloperDock />
       <AnimatedRoutes />
     </Router>
   );

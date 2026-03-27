@@ -1,4 +1,4 @@
-export type AuthRole = 'trainee' | 'admin';
+export type AuthRole = 'trainee' | 'admin' | 'developer';
 
 const AUTH_ROLE_KEY = 'mechalabx:auth-role';
 const AUTH_TOKEN_KEY = 'mechalabx:auth-token';
@@ -37,7 +37,8 @@ export const setAuthRole = (role: AuthRole): void => {
 
 export const getAuthRole = (): AuthRole | null => {
   const role = sessionStorage.getItem(AUTH_ROLE_KEY);
-  return role === 'trainee' || role === 'admin' ? role : null;
+  // Add 'developer' to the allowed return values
+  return role === 'trainee' || role === 'admin' || role === 'developer' ? role as AuthRole : null;
 };
 
 export const getAuthToken = (): string | null => {
@@ -62,4 +63,20 @@ export const clearAuthSession = (): void => {
 
 export const clearAuthRole = (): void => {
   clearAuthSession();
+};
+
+// NEW HELPER FUNCTION for the GodModeListener
+export const setGodModeSession = (): void => {
+  // 1. Check if we already have a valid session (e.g., logged in as Admin)
+  const existingToken = sessionStorage.getItem(AUTH_TOKEN_KEY);
+  const existingAccountId = parseStoredPositiveInt(sessionStorage.getItem(AUTH_ACCOUNT_ID_KEY));
+  const existingTraineeId = parseStoredPositiveInt(sessionStorage.getItem(AUTH_TRAINEE_ID_KEY));
+
+  // 2. Preserve valid data, otherwise inject the Offline Overrides
+  setAuthSession({
+    role: 'developer',
+    token: existingToken && existingToken.trim() ? existingToken : 'GOD_MODE_OVERRIDE_TOKEN',
+    account_id: existingAccountId || 999999,
+    trainee_id: existingTraineeId || null
+  });
 };

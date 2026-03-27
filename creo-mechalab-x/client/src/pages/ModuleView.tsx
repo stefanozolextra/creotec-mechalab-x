@@ -5,7 +5,7 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import CyberTransition from '../components/CyberTransition';
 import { API_BASE_URL } from '../api/http';
 import { getTraineeDashboard } from '../api/trainees';
-import { getAuthToken } from '../utils/auth';
+import { getAuthRole, getAuthToken } from '../utils/auth';
 import { setNativeSecureScreen } from '../utils/nativeSecureScreen';
 import { resolveSupportedVideoLesson } from '../utils/videoLessons';
 import type { ResourceType } from '../types/traineeDashboard';
@@ -562,8 +562,9 @@ const ModuleView = () => {
                                 ) : lessonOptions.length > 0 ? (
                                     lessonOptions.map((option, index) => {
                                         const isSelected = option.resourceId === selectedLessonResourceId;
-                                        const isLocked = index > highestUnlockedIndex;
-                                        const isCompleted = index < highestUnlockedIndex;
+                                        const role = getAuthRole();
+                                        const isLocked = role === 'developer' ? false : index > highestUnlockedIndex;
+                                        const isCompleted = role === 'developer' ? true : index < highestUnlockedIndex;
 
                                         return (
                                             <div
