@@ -24,8 +24,9 @@ import solenoidValveDevice from '../assets/devices/solenoid-valve.png';
 import timerDevice from '../assets/devices/timer.jpg';
 import { getActivityAnswerByRouteId, ACTIVITY_ANSWERS } from './constants/activityAnswers';
 
-// IMPORT THE GUIDE
+// M.A.X. DEPENDENCIES
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
+import { getAuthRole } from '../utils/auth'; // <-- IMPORTED GOD MODE UTILITY
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
 interface SimulationAppProps { routeId?: string; simulationId?: number; initialCompletedRoutes?: string[]; onNavigateBack?: () => void; }
@@ -70,14 +71,12 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // 1. Move activityPreset up here so we can use it for initial state
   const activityPreset = getActivityAnswerByRouteId(routeId);
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const [isDeviceDrawerOpen, setIsDeviceDrawerOpen] = useState(true);
 
-  // 2. Keep savedStates here
   const [savedStates, setSavedStates] = useState<Record<string, { wires: Connection[], assignedDevices: Record<DeviceZone, DeviceId[]> }>>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -87,7 +86,6 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     }
   });
 
-  // 3. Initialize devices directly from the saved state
   const [assignedDevices, setAssignedDevices] = useState<Record<DeviceZone, DeviceId[]>>(() => {
     const saved = savedStates[activityPreset.routeId];
     return saved ? saved.assignedDevices : { input: [], output: [] };
@@ -167,7 +165,10 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const currentIndex = routeKeys.indexOf(activityPreset.routeId);
   const nextRouteId = currentIndex !== -1 && currentIndex < routeKeys.length - 1 ? routeKeys[currentIndex + 1] : null;
 
-  const isSessionCompleted = !!savedStates[activityPreset.routeId];
+  // 🌟 GOD MODE OVERRIDE 🌟
+  // Instead of strictly locking the board when a saved state exists, 
+  // we check if the user is a developer. If they are, the board NEVER locks!
+  const isSessionCompleted = getAuthRole() === 'developer' ? false : !!savedStates[activityPreset.routeId];
 
   const clearActivity5TimerTimeout = useCallback(() => {
     if (activity5TimerTimeoutRef.current !== null) {
