@@ -2,7 +2,7 @@ import { ChevronLeft, ChevronRight, Folder, Home, Layers, LogOut as LogOutIcon, 
 import { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { flushSync } from "react-dom";
-import { clearAuthRole } from "../../utils/auth";
+import { clearAuthRole, getAuthRole } from "../../utils/auth"; // <-- Imported getAuthRole
 
 const navItems = [
   { to: "/admin/dashboard", label: "Dashboard", icon: Home },
@@ -16,7 +16,11 @@ const AdminLayout = () => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [isDark, setIsDark] = useState(true);
+  
+  // FIX: Default to Light Mode
+  const [isDark, setIsDark] = useState(false); 
+  
+  const role = getAuthRole(); // <-- Get the current active role
 
   useEffect(() => {
     if (isDark) {
@@ -119,8 +123,8 @@ const AdminLayout = () => {
           })}
         </nav>
 
-        {/* BOTTOM SECTION - Mathematically Centered */}
-        <div className="p-3 space-y-3 sm:space-y-4 mb-2 sm:mb-4">
+{/* BOTTOM SECTION - Mathematically Centered */}
+        <div className={`p-3 space-y-3 sm:space-y-4 ${role === 'developer' ? 'mb-24' : 'mb-2 sm:mb-4'}`}>
 
           {/* Theme Toggle */}
           <div
@@ -154,23 +158,24 @@ const AdminLayout = () => {
             )}
           </div>
 
-          {/* User Profile / Logout */}
-          <div onClick={handleLogout} className="flex items-center h-12 sm:h-14 rounded-2xl hover:bg-white/40 dark:hover:bg-white/5 transition-all cursor-pointer group overflow-hidden">
-            <div className="w-[56px] flex items-center justify-center shrink-0">
-              <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gradient-to-tr from-orange-400 to-blue-900 border-2 border-white dark:border-slate-700 shadow-sm" />
-            </div>
-            <div className={`flex flex-col justify-center overflow-hidden whitespace-nowrap transition-all duration-300 ${isCollapsed ? "w-0 opacity-0 border-transparent" : "flex-1 opacity-100 pl-3 border-l-2 border-slate-300 dark:border-slate-700"}`}>
-              <p className="font-bold text-xs sm:text-sm dark:text-slate-200">Juan Dela Cruz</p>
-              <div className="flex items-center gap-1 text-[9px] sm:text-[10px] text-slate-500 uppercase font-bold group-hover:text-red-500 transition-colors mt-0.5">
-                <LogOutIcon size={10} /> Logout
+          {/* User Profile / Logout (HIDDEN FOR DEVELOPER) */}
+          {role !== 'developer' && (
+            <div onClick={handleLogout} className="flex items-center h-12 sm:h-14 rounded-2xl hover:bg-white/40 dark:hover:bg-white/5 transition-all cursor-pointer group overflow-hidden">
+              <div className="w-[56px] flex items-center justify-center shrink-0">
+                <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gradient-to-tr from-slate-400 to-blue-900 border-2 border-white dark:border-slate-700 shadow-sm" />
+              </div>
+              <div className={`flex flex-col justify-center overflow-hidden whitespace-nowrap transition-all duration-300 ${isCollapsed ? "w-0 opacity-0 border-transparent" : "flex-1 opacity-100 pl-3 border-l-2 border-slate-300 dark:border-slate-700"}`}>
+                <p className="font-bold text-xs sm:text-sm dark:text-slate-200">System Administrator</p>
+                <div className="flex items-center gap-1 text-[9px] sm:text-[10px] text-slate-500 uppercase font-bold group-hover:text-red-500 transition-colors mt-0.5">
+                  <LogOutIcon size={10} /> Logout
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </aside>
+          )}
+        </div>      </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
-        {/* RESPONSIVE HEADER: Text will no longer vanish on portrait sizes */}
+        {/* RESPONSIVE HEADER */}
         <header className="h-[80px] sm:h-[100px] px-4 sm:px-8 flex items-center justify-between shrink-0 gap-4 border-b border-transparent">
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight dark:text-slate-100 transition-all truncate pr-2">
             {getHeaderTitle()}
