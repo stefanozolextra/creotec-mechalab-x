@@ -10,7 +10,8 @@ interface WireRoutingSegment {
     orientation: 'horizontal' | 'vertical';
 }
 
-const LANE_OFFSETS = [0, 6, -6, 12, -12, 18, -18, 24, -24];
+// 🌟 FIX: Tighter packing offsets to ensure all wires fit inside the narrow physical gaps
+const LANE_OFFSETS = [0, 4, -4, 8, -8, 2, -2, 6, -6];
 
 const manhattan = (a: WireRoutingPoint, b: WireRoutingPoint) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
@@ -141,25 +142,19 @@ const buildOrthogonalPath = (
     if (!start || !end) return [];
 
     // 🌟 PERFECT HARDWARE-AVOIDING DUCTS 🌟
-    // Wires route cleanly through the gaps between the actual visual panels!
-    const H_TOP = clamp(20 + laneOffset, 2, 60);
-    const H_MID = clamp(320 + laneOffset, 280, 360); // The huge gap between Top Panel and Relay Panel!
-    const H_BOT = clamp(700 + laneOffset, 660, 718); // Below the entire board
+    // STRICT CLAMPING: We forbid the lines from ever spawning outside the physical panel gaps!
+    const H_TOP = clamp(20 + laneOffset, 10, 30);
+    const H_MID = clamp(320 + laneOffset, 312, 328); // Strictly constrained between Y:310 and Y:330
+    const H_BOT = clamp(700 + laneOffset, 686, 714); 
     
-    const V_LEFT = clamp(20 + laneOffset, 2, 60); 
-    const V_MID = clamp(800 + laneOffset, 760, 840); // Gap between Main Board and Actuators
-    const V_RIGHT = clamp(1260 + laneOffset, 1220, 1278);
+    const V_LEFT = clamp(20 + laneOffset, 10, 30);   // Strictly constrained between X:0 and X:40
+    const V_MID = clamp(800 + laneOffset, 792, 808); // Strictly constrained between X:790 and X:810
+    const V_RIGHT = clamp(1260 + laneOffset, 1245, 1275);
 
     const getDuctEntry = (id: string, point: WireRoutingPoint): WireRoutingPoint => {
-        // V+/V- at Y:252 routes down to the 320 gap
         if (isTopTerminalStrip(id)) return { x: point.x, y: H_MID };
-        
-        // Relay_top at Y:402 routes up to the 320 gap
         if (isMidTerminalStrip(id)) return { x: point.x, y: H_MID };
-        
-        // Bottom terminals at Y:626 route down to the 700 gap
         if (isBotTerminalStrip(id)) return { x: point.x, y: H_BOT };
-        
         if (id.startsWith('solenoid')) return { x: V_MID, y: point.y };
         return { x: point.x, y: H_MID };
     };
