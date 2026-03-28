@@ -1104,76 +1104,95 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                       }}
                     />
 
-                    {isActivity5TimerPopupOpen && (
+                {isActivity5TimerPopupOpen && (
                       <div
                         ref={activity5TimerPopupRef}
                         role="dialog"
                         aria-modal="false"
                         aria-label="Timer runtime and setup"
-                        className="absolute z-30 w-[260px] max-w-[calc(100%-24px)] -translate-x-1/2 -translate-y-full rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_24px_50px_-24px_rgba(15,23,42,0.7)] backdrop-blur-md dark:border-slate-700 dark:bg-slate-900/95"
+                        // Theme-aware container sizing and styling
+                        className="absolute z-30 w-[240px] -translate-x-1/2 -translate-y-full rounded-xl border border-slate-300 bg-white/95 p-4 shadow-xl backdrop-blur-xl dark:border-cyan-500/30 dark:bg-slate-900/95 dark:shadow-[0_15px_40px_-15px_rgba(6,182,212,0.4)]"
                         style={{
                           left: (TIMER_WIDGET_BOUNDS.x + (TIMER_WIDGET_BOUNDS.width / 2)) * canvasScale,
                           top: Math.max(24, (TIMER_WIDGET_BOUNDS.y - 12) * canvasScale),
                         }}
                       >
-                        <div className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-slate-200 bg-white/95 dark:border-slate-700 dark:bg-slate-900/95" />
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-[10px] font-black uppercase tracking-[0.24em] text-cyan-600 dark:text-cyan-300">Timer Runtime</p>
-                            <h4 className="mt-1 text-base font-black text-slate-900 dark:text-white">TIMER/CTR Setup</h4>
-                            <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">Review the live countdown and set the on-delay value before pressing START-1.</p>
-                          </div>
+                        {/* Caret pointing down to the hardware */}
+                        <div className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-slate-300 bg-white/95 dark:border-cyan-500/30 dark:bg-slate-900/95" />
+                        
+                        {/* Header */}
+                        <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4 dark:border-slate-700">
+                          <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-800 dark:text-cyan-400">
+                            <span className="h-2 w-2 animate-pulse rounded-full bg-slate-800 dark:bg-cyan-400" />
+                            T1 Config
+                          </h4>
                           <button
                             type="button"
                             onClick={() => setIsActivity5TimerPopupOpen(false)}
-                            className="rounded-lg border border-slate-200 px-2 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-slate-500 transition-colors hover:border-cyan-300 hover:text-cyan-600 dark:border-slate-700 dark:text-slate-300 dark:hover:border-cyan-500 dark:hover:text-cyan-300"
+                            className="text-slate-400 transition-colors hover:text-slate-700 dark:text-slate-500 dark:hover:text-cyan-400"
+                            title="Close"
                           >
-                            Close
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <line x1="18" y1="6" x2="6" y2="18"></line>
+                                <line x1="6" y1="6" x2="18" y2="18"></line>
+                            </svg>
                           </button>
                         </div>
 
-                        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 px-3 py-3 dark:border-slate-700 dark:bg-slate-800/60">
-                          <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Display</p>
-                          <p className="mt-2 text-center font-mono text-2xl font-black tracking-[0.18em] text-rose-500">{activity5TimerDisplayText}</p>
+                        {/* Module Faceplate */}
+                        <div className="rounded-lg border border-slate-300 bg-slate-100 p-3 shadow-inner dark:border-slate-800 dark:bg-slate-950">
+                            {/* Current Value Display (ET) */}
+                            <div className="mb-4">
+                                <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Elapsed Time (ET)</p>
+                                <div className="flex items-center justify-center rounded border border-slate-300 bg-white px-3 py-2 shadow-inner dark:border-slate-800 dark:bg-black">
+                                    <span className="font-mono text-3xl font-black tracking-wider text-rose-600 dark:text-rose-500 dark:drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">
+                                        {activity5TimerDisplayText}
+                                    </span>
+                                </div>
+                            </div>
+                            {/* Preset Value Input (PT) */}
+                            <div className="mb-4">
+                                <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Preset Time (PT)</p>
+                                <div className="flex items-center gap-3">
+                                    <input
+                                      id="activity-5-delay-popup"
+                                      type="number"
+                                      min="0"
+                                      step="0.1"
+                                      inputMode="decimal"
+                                      value={activity5TimerDelayInput}
+                                      onChange={handleActivity5TimerDelayChange}
+                                      onBlur={handleActivity5TimerDelayBlur}
+                                      disabled={activity5RelayEnergized || isSessionCompleted}
+                                      // FIX: Replaced flex-1 with w-24 to keep it properly sized
+                                      className="w-24 rounded border border-slate-300 bg-white px-3 py-1.5 font-mono text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-cyan-300"
+                                    />
+                                    {/* FIX: Added shrink-0 so it never gets crushed */}
+                                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-slate-500">Sec</span>
+                                </div>
+                            </div>
+                            {/* LED Status Indicators */}
+                            <div className="flex items-center justify-between border-t border-slate-300 pt-3 dark:border-slate-800/80">
+                                <div className="flex items-center gap-2">
+                                    <div className={`h-2.5 w-2.5 rounded-full ${activity5RelayEnergized ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'border border-slate-400 bg-slate-300 dark:border-slate-700 dark:bg-slate-800'}`} />
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">Coil (R1)</span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <div className={`h-2.5 w-2.5 rounded-full ${activity5TimerStatus === 'done' ? 'bg-amber-500 shadow-[0_0_8px_#f59e0b]' : 'border border-slate-400 bg-slate-300 dark:border-slate-700 dark:bg-slate-800'}`} />
+                                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">Out (T1)</span>
+                                </div>
+                            </div>
                         </div>
 
-                        <label className="mt-4 block text-[10px] font-black uppercase tracking-[0.24em] text-slate-500 dark:text-slate-400" htmlFor="activity-5-delay-popup">
-                          Delay Value
-                        </label>
-                        <div className="mt-2 flex items-center gap-3">
-                          <input
-                            id="activity-5-delay-popup"
-                            type="number"
-                            min="0"
-                            step="0.1"
-                            inputMode="decimal"
-                            value={activity5TimerDelayInput}
-                            onChange={handleActivity5TimerDelayChange}
-                            onBlur={handleActivity5TimerDelayBlur}
-                            disabled={activity5RelayEnergized || isSessionCompleted}
-                            className="w-28 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-black text-slate-900 outline-none transition-colors focus:border-cyan-500 dark:border-slate-700 dark:bg-slate-900 dark:text-white disabled:cursor-not-allowed disabled:opacity-60"
-                          />
-                          <span className="text-xs font-black uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">seconds</span>
-                        </div>
-                        <p className="mt-2 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
-                          {activity5RelayEnergized
-                            ? 'Delay setup is locked while the timer is active.'
-                            : isSessionCompleted
-                              ? 'This activity is already completed, so the timer setup is read-only.'
-                              : 'Change the preset delay here, then press START-1 to begin the countdown.'}
-                        </p>
-
-                        <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
-                            <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">R1</p>
-                            <p className={`mt-1 text-sm font-black ${activity5RelayEnergized ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}>
-                              {activity5RelayEnergized ? 'ON' : 'OFF'}
+                        {/* Status / Instructions */}
+                        <div className="mt-3 text-center">
+                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
+                              {activity5RelayEnergized
+                                ? 'Timer Active • PT Locked'
+                                : isSessionCompleted
+                                  ? 'Activity Cleared • PT Locked'
+                                  : 'Set PT & Actuate Start'}
                             </p>
-                          </div>
-                          <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
-                            <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">T1</p>
-                            <p className="mt-1 text-sm font-black text-slate-700 dark:text-slate-200">{activity5TimerStatusLabel}</p>
-                          </div>
                         </div>
                       </div>
                     )}
