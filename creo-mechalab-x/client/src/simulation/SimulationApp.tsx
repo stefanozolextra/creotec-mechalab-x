@@ -9,7 +9,7 @@ import './SimulationApp.css';
 
 import { RELAY_PORTS, HW_STYLES } from './constants/relayBoard';
 import { RelayStaticBackground, type ManualRelayButtonId } from './components/RelayStaticBackground';
-import { computeOrthogonalPath } from './utils/wireRouting';
+import { computeOrthogonalPath, type WireRoutingPoint } from './utils/wireRouting';
 import { evaluateActivityAnswer, type ActivityEvaluationResult } from './utils/evaluateActivityAnswer';
 import PortraitGuard from '../components/PortraitGuard';
 import CyberTransition from '../components/CyberTransition';
@@ -34,6 +34,22 @@ type Activity2LampMode = 'off' | 'green' | 'red';
 type Activity3LampMode = 'off' | 'green' | 'yellow';
 type Activity4LampMode = 'off' | 'green' | 'yellow';
 type Activity5TimerStatus = 'idle' | 'timing' | 'done';
+
+const flattenWirePath = (points: WireRoutingPoint[]) => points.flatMap(({ x, y }) => [x, y]);
+
+const routeConnections = (connections: Connection[]) => {
+  const occupiedPaths: WireRoutingPoint[][] = [];
+
+  return connections.map((connection) => {
+    const path = computeOrthogonalPath(connection.fromPin, connection.toPin, RELAY_PORTS, occupiedPaths);
+    occupiedPaths.push(path);
+
+    return {
+      ...connection,
+      points: flattenWirePath(path),
+    };
+  });
+};
 
 const DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS = 2;
 const TIMER_WIDGET_BOUNDS = { x: 675, y: 465, width: 80, height: 90 };
@@ -115,7 +131,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const [isActivity5TimerPopupOpen, setIsActivity5TimerPopupOpen] = useState(false);
   const [wires, setWires] = useState<Connection[]>(() => {
     const saved = savedStates[activityPreset.routeId];
-    return saved ? saved.wires : [];
+    return saved ? routeConnections(saved.wires) : [];
   });
   const [wireColor, setWireColor] = useState<string>('#e74c3c');
   const [activePin, setActivePin] = useState<string | null>(null);
@@ -437,9 +453,10 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
         const isTargetAtCapacity = isPinAtCapacity(targetPin);
         if (!isDuplicate && !isTargetAtCapacity && !isPinAtCapacity(activePin)) {
           setWires(prev => {
-            const pathPoints = computeOrthogonalPath(activePin, targetPin, RELAY_PORTS, prev.length);
-            const flatPoints = pathPoints.flatMap(p => [p.x, p.y]);
-            const next = [...prev, { id: crypto.randomUUID(), fromPin: activePin, toPin: targetPin, color: wireColor, points: flatPoints }];
+            const next = routeConnections([
+              ...prev,
+              { id: crypto.randomUUID(), fromPin: activePin, toPin: targetPin, color: wireColor, points: [] },
+            ]);
             setHistoryPast(hp => [...hp, prev].slice(-50));
             setHistoryFuture([]);
             return next;
@@ -467,7 +484,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const deleteSelectedWire = useCallback(() => {
     if (isSessionCompleted || !selectedWireId) return;
     setWires((prev) => {
-      const next = prev.filter((w) => w.id !== selectedWireId);
+      const next = routeConnections(prev.filter((w) => w.id !== selectedWireId));
       setHistoryPast((hp) => [...hp, prev].slice(-50));
       setHistoryFuture([]);
       return next;
@@ -488,14 +505,14 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
 
       setHistoryPast((hp) => [...hp, prevWires].slice(-50));
       setHistoryFuture([]);
-      return prevWires.map((wire) =>
+      return routeConnections(prevWires.map((wire) =>
         wire.id === selectedWireId ? { ...wire, color: nextColor } : wire,
-      );
+      ));
     });
   }, [selectedWireId, isSessionCompleted]);
 
-  const handleUndo = () => { if (isSessionCompleted || !historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
-  const handleRedo = () => { if (isSessionCompleted || !historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
+  const handleUndo = () => { if (isSessionCompleted || !historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(routeConnections(previous)); };
+  const handleRedo = () => { if (isSessionCompleted || !historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(routeConnections(next)); };
 
   const handleResetBoard = () => {
     if (isSessionCompleted) return;
@@ -593,6 +610,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     }),
     [activityPreset, assignedDevices, wires],
   );
+  const routedWires = useMemo(() => routeConnections(wires), [wires]);
 
   const isActivity1GreenLampOn = activityPreset.routeId === '1' && isMainSwitchOn && activityEvaluationPreview.passed && isActivity1GreenLampLatched;
   const isActivity2GreenLampOn = activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'green';
@@ -650,12 +668,12 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     if (result.passed) {
       setSavedStates((prev) => ({
         ...prev,
-        [activityPreset.routeId]: { wires, assignedDevices },
+        [activityPreset.routeId]: { wires: routedWires, assignedDevices },
       }));
       setShowSuccessAnim(true);
       setTimeout(() => setShowSuccessAnim(false), 2500);
     }
-  }, [activityPreset, answerSignature, assignedDevices, wires]);
+  }, [activityPreset, answerSignature, assignedDevices, routedWires, wires]);
 
   const handleDeviceDragStart = useCallback(
     (deviceId: DeviceId, source: DeviceZone | 'library', event: DragEvent<HTMLElement>) => {
@@ -1180,14 +1198,14 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                       isGreenLampOn={isActivity1GreenLampOn || isActivity2GreenLampOn || isActivity3GreenLampOn || isActivity4GreenLampOn || isActivity5GreenLampOn}
                       isYellowLampOn={isActivity3YellowLampOn || isActivity4YellowLampOn || isActivity5YellowLampOn}
                       isRedLampOn={isActivity2RedLampOn}
-                      // timerDisplayText={activity5TimerDisplayText}
+                      timerDisplayText={activity5TimerDisplayText}
                       manualButtonState={pressedManualButtons}
                       onToggleSwitch={handleToggleSwitch}
                       onManualButtonPressChange={handleManualButtonPressChange}
                     />
 
                     <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
-                      {wires.map((wire) => {
+                      {routedWires.map((wire) => {
                         const isSelected = selectedWireId === wire.id;
                         const isWrong = wrongWireKeySet.has(toWireKey(wire.fromPin, wire.toPin));
                         return (

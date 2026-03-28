@@ -3,10 +3,21 @@ export interface WireRoutingPoint {
     y: number;
 }
 
+interface WireRoutingSegment {
+    axis: number;
+    start: number;
+    end: number;
+    orientation: 'horizontal' | 'vertical';
+}
+
+const LANE_OFFSETS = [0, 6, -6, 12, -12, 18, -18, 24, -24];
+
 const manhattan = (a: WireRoutingPoint, b: WireRoutingPoint) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
 const samePoint = (a: WireRoutingPoint, b: WireRoutingPoint) =>
     Math.abs(a.x - b.x) < 0.5 && Math.abs(a.y - b.y) < 0.5;
+
+const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
 const compactPath = (points: WireRoutingPoint[]) => {
     const deduped: WireRoutingPoint[] = [];
@@ -37,6 +48,77 @@ const compactPath = (points: WireRoutingPoint[]) => {
     return compact;
 };
 
+const toSegments = (points: WireRoutingPoint[]): WireRoutingSegment[] => {
+    const segments: WireRoutingSegment[] = [];
+
+    for (let i = 1; i < points.length; i++) {
+        const start = points[i - 1];
+        const end = points[i];
+
+        if (samePoint(start, end)) continue;
+
+        if (Math.abs(start.y - end.y) < 0.5) {
+            segments.push({
+                axis: start.y,
+                start: Math.min(start.x, end.x),
+                end: Math.max(start.x, end.x),
+                orientation: 'horizontal',
+            });
+            continue;
+        }
+
+        if (Math.abs(start.x - end.x) < 0.5) {
+            segments.push({
+                axis: start.x,
+                start: Math.min(start.y, end.y),
+                end: Math.max(start.y, end.y),
+                orientation: 'vertical',
+            });
+        }
+    }
+
+    return segments;
+};
+
+const getRangeOverlap = (aStart: number, aEnd: number, bStart: number, bEnd: number) =>
+    Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+
+const scorePath = (
+    candidatePath: WireRoutingPoint[],
+    occupiedPaths: WireRoutingPoint[][],
+    laneOffset: number,
+) => {
+    const candidateSegments = toSegments(candidatePath);
+    const pathLength = candidateSegments.reduce((total, segment) => total + (segment.end - segment.start), 0);
+    const turnPenalty = Math.max(0, candidateSegments.length - 1) * 25;
+
+    let overlapPenalty = 0;
+
+    for (const occupiedPath of occupiedPaths) {
+        const occupiedSegments = toSegments(occupiedPath);
+
+        for (const candidateSegment of candidateSegments) {
+            for (const occupiedSegment of occupiedSegments) {
+                if (candidateSegment.orientation !== occupiedSegment.orientation) continue;
+                if (Math.abs(candidateSegment.axis - occupiedSegment.axis) >= 0.5) continue;
+
+                const overlap = getRangeOverlap(
+                    candidateSegment.start,
+                    candidateSegment.end,
+                    occupiedSegment.start,
+                    occupiedSegment.end,
+                );
+
+                if (overlap > 0.5) {
+                    overlapPenalty += 1_000_000 + overlap * 100;
+                }
+            }
+        }
+    }
+
+    return overlapPenalty + pathLength + turnPenalty + Math.abs(laneOffset);
+};
+
 const isTopTerminalStrip = (id: string) =>
     id.startsWith('vplus_')
     || id.startsWith('vminus_')
@@ -52,33 +134,28 @@ const isBottomTerminalStrip = (id: string) =>
 
 const isLeftTrainerStrip = (id: string) => isTopTerminalStrip(id) || isBottomTerminalStrip(id);
 
-export function computeOrthogonalPath(
+const buildOrthogonalPath = (
     fromId: string,
     toId: string,
     ports: Record<string, { x: number; y: number }>,
-    wireIndex: number
-): WireRoutingPoint[] {
+    laneOffset: number,
+): WireRoutingPoint[] => {
     const start = ports[fromId];
     const end = ports[toId];
     if (!start || !end) return [];
 
-    // Offsets lines so multiple wires don't visually merge into one
-    const offset = (wireIndex % 5 - 2) * 6; // Values: -12, -6, 0, 6, 12
+    const H_TOP = clamp(20 + laneOffset, 2, 60);
+    const H_MID = clamp(320 + laneOffset, 280, 360);
+    const H_BOT = clamp(700 + laneOffset, 660, 718);
+    const V_LEFT = clamp(20 + laneOffset, 2, 60);
+    const V_MID = clamp(800 + laneOffset, 760, 840);
+    const V_RIGHT = clamp(1260 + laneOffset, 1220, 1278);
 
-    // The centerlines of the gray wire ducts based on panel gaps
-    const H_TOP = 20 + offset;
-    const H_MID = 320 + offset;
-    const H_BOT = 700 + offset;
-    const V_LEFT = 20 + offset;
-    const V_MID = 800 + offset;
-    const V_RIGHT = 1260 + offset;
-
-    // Forces the wire to properly exit into the correct duct based on the port's location
-    const getDuctEntry = (id: string, p: WireRoutingPoint): WireRoutingPoint => {
-        if (isTopTerminalStrip(id)) return { x: p.x, y: H_MID };
-        if (isBottomTerminalStrip(id)) return { x: p.x, y: H_BOT };
-        if (id.startsWith('solenoid')) return { x: V_MID, y: p.y }; // Left
-        return { x: p.x, y: H_MID }; // Fallback
+    const getDuctEntry = (id: string, point: WireRoutingPoint): WireRoutingPoint => {
+        if (isTopTerminalStrip(id)) return { x: point.x, y: H_MID };
+        if (isBottomTerminalStrip(id)) return { x: point.x, y: H_BOT };
+        if (id.startsWith('solenoid')) return { x: V_MID, y: point.y };
+        return { x: point.x, y: H_MID };
     };
 
     const sPrime = getDuctEntry(fromId, start);
@@ -113,7 +190,6 @@ export function computeOrthogonalPath(
     const isValidH = (y: number) => Math.abs(y - H_TOP) < 1 || Math.abs(y - H_MID) < 1 || Math.abs(y - H_BOT) < 1;
     const isValidV = (x: number) => Math.abs(x - V_LEFT) < 1 || Math.abs(x - V_MID) < 1 || Math.abs(x - V_RIGHT) < 1;
 
-    // Construct the Duct Grid Graph
     const nodes: Record<string, WireRoutingPoint> = {};
     const edges: Record<string, string[]> = {};
     const key = (x: number, y: number) => `${x},${y}`;
@@ -141,36 +217,71 @@ export function computeOrthogonalPath(
         }
     }
 
-    // Dijkstra Pathfinding
     const startKey = key(sPrime.x, sPrime.y);
     const endKey = key(ePrime.x, ePrime.y);
     const dist: Record<string, number> = {};
     const prev: Record<string, string | null> = {};
     const unvisited = new Set<string>(Object.keys(nodes));
 
-    for (const k of unvisited) { dist[k] = Infinity; prev[k] = null; }
+    for (const nodeKey of unvisited) {
+        dist[nodeKey] = Infinity;
+        prev[nodeKey] = null;
+    }
     dist[startKey] = 0;
 
     while (unvisited.size > 0) {
-        let u: string | null = null;
-        let best = Infinity;
-        for (const k of unvisited) { if (dist[k] < best) { best = dist[k]; u = k; } }
-        if (!u || u === endKey) break;
-        unvisited.delete(u);
+        let currentNode: string | null = null;
+        let bestDistance = Infinity;
+        for (const nodeKey of unvisited) {
+            if (dist[nodeKey] < bestDistance) {
+                bestDistance = dist[nodeKey];
+                currentNode = nodeKey;
+            }
+        }
+        if (!currentNode || currentNode === endKey) break;
+        unvisited.delete(currentNode);
 
-        for (const v of edges[u]) {
-            if (!unvisited.has(v)) continue;
-            const alt = dist[u] + manhattan(nodes[u], nodes[v]);
-            if (alt < dist[v]) { dist[v] = alt; prev[v] = u; }
+        for (const neighborKey of edges[currentNode]) {
+            if (!unvisited.has(neighborKey)) continue;
+            const alt = dist[currentNode] + manhattan(nodes[currentNode], nodes[neighborKey]);
+            if (alt < dist[neighborKey]) {
+                dist[neighborKey] = alt;
+                prev[neighborKey] = currentNode;
+            }
         }
     }
 
     const pathKeys: string[] = [];
-    let cur: string | null = endKey;
-    while (cur) { pathKeys.push(cur); cur = prev[cur]; }
+    let currentNode: string | null = endKey;
+    while (currentNode) {
+        pathKeys.push(currentNode);
+        currentNode = prev[currentNode];
+    }
     pathKeys.reverse();
 
     if (pathKeys.length === 0 || pathKeys[0] !== startKey) return [start, end];
 
-    return compactPath([start, ...pathKeys.map(k => nodes[k]), end]);
+    return compactPath([start, ...pathKeys.map(nodeKey => nodes[nodeKey]), end]);
+};
+
+export function computeOrthogonalPath(
+    fromId: string,
+    toId: string,
+    ports: Record<string, { x: number; y: number }>,
+    occupiedPaths: WireRoutingPoint[][] = [],
+): WireRoutingPoint[] {
+    const candidates = LANE_OFFSETS
+        .map((laneOffset) => ({
+            laneOffset,
+            path: buildOrthogonalPath(fromId, toId, ports, laneOffset),
+        }))
+        .filter((candidate) => candidate.path.length > 0);
+
+    if (!candidates.length) return [];
+
+    return candidates.reduce((best, candidate) => (
+        scorePath(candidate.path, occupiedPaths, candidate.laneOffset) < scorePath(best.path, occupiedPaths, best.laneOffset)
+            ? candidate
+            : best
+    )).path;
 }
