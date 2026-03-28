@@ -30,23 +30,22 @@ const generateTerminalStrip = (prefix: string, startX: number, startY: number, c
     }
 };
 
-// 1. Top-Left Control Panel Terminals (Horizontal)
+// 1. Top Control Panel Terminals 
 generateTerminalStrip('vplus', 82, 252, 12, false, HW_STYLES.jackRed, '24V+ Supply');
 generateTerminalStrip('vminus', 327, 252, 12, false, HW_STYLES.jackBlack, '0V- Ground');
 generateTerminalStrip('lights', 572, 252, 12, false, HW_STYLES.jackBlue, 'Signal I/O');
 
-// 2. Bottom-Left Relay & Timer Terminals (Horizontal)
-// FIXED ALIGNMENT: 14-pin blocks redistributed evenly
-generateTerminalStrip('relay1', 66, 402, 14, false, HW_STYLES.jackYellow, 'Relay 1 (Top)');
-generateTerminalStrip('relay2', 314, 402, 14, false, HW_STYLES.jackYellow, 'Relay 2 (Top)');
-generateTerminalStrip('relay3', 562, 402, 14, false, HW_STYLES.jackYellow, 'Timer/Ctr (Top)');
+// 2. Middle Relay Terminals 
+generateTerminalStrip('relay1', 66, 402, 14, false, HW_STYLES.jackYellow, 'Relay 1');
+generateTerminalStrip('relay2', 314, 402, 14, false, HW_STYLES.jackYellow, 'Relay 2');
+generateTerminalStrip('relay3', 562, 402, 14, false, HW_STYLES.jackYellow, 'Relay 3');
 
-// FIXED Y-AXIS: Moved up from 638 to 626 to fix the awkward vertical gap
-generateTerminalStrip('button', 82, 626, 12, false, HW_STYLES.jackYellow, 'Relay 1 (Bot)');
-generateTerminalStrip('counter', 330, 626, 12, false, HW_STYLES.jackYellow, 'Relay 2 (Bot)');
-generateTerminalStrip('timer', 578, 626, 12, false, HW_STYLES.jackYellow, 'Timer/Ctr (Bot)');
+// 3. Bottom Terminals
+generateTerminalStrip('button', 82, 626, 12, false, HW_STYLES.jackYellow, 'Buttons');
+generateTerminalStrip('counter', 330, 626, 12, false, HW_STYLES.jackYellow, 'Counter');
+generateTerminalStrip('timer', 578, 626, 12, false, HW_STYLES.jackYellow, 'Timer');
 
-// 3. Right-Side Solenoid Terminals (Vertical)
+// 4. Solenoid Terminals 
 generateTerminalStrip('solenoid1', 852, 122, 12, true, HW_STYLES.jackBlue, 'Solenoid 1');
 generateTerminalStrip('solenoid2', 852, 422, 12, true, HW_STYLES.jackBlue, 'Solenoid 2');
 

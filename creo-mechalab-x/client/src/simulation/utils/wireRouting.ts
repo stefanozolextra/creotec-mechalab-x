@@ -120,19 +120,15 @@ const scorePath = (
 };
 
 const isTopTerminalStrip = (id: string) =>
-    id.startsWith('vplus_')
-    || id.startsWith('vminus_')
-    || id.startsWith('lights_')
-    || id.startsWith('relay1_')
-    || id.startsWith('relay2_')
-    || id.startsWith('relay3_');
+    id.startsWith('vplus_') || id.startsWith('vminus_') || id.startsWith('lights_');
 
-const isBottomTerminalStrip = (id: string) =>
-    id.startsWith('button_')
-    || id.startsWith('counter_')
-    || id.startsWith('timer_');
+const isMidTerminalStrip = (id: string) =>
+    id.startsWith('relay1_') || id.startsWith('relay2_') || id.startsWith('relay3_');
 
-const isLeftTrainerStrip = (id: string) => isTopTerminalStrip(id) || isBottomTerminalStrip(id);
+const isBotTerminalStrip = (id: string) =>
+    id.startsWith('button_') || id.startsWith('counter_') || id.startsWith('timer_');
+
+const isLeftTrainerStrip = (id: string) => isTopTerminalStrip(id) || isMidTerminalStrip(id) || isBotTerminalStrip(id);
 
 const buildOrthogonalPath = (
     fromId: string,
@@ -144,16 +140,26 @@ const buildOrthogonalPath = (
     const end = ports[toId];
     if (!start || !end) return [];
 
+    // 🌟 PERFECT HARDWARE-AVOIDING DUCTS 🌟
+    // Wires route cleanly through the gaps between the actual visual panels!
     const H_TOP = clamp(20 + laneOffset, 2, 60);
-    const H_MID = clamp(320 + laneOffset, 280, 360);
-    const H_BOT = clamp(700 + laneOffset, 660, 718);
-    const V_LEFT = clamp(20 + laneOffset, 2, 60);
-    const V_MID = clamp(800 + laneOffset, 760, 840);
+    const H_MID = clamp(320 + laneOffset, 280, 360); // The huge gap between Top Panel and Relay Panel!
+    const H_BOT = clamp(700 + laneOffset, 660, 718); // Below the entire board
+    
+    const V_LEFT = clamp(20 + laneOffset, 2, 60); 
+    const V_MID = clamp(800 + laneOffset, 760, 840); // Gap between Main Board and Actuators
     const V_RIGHT = clamp(1260 + laneOffset, 1220, 1278);
 
     const getDuctEntry = (id: string, point: WireRoutingPoint): WireRoutingPoint => {
+        // V+/V- at Y:252 routes down to the 320 gap
         if (isTopTerminalStrip(id)) return { x: point.x, y: H_MID };
-        if (isBottomTerminalStrip(id)) return { x: point.x, y: H_BOT };
+        
+        // Relay_top at Y:402 routes up to the 320 gap
+        if (isMidTerminalStrip(id)) return { x: point.x, y: H_MID };
+        
+        // Bottom terminals at Y:626 route down to the 700 gap
+        if (isBotTerminalStrip(id)) return { x: point.x, y: H_BOT };
+        
         if (id.startsWith('solenoid')) return { x: V_MID, y: point.y };
         return { x: point.x, y: H_MID };
     };

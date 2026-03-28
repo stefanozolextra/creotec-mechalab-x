@@ -52,7 +52,7 @@ const routeConnections = (connections: Connection[]) => {
 };
 
 const DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS = 2;
-const TIMER_WIDGET_BOUNDS = { x: 675, y: 465, width: 80, height: 90 };
+const TIMER_WIDGET_BOUNDS = { x: 675, y: 455, width: 85, height: 95 };
 
 const formatActivity5TimerDisplay = (seconds: number) => Math.max(0, seconds).toFixed(2).padStart(5, '0');
 
