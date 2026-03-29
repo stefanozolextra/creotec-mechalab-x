@@ -28,7 +28,7 @@ if (!JWT_SECRET) {
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN?.trim() || "8h";
 const DEFAULT_TRAINEE_PASSWORD = process.env.DEFAULT_TRAINEE_PASSWORD?.trim() || "";
 const SHOULD_RETURN_GENERATED_PASSWORD =
-    process.env.RETURN_GENERATED_PASSWORD?.trim().toLowerCase() === "true" && process.env.NODE_ENV !== "production";
+    process.env.RETURN_GENERATED_PASSWORD?.trim().toLowerCase() === "true";
 const BATCH_CODE_REGEX = /^\d{4}-(CTT|IMM)\d{2}$/;
 const RESEND_CREDENTIALS_COOLDOWN_MS = 5 * 60 * 1000;
 let hasLoggedMissingSmtpConfig = false;
