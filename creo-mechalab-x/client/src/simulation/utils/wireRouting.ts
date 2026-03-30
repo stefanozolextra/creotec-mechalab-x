@@ -11,7 +11,8 @@ interface WireRoutingSegment {
 }
 
 // 🌟 FIX: Tighter packing offsets to ensure all wires fit inside the narrow physical gaps
-const LANE_OFFSETS = [0, 4, -4, 8, -8, 2, -2, 6, -6];
+const LANE_OFFSETS = [0, 8, -8, 16, -16, 24, -24, 4, -4, 12, -12, 20, -20];
+const MIN_PARALLEL_SPACING = 8;
 
 const manhattan = (a: WireRoutingPoint, b: WireRoutingPoint) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 
@@ -110,8 +111,16 @@ const scorePath = (
                     occupiedSegment.end,
                 );
 
-                if (overlap > 0.5) {
+                if (overlap <= 0.5) continue;
+
+                const axisDelta = Math.abs(candidateSegment.axis - occupiedSegment.axis);
+                if (axisDelta < 0.5) {
                     overlapPenalty += 1_000_000 + overlap * 100;
+                    continue;
+                }
+
+                if (axisDelta < MIN_PARALLEL_SPACING) {
+                    overlapPenalty += (MIN_PARALLEL_SPACING - axisDelta) * 2_500 + overlap * 75;
                 }
             }
         }
@@ -143,13 +152,13 @@ const buildOrthogonalPath = (
 
     // 🌟 PERFECT HARDWARE-AVOIDING DUCTS 🌟
     // STRICT CLAMPING: We forbid the lines from ever spawning outside the physical panel gaps!
-    const H_TOP = clamp(20 + laneOffset, 10, 30);
-    const H_MID = clamp(320 + laneOffset, 312, 328); // Strictly constrained between Y:310 and Y:330
-    const H_BOT = clamp(700 + laneOffset, 686, 714); 
-    
-    const V_LEFT = clamp(20 + laneOffset, 10, 30);   // Strictly constrained between X:0 and X:40
-    const V_MID = clamp(800 + laneOffset, 792, 808); // Strictly constrained between X:790 and X:810
-    const V_RIGHT = clamp(1260 + laneOffset, 1245, 1275);
+    const H_TOP = clamp(20 + laneOffset, 4, 44);
+    const H_MID = clamp(320 + laneOffset, 302, 338);
+    const H_BOT = clamp(700 + laneOffset, 676, 724);
+
+    const V_LEFT = clamp(20 + laneOffset, 4, 44);
+    const V_MID = clamp(800 + laneOffset, 784, 816);
+    const V_RIGHT = clamp(1260 + laneOffset, 1236, 1284);
 
     const getDuctEntry = (id: string, point: WireRoutingPoint): WireRoutingPoint => {
         if (isTopTerminalStrip(id)) return { x: point.x, y: H_MID };
