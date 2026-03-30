@@ -1,6 +1,7 @@
 import React, { useState } from "react";
-import { X, Upload, Link as LinkIcon, Loader2, FileText, PlayCircle, Trash2 } from "lucide-react";
-import { requestJson } from "../../api/http"; // <-- Corrected import
+import { X, Upload, Link as LinkIcon, Loader2, FileText, PlayCircle, Trash2, Layers3 } from "lucide-react";
+import { requestJson } from "../../api/http";
+import { motion } from "framer-motion"; // <-- Added for smooth animations
 
 interface ResourceInput {
     id: string;
@@ -19,12 +20,10 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
 
-    // Module Details
     const [moduleCode, setModuleCode] = useState("");
     const [moduleTitle, setModuleTitle] = useState("");
     const [moduleDesc, setModuleDesc] = useState("");
 
-    // Dynamic Resources List
     const [resources, setResources] = useState<ResourceInput[]>([]);
 
     const addResourceField = (type: "PDF" | "VIDEO") => {
@@ -51,7 +50,6 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
         e.preventDefault();
         setError("");
 
-        // Validation
         if (!moduleCode.trim() || !moduleTitle.trim()) {
             return setError("Module Code and Title are required.");
         }
@@ -64,7 +62,6 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
         setIsLoading(true);
 
         try {
-            // 1. Create the Module using the requestJson wrapper
             const moduleRes = await requestJson<{ module: { module_id: number } }>("/admin/lessons/modules", {
                 method: "POST",
                 body: {
@@ -76,12 +73,10 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
             
             const newModuleId = moduleRes.module.module_id;
 
-            // 2. Upload/Attach all resources sequentially
             for (let i = 0; i < resources.length; i++) {
                 const res = resources[i];
                 
                 if (res.type === "VIDEO") {
-                    // Attach Video URL
                     await requestJson(`/admin/lessons/modules/${newModuleId}/resources`, {
                         method: "POST",
                         body: {
@@ -92,13 +87,11 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                         }
                     });
                 } else if (res.type === "PDF" && res.file) {
-                    // Upload PDF File
                     const formData = new FormData();
                     formData.append("file", res.file);
                     formData.append("title", res.title.trim());
                     formData.append("orderNo", (i + 1).toString());
 
-                    // requestJson automatically detects FormData and drops the JSON content-type header
                     await requestJson(`/admin/lessons/modules/${newModuleId}/resources/upload`, {
                         method: "POST",
                         body: formData,
@@ -106,7 +99,6 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                 }
             }
 
-            // 3. Close and Refresh
             onSuccess();
         } catch (err: unknown) {
             if (err instanceof Error) {
@@ -120,88 +112,108 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
     };
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-            <div className="bg-gray-900 border border-gray-800 w-full max-w-2xl rounded-xl shadow-2xl flex flex-col max-h-[90vh]">
+        <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4"
+        >
+            <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                transition={{ duration: 0.2, ease: "easeOut" }}
+                className="bg-white dark:bg-[#1E293B] border border-slate-200 dark:border-slate-800/50 w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
+            >
                 
                 {/* Header */}
-                <div className="flex justify-between items-center p-6 border-b border-gray-800">
-                    <h2 className="text-xl font-bold text-white">Create New Module</h2>
-                    <button onClick={onClose} className="text-gray-400 hover:text-white transition-colors">
-                        <X className="w-6 h-6" />
+                <div className="flex justify-between items-center p-6 border-b border-slate-100 dark:border-slate-800/50 bg-white dark:bg-[#1E293B]">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-[#3B82F6]">
+                            <Layers3 size={20} />
+                        </div>
+                        <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">Create New Module</h2>
+                    </div>
+                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
 
                 {/* Scrollable Form */}
                 <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
-                    <form id="create-module-form" onSubmit={handleSubmit} className="space-y-6">
+                    <form id="create-module-form" onSubmit={handleSubmit} className="space-y-8">
                         
                         {error && (
-                            <div className="bg-red-500/10 border border-red-500/50 text-red-400 p-3 rounded-lg text-sm">
+                            <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 p-4 rounded-xl text-sm font-semibold flex items-center gap-2">
                                 {error}
                             </div>
                         )}
 
                         {/* Module Details */}
                         <div className="space-y-4">
-                            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">1. Module Details</h3>
+                            <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                1. Module Details
+                            </h3>
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
-                                    <label className="block text-sm text-gray-300 mb-1">Module Code</label>
-                                    <input type="text" placeholder="e.g. M01" value={moduleCode} onChange={(e) => setModuleCode(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-white focus:border-blue-500 outline-none" required />
+                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Module Code</label>
+                                    <input type="text" placeholder="e.g. M01" value={moduleCode} onChange={(e) => setModuleCode(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all" required />
                                 </div>
                                 <div className="col-span-2">
-                                    <label className="block text-sm text-gray-300 mb-1">Module Title</label>
-                                    <input type="text" placeholder="e.g. Introduction to Mechatronics" value={moduleTitle} onChange={(e) => setModuleTitle(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-white focus:border-blue-500 outline-none" required />
+                                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Module Title</label>
+                                    <input type="text" placeholder="e.g. Intro to Mechatronics" value={moduleTitle} onChange={(e) => setModuleTitle(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all" required />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm text-gray-300 mb-1">Description (Optional)</label>
-                                <textarea rows={2} value={moduleDesc} onChange={(e) => setModuleDesc(e.target.value)} className="w-full bg-gray-950 border border-gray-800 rounded-lg p-2.5 text-white focus:border-blue-500 outline-none" />
+                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Description (Optional)</label>
+                                <textarea rows={2} value={moduleDesc} onChange={(e) => setModuleDesc(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all" />
                             </div>
                         </div>
 
                         {/* Materials Section */}
-                        <div className="space-y-4 pt-4 border-t border-gray-800">
+                        <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800/50">
                             <div className="flex justify-between items-center">
-                                <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wider">2. Learning Materials</h3>
+                                <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                    2. Learning Materials
+                                </h3>
                                 <div className="flex gap-2">
-                                    <button type="button" onClick={() => addResourceField("PDF")} className="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg transition-colors">
-                                        <FileText className="w-3.5 h-3.5" /> Add PDF
+                                    <button type="button" onClick={() => addResourceField("PDF")} className="flex items-center gap-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl transition-colors">
+                                        <FileText className="w-4 h-4 text-[#3B82F6]" /> Add PDF
                                     </button>
-                                    <button type="button" onClick={() => addResourceField("VIDEO")} className="flex items-center gap-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg transition-colors">
-                                        <PlayCircle className="w-3.5 h-3.5" /> Add Video Link
+                                    <button type="button" onClick={() => addResourceField("VIDEO")} className="flex items-center gap-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl transition-colors">
+                                        <PlayCircle className="w-4 h-4 text-emerald-500" /> Add Video Link
                                     </button>
                                 </div>
                             </div>
 
                             {resources.length === 0 ? (
-                                <div className="text-center p-8 border border-dashed border-gray-800 rounded-xl text-gray-500 text-sm">
-                                    No materials added yet. Click the buttons above to add PDFs or Videos.
+                                <div className="text-center p-8 border-2 border-dashed border-slate-200 dark:border-slate-700/50 rounded-2xl text-slate-500 font-semibold text-sm bg-slate-50/50 dark:bg-[#1E293B]/50">
+                                    No materials added yet. Click the buttons above to attach PDFs or Videos.
                                 </div>
                             ) : (
                                 <div className="space-y-3">
                                     {resources.map((res, index) => (
-                                        <div key={res.id} className="bg-gray-950 border border-gray-800 p-4 rounded-xl flex gap-4 items-start relative group">
-                                            <div className="mt-2 text-gray-500">
-                                                {res.type === "PDF" ? <FileText className="w-5 h-5 text-rose-400" /> : <PlayCircle className="w-5 h-5 text-blue-400" />}
+                                        <div key={res.id} className="bg-slate-50 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700/50 p-4 rounded-2xl flex gap-4 items-start relative group transition-all hover:border-[#3B82F6]/50">
+                                            <div className="mt-2 w-8 h-8 rounded-full bg-white dark:bg-slate-900 flex items-center justify-center shrink-0 shadow-sm border border-slate-100 dark:border-slate-700/50">
+                                                {res.type === "PDF" ? <FileText className="w-4 h-4 text-[#3B82F6]" /> : <PlayCircle className="w-4 h-4 text-emerald-500" />}
                                             </div>
                                             
-                                            <div className="flex-1 space-y-3">
-                                                <input type="text" placeholder={`${res.type} Title (e.g. Lesson ${index + 1} Manual)`} value={res.title} onChange={(e) => updateResource(res.id, "title", e.target.value)} className="w-full bg-gray-900 border border-gray-800 rounded-lg p-2 text-sm text-white focus:border-blue-500 outline-none" required />
+                                            <div className="flex-1 space-y-3 min-w-0">
+                                                <input type="text" placeholder={`${res.type} Title (e.g. Lesson ${index + 1} Manual)`} value={res.title} onChange={(e) => updateResource(res.id, "title", e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-sm font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all" required />
                                                 
                                                 {res.type === "VIDEO" ? (
-                                                    <div className="flex items-center gap-2 bg-gray-900 border border-gray-800 rounded-lg px-3 overflow-hidden focus-within:border-blue-500">
-                                                        <LinkIcon className="w-4 h-4 text-gray-500" />
-                                                        <input type="url" placeholder="https://youtube.com/..." value={res.url} onChange={(e) => updateResource(res.id, "url", e.target.value)} className="w-full bg-transparent p-2 text-sm text-blue-400 outline-none" required />
+                                                    <div className="flex items-center gap-2 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 rounded-lg px-3 overflow-hidden focus-within:ring-2 focus-within:ring-[#3B82F6] transition-all">
+                                                        <LinkIcon className="w-4 h-4 text-slate-400" />
+                                                        <input type="url" placeholder="https://youtube.com/..." value={res.url} onChange={(e) => updateResource(res.id, "url", e.target.value)} className="w-full bg-transparent py-2 text-sm font-medium text-slate-800 dark:text-slate-200 outline-none" required />
                                                     </div>
                                                 ) : (
                                                     <div className="flex items-center gap-2">
-                                                        <input type="file" accept=".pdf" onChange={(e) => updateResource(res.id, "file", e.target.files?.[0] || null)} className="text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-gray-800 file:text-white hover:file:bg-gray-700 file:cursor-pointer" required />
+                                                        <input type="file" accept=".pdf" onChange={(e) => updateResource(res.id, "file", e.target.files?.[0] || null)} className="text-sm font-semibold text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#3B82F6]/10 file:text-[#3B82F6] hover:file:bg-[#3B82F6]/20 file:transition-colors file:cursor-pointer" required />
                                                     </div>
                                                 )}
                                             </div>
 
-                                            <button type="button" onClick={() => removeResource(res.id)} className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors" title="Remove material">
+                                            <button type="button" onClick={() => removeResource(res.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-colors" title="Remove material">
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         </div>
@@ -213,17 +225,17 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 border-t border-gray-800 flex justify-end gap-3 bg-gray-900/50 rounded-b-xl">
-                    <button type="button" onClick={onClose} disabled={isLoading} className="px-4 py-2 text-sm font-semibold text-gray-400 hover:text-white transition-colors">
+                <div className="p-6 border-t border-slate-100 dark:border-slate-800/50 flex justify-end gap-3 bg-slate-50 dark:bg-[#1E293B]">
+                    <button type="button" onClick={onClose} disabled={isLoading} className="px-5 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors rounded-xl hover:bg-slate-200 dark:hover:bg-slate-800 disabled:opacity-50">
                         Cancel
                     </button>
-                    <button type="submit" form="create-module-form" disabled={isLoading} className="flex items-center gap-2 px-5 py-2 text-sm font-bold bg-blue-500 hover:bg-blue-400 text-white rounded-lg transition-colors disabled:opacity-50">
+                    <button type="submit" form="create-module-form" disabled={isLoading} className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold bg-[#3B82F6] hover:bg-blue-600 text-white rounded-xl transition-all shadow-sm disabled:opacity-50">
                         {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                        {isLoading ? "Saving & Uploading..." : "Save Complete Module"}
+                        {isLoading ? "Processing..." : "Save Complete Module"}
                     </button>
                 </div>
 
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
     );
 }
