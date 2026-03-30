@@ -1232,14 +1232,14 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
                             key={`wire-${wire.id}`}
                             points={wire.points}
                             stroke={isWrong ? '#ef4444' : wire.color}
-                            strokeWidth={isSelected ? 7 : isWrong ? 5 : 4}
+                            strokeWidth={isSelected ? 6 : isWrong ? 4.5 : 3.5}
                             hitStrokeWidth={20}
                             lineCap="round"
                             lineJoin="round"
                             dash={isWrong ? [14, 8] : undefined}
                             shadowColor={isSelected ? '#f1c40f' : isWrong ? 'rgba(239,68,68,0.8)' : 'rgba(0,0,0,0.4)'}
-                            shadowBlur={isSelected ? 7 : isWrong ? 8 : 2}
-                            shadowOffsetY={isSelected ? 0 : 2}
+                            shadowBlur={isSelected ? 6 : isWrong ? 7 : 1}
+                            shadowOffsetY={isSelected ? 0 : 1}
                             onMouseDown={(e) => {
                               if (isSessionCompleted) return;
                               e.cancelBubble = true;
