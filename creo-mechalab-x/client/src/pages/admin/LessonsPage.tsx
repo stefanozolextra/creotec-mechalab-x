@@ -1348,17 +1348,19 @@ export default function LessonsPage() {
           </AnimatePresence>
         </div>
 
-        {/* Master Module Creation Wizard */}
-        {showCreateModal && (
-          <CreateModuleModal
-            onClose={() => setShowCreateModal(false)}
-            onSuccess={() => {
-              setShowCreateModal(false);
-              setNotice({ kind: "success", text: "Module and lessons created successfully." });
-              setRefreshSeq((val) => val + 1);
-            }}
-          />
-        )}
+{/* Master Module Creation Wizard */}
+        <AnimatePresence>
+          {showCreateModal && (
+            <CreateModuleModal
+              onClose={() => setShowCreateModal(false)}
+              onSuccess={() => {
+                setShowCreateModal(false);
+                setNotice({ kind: "success", text: "Module and lessons created successfully." });
+                setRefreshSeq((val) => val + 1);
+              }}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );
