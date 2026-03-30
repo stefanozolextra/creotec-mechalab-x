@@ -1,17 +1,25 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import CyberTransition from '../components/CyberTransition';
 import SimulationApp from '../simulation/SimulationApp';
 import { getTraineeDashboard } from '../api/trainees';
 
+type SimulationLocationState = {
+    simulationId?: number;
+    moduleId?: number;
+};
+
 export default function SimulationView() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const location = useLocation();
+    const locationState = (location.state as SimulationLocationState | null) ?? null;
 
     // The route ID is directly the Activity Number (1, 2, 3, 4, 5)
     const simulationRouteId = id ?? '1';
 
     const [completedRoutes, setCompletedRoutes] = useState<string[]>([]);
+    const [currentSimulationId, setCurrentSimulationId] = useState<number | undefined>(locationState?.simulationId);
     const [isLoading, setIsLoading] = useState(true);
 
     useEffect(() => {
@@ -43,6 +51,26 @@ export default function SimulationView() {
                 });
 
                 setCompletedRoutes(completedOrderNos);
+
+                const fallbackSimulation = dashboard.moduleContent.simulations.find((simulation) => {
+                    const orderNo = Number(simulation.order_no);
+                    const moduleId = Number(simulation.module_id);
+                    const stateModuleId = locationState?.moduleId;
+
+                    if (orderNo !== Number(simulationRouteId)) return false;
+                    if (typeof stateModuleId === 'number' && Number.isFinite(stateModuleId)) {
+                        return moduleId === stateModuleId;
+                    }
+                    return true;
+                });
+
+                setCurrentSimulationId(
+                    typeof locationState?.simulationId === 'number' && Number.isFinite(locationState.simulationId)
+                        ? locationState.simulationId
+                        : fallbackSimulation
+                            ? Number(fallbackSimulation.simulation_id)
+                            : undefined
+                );
             } catch (e) {
                 console.error("Failed to sync simulation progress", e);
             } finally {
@@ -58,7 +86,7 @@ export default function SimulationView() {
             active = false;
             controller.abort();
         };
-    }, []);
+    }, [locationState, simulationRouteId]);
 
     return (
         <CyberTransition>
@@ -74,6 +102,7 @@ export default function SimulationView() {
                 <SimulationApp
                     key={simulationRouteId}
                     routeId={simulationRouteId}
+                    simulationId={currentSimulationId}
                     initialCompletedRoutes={completedRoutes}
                     onNavigateBack={() => navigate('/dashboard')}
                 />

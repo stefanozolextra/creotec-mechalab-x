@@ -491,7 +491,12 @@ const Dashboard = () => {
     const handleStartSimulation = () => {
         if (!selectedSimulation) return;
         const targetRoute = selectedSimulation.order_no ?? 1;
-        navigate(`/simulation/${targetRoute}`);
+        navigate(`/simulation/${targetRoute}`, {
+            state: {
+                simulationId: toNumber(selectedSimulation.simulation_id),
+                moduleId: toNumber(selectedSimulation.module_id),
+            },
+        });
     };
 
     const handleViewModule = () => {

@@ -23,6 +23,7 @@ import rollerLeverDevice from '../assets/devices/roller-lever.png';
 import solenoidValveDevice from '../assets/devices/solenoid-valve.png';
 import timerDevice from '../assets/devices/timer.jpg';
 import { getActivityAnswerByRouteId, ACTIVITY_ANSWERS } from './constants/activityAnswers';
+import { updateSimulationProgress } from '../api/trainees';
 
 // M.A.X. DEPENDENCIES
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
@@ -156,6 +157,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const activity5TimerIntervalRef = useRef<number | null>(null);
   const activity5TimerTriggerRef = useRef<HTMLButtonElement>(null);
   const activity5TimerPopupRef = useRef<HTMLDivElement>(null);
+  const hasPersistedStartRef = useRef(false);
 
   const [historyPast, setHistoryPast] = useState<Connection[][]>([]);
   const [historyFuture, setHistoryFuture] = useState<Connection[][]>([]);
@@ -180,11 +182,35 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
   const routeKeys = Object.keys(ACTIVITY_ANSWERS);
   const currentIndex = routeKeys.indexOf(activityPreset.routeId);
   const nextRouteId = currentIndex !== -1 && currentIndex < routeKeys.length - 1 ? routeKeys[currentIndex + 1] : null;
+  const isNodeCompletedInDB = dbCompletedRoutes.has(activityPreset.routeId);
 
   // 🌟 GOD MODE OVERRIDE 🌟
   // Instead of strictly locking the board when a saved state exists, 
   // we check if the user is a developer. If they are, the board NEVER locks!
   const isSessionCompleted = getAuthRole() === 'developer' ? false : !!savedStates[activityPreset.routeId];
+  const isPersistedCompleted = isSessionCompleted || isNodeCompletedInDB;
+
+  const persistSimulationState = useCallback((status: 'IN_PROGRESS' | 'COMPLETED', bestScore?: number | null, incrementAttempt = false) => {
+    if (!simulationId || (isPersistedCompleted && status !== 'COMPLETED')) return;
+
+    void updateSimulationProgress(simulationId, {
+      status,
+      bestScore,
+      incrementAttempt,
+    }).catch((error) => {
+      console.error('Failed to persist simulation progress', error);
+    });
+  }, [isPersistedCompleted, simulationId]);
+
+  useEffect(() => {
+    hasPersistedStartRef.current = false;
+  }, [activityPreset.routeId, simulationId]);
+
+  useEffect(() => {
+    if (!simulationId || isPersistedCompleted || hasPersistedStartRef.current) return;
+    hasPersistedStartRef.current = true;
+    persistSimulationState('IN_PROGRESS');
+  }, [isPersistedCompleted, persistSimulationState, simulationId]);
 
   const clearActivity5TimerTimeout = useCallback(() => {
     if (activity5TimerTimeoutRef.current !== null) {
@@ -670,10 +696,14 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
         ...prev,
         [activityPreset.routeId]: { wires: routedWires, assignedDevices },
       }));
+      persistSimulationState('COMPLETED', 100, true);
       setShowSuccessAnim(true);
       setTimeout(() => setShowSuccessAnim(false), 2500);
+      return;
     }
-  }, [activityPreset, answerSignature, assignedDevices, routedWires, wires]);
+
+    persistSimulationState('IN_PROGRESS', 0, true);
+  }, [activityPreset, answerSignature, assignedDevices, persistSimulationState, routedWires, wires]);
 
   const handleDeviceDragStart = useCallback(
     (deviceId: DeviceId, source: DeviceZone | 'library', event: DragEvent<HTMLElement>) => {
@@ -815,8 +845,7 @@ export default function SimulationApp({ routeId, initialCompletedRoutes = [], on
     );
   };
 
-  const isNodeCompletedInDB = dbCompletedRoutes.has(activityPreset.routeId);
-  const canProceedToNext = isSessionCompleted || isNodeCompletedInDB || answerFeedback?.passed;
+  const canProceedToNext = isPersistedCompleted || answerFeedback?.passed;
 
   // TUTORIAL STEPS
   const tutorialSteps: TutorialStep[] = [

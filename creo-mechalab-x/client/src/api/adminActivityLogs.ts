@@ -61,7 +61,7 @@ const toNumber = (value: NumericLike | undefined, fallback: number): number => {
 };
 
 const normalizeType = (value: string | undefined): AdminActivityLogType => {
-  if (value === "system_reset" || value === "trainee_created" || value === "simulation_completed") return value;
+  if (value === "system_reset" || value === "trainee_created" || value === "simulation_progress" || value === "simulation_completed") return value;
   return "batch_export";
 };
 
