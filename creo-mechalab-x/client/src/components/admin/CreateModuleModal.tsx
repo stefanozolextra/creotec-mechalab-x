@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import { X, Upload, Link as LinkIcon, Loader2, FileText, PlayCircle, Trash2, Layers3 } from "lucide-react";
 import { requestJson } from "../../api/http";
-import { motion } from "framer-motion"; // <-- Added for smooth animations
+import { createAdminModuleLesson, uploadAdminModuleLessonPdf } from "../../api/adminLessons";
+import { motion } from "framer-motion";
 
 interface ResourceInput {
     id: string;
@@ -62,6 +63,7 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
         setIsLoading(true);
 
         try {
+            // 1. Create the Module shell
             const moduleRes = await requestJson<{ module: { module_id: number } }>("/admin/lessons/modules", {
                 method: "POST",
                 body: {
@@ -73,29 +75,23 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
             
             const newModuleId = moduleRes.module.module_id;
 
-            for (let i = 0; i < resources.length; i++) {
-                const res = resources[i];
-                
+            // 2. Upload/Attach all resources using the native API hooks!
+            for (const res of resources) {
                 if (res.type === "VIDEO") {
-                    await requestJson(`/admin/lessons/modules/${newModuleId}/resources`, {
-                        method: "POST",
-                        body: {
-                            type: "VIDEO",
-                            title: res.title.trim(),
-                            url: res.url.trim(),
-                            orderNo: i + 1,
-                        }
+                    await createAdminModuleLesson(newModuleId, {
+                        title: res.title.trim(),
+                        type: "VIDEO",
+                        url: res.url.trim(),
                     });
                 } else if (res.type === "PDF" && res.file) {
-                    const formData = new FormData();
-                    formData.append("file", res.file);
-                    formData.append("title", res.title.trim());
-                    formData.append("orderNo", (i + 1).toString());
-
-                    await requestJson(`/admin/lessons/modules/${newModuleId}/resources/upload`, {
-                        method: "POST",
-                        body: formData,
+                    // Step A: Create the resource slot in the database
+                    const lessonRes = await createAdminModuleLesson(newModuleId, {
+                        title: res.title.trim(),
+                        type: "PDF",
                     });
+                    
+                    // Step B: Upload the physical file to that exact resource slot
+                    if (lessonRes.lesson) await uploadAdminModuleLessonPdf(newModuleId, lessonRes.lesson.resource_id, res.file);
                 }
             }
 
@@ -134,7 +130,7 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                         </div>
                         <h2 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">Create New Module</h2>
                     </div>
-                    <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
+                    <button type="button" onClick={onClose} disabled={isLoading} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50">
                         <X className="w-5 h-5" />
                     </button>
                 </div>
@@ -157,16 +153,16 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                             <div className="grid grid-cols-3 gap-4">
                                 <div>
                                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Module Code</label>
-                                    <input type="text" placeholder="e.g. M01" value={moduleCode} onChange={(e) => setModuleCode(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all" required />
+                                    <input type="text" placeholder="e.g. M01" value={moduleCode} onChange={(e) => setModuleCode(e.target.value)} disabled={isLoading} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all disabled:opacity-60" required />
                                 </div>
                                 <div className="col-span-2">
                                     <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Module Title</label>
-                                    <input type="text" placeholder="e.g. Intro to Mechatronics" value={moduleTitle} onChange={(e) => setModuleTitle(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all" required />
+                                    <input type="text" placeholder="e.g. Intro to Mechatronics" value={moduleTitle} onChange={(e) => setModuleTitle(e.target.value)} disabled={isLoading} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all disabled:opacity-60" required />
                                 </div>
                             </div>
                             <div>
                                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Description (Optional)</label>
-                                <textarea rows={2} value={moduleDesc} onChange={(e) => setModuleDesc(e.target.value)} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all" />
+                                <textarea rows={2} value={moduleDesc} onChange={(e) => setModuleDesc(e.target.value)} disabled={isLoading} className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all disabled:opacity-60" />
                             </div>
                         </div>
 
@@ -177,10 +173,10 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                                     2. Learning Materials
                                 </h3>
                                 <div className="flex gap-2">
-                                    <button type="button" onClick={() => addResourceField("PDF")} className="flex items-center gap-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl transition-colors">
+                                    <button type="button" onClick={() => addResourceField("PDF")} disabled={isLoading} className="flex items-center gap-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl transition-colors disabled:opacity-50">
                                         <FileText className="w-4 h-4 text-[#3B82F6]" /> Add PDF
                                     </button>
-                                    <button type="button" onClick={() => addResourceField("VIDEO")} className="flex items-center gap-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl transition-colors">
+                                    <button type="button" onClick={() => addResourceField("VIDEO")} disabled={isLoading} className="flex items-center gap-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl transition-colors disabled:opacity-50">
                                         <PlayCircle className="w-4 h-4 text-emerald-500" /> Add Video Link
                                     </button>
                                 </div>
@@ -199,21 +195,21 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                                             </div>
                                             
                                             <div className="flex-1 space-y-3 min-w-0">
-                                                <input type="text" placeholder={`${res.type} Title (e.g. Lesson ${index + 1} Manual)`} value={res.title} onChange={(e) => updateResource(res.id, "title", e.target.value)} className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-sm font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all" required />
+                                                <input type="text" placeholder={`${res.type} Title (e.g. Lesson ${index + 1} Manual)`} value={res.title} onChange={(e) => updateResource(res.id, "title", e.target.value)} disabled={isLoading} className="w-full px-3 py-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-sm font-semibold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all disabled:opacity-60" required />
                                                 
                                                 {res.type === "VIDEO" ? (
                                                     <div className="flex items-center gap-2 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 rounded-lg px-3 overflow-hidden focus-within:ring-2 focus-within:ring-[#3B82F6] transition-all">
                                                         <LinkIcon className="w-4 h-4 text-slate-400" />
-                                                        <input type="url" placeholder="https://youtube.com/..." value={res.url} onChange={(e) => updateResource(res.id, "url", e.target.value)} className="w-full bg-transparent py-2 text-sm font-medium text-slate-800 dark:text-slate-200 outline-none" required />
+                                                        <input type="url" placeholder="https://youtube.com/..." value={res.url} onChange={(e) => updateResource(res.id, "url", e.target.value)} disabled={isLoading} className="w-full bg-transparent py-2 text-sm font-medium text-slate-800 dark:text-slate-200 outline-none disabled:opacity-60" required />
                                                     </div>
                                                 ) : (
                                                     <div className="flex items-center gap-2">
-                                                        <input type="file" accept=".pdf" onChange={(e) => updateResource(res.id, "file", e.target.files?.[0] || null)} className="text-sm font-semibold text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#3B82F6]/10 file:text-[#3B82F6] hover:file:bg-[#3B82F6]/20 file:transition-colors file:cursor-pointer" required />
+                                                        <input type="file" accept=".pdf" onChange={(e) => updateResource(res.id, "file", e.target.files?.[0] || null)} disabled={isLoading} className="text-sm font-semibold text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-[#3B82F6]/10 file:text-[#3B82F6] hover:file:bg-[#3B82F6]/20 file:transition-colors file:cursor-pointer disabled:opacity-60" required />
                                                     </div>
                                                 )}
                                             </div>
 
-                                            <button type="button" onClick={() => removeResource(res.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-colors" title="Remove material">
+                                            <button type="button" onClick={() => removeResource(res.id)} disabled={isLoading} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-xl transition-colors disabled:opacity-30" title="Remove material">
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
                                         </div>
