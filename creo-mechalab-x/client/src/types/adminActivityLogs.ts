@@ -3,7 +3,6 @@ export type AdminActivityLogType =
   | "batch_export"
   | "system_reset"
   | "trainee_created"
-  | "simulation_progress"
   | "simulation_completed";
 export type AdminActivityLogNumeric = number | string;
 

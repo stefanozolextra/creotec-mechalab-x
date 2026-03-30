@@ -25,7 +25,6 @@ const feedIconsByType: Record<string, string> = {
 const activityColorsByType: Record<string, string> = {
   batch_export: "bg-blue-400",
   system_reset: "bg-orange-400",
-  simulation_progress: "bg-sky-400",
   simulation_completed: "bg-emerald-400",
 };
 

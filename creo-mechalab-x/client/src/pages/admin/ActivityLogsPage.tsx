@@ -11,8 +11,6 @@ import { formatAdminFeedTime, toAdminFeedTypeLabel } from '../../utils/adminFeed
 const DEFAULT_LIMIT = 50;
 
 const typeChipClassByType: Record<string, string> = {
-  simulation_progress:
-    'bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-300 border border-sky-200/50 dark:border-sky-500/20',
   simulation_completed:
     'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-200/50 dark:border-emerald-500/20',
 };

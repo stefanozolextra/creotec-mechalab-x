@@ -429,8 +429,6 @@ function mapAdminActivityLogRow(row) {
             ? "system_reset"
             : row.type === "trainee_created"
               ? "trainee_created"
-              : row.type === "simulation_progress"
-                ? "simulation_progress"
               : row.type === "simulation_completed"
                 ? "simulation_completed"
                 : "batch_export";
@@ -668,77 +666,6 @@ async function fetchTraineeProgressAdminActivityLogs({ batchCode = null, limit, 
            LEFT JOIN accounts a ON a.trainee_id = t.trainee_id
            WHERE tsp.status = 'COMPLETED'
              AND tsp.completed_at IS NOT NULL
-             AND ($1::TEXT IS NULL OR b.batch_code = $1)
-             AND (
-               $2::TEXT IS NULL
-               OR t.trainee_code ILIKE $2
-               OR t.email ILIKE $2
-               OR COALESCE(a.login_email, '') ILIKE $2
-               OR t.first_name ILIKE $2
-               OR COALESCE(t.middle_name, '') ILIKE $2
-               OR t.last_name ILIKE $2
-               OR CONCAT_WS(' ', t.first_name, t.middle_name, t.last_name) ILIKE $2
-               OR ($3::BIGINT IS NOT NULL AND t.trainee_id = $3)
-             )
-           UNION ALL
-           SELECT
-             CONCAT('simulation_progress:', tsp.trainee_id, ':', tsp.simulation_id, ':', tsp.attempts_count)::TEXT AS event_id,
-             'simulation_progress'::TEXT AS type,
-             COALESCE(tsp.last_accessed_at, tsp.started_at) AS occurred_at,
-             b.batch_code,
-             COALESCE(
-               NULLIF(BTRIM(CONCAT_WS(' ', t.first_name, NULLIF(t.middle_name, ''), t.last_name)), ''),
-               NULLIF(t.trainee_code, ''),
-               NULLIF(COALESCE(a.login_email, t.email), ''),
-               CONCAT('Trainee #', t.trainee_id::TEXT)
-             ) AS actor,
-             CONCAT(
-               COALESCE(
-                 NULLIF(BTRIM(CONCAT_WS(' ', t.first_name, NULLIF(t.middle_name, ''), t.last_name)), ''),
-                 NULLIF(t.trainee_code, ''),
-                 NULLIF(COALESCE(a.login_email, t.email), ''),
-                 CONCAT('Trainee #', t.trainee_id::TEXT)
-               ),
-               ' started ',
-               COALESCE(NULLIF(s.title, ''), CONCAT('Simulation ', s.simulation_code)),
-               CASE
-                 WHEN NULLIF(m.title, '') IS NULL THEN '.'
-                 ELSE CONCAT(' in ', m.title, '.')
-               END
-             ) AS message,
-             jsonb_build_object(
-               'status', tsp.status,
-               'score', tsp.best_score,
-               'attempt_count', tsp.attempts_count,
-               'trainee_code', t.trainee_code,
-               'trainee_email', COALESCE(a.login_email, t.email),
-               'module_title', m.title,
-               'simulation_title', s.title
-             ) AS meta,
-             tsp.trainee_id,
-             COALESCE(
-               NULLIF(BTRIM(CONCAT_WS(' ', t.first_name, NULLIF(t.middle_name, ''), t.last_name)), ''),
-               NULLIF(t.trainee_code, ''),
-               NULLIF(COALESCE(a.login_email, t.email), ''),
-               CONCAT('Trainee #', t.trainee_id::TEXT)
-             ) AS trainee_name,
-             t.trainee_code,
-             COALESCE(a.login_email, t.email) AS trainee_email,
-             m.module_id,
-             m.title AS module_title,
-             s.simulation_id,
-             s.title AS simulation_title,
-             tsp.status,
-             tsp.best_score,
-             tsp.attempts_count AS attempt_count
-           FROM trainee_simulation_progress tsp
-           JOIN trainees t ON t.trainee_id = tsp.trainee_id
-           JOIN batches b ON b.batch_id = t.batch_id
-           JOIN simulations s ON s.simulation_id = tsp.simulation_id
-           LEFT JOIN modules m ON m.module_id = s.module_id
-           LEFT JOIN accounts a ON a.trainee_id = t.trainee_id
-           WHERE tsp.status <> 'COMPLETED'
-             AND COALESCE(tsp.last_accessed_at, tsp.started_at) IS NOT NULL
              AND ($1::TEXT IS NULL OR b.batch_code = $1)
              AND (
                $2::TEXT IS NULL
@@ -1661,7 +1588,7 @@ async function getDashboardPayloadForTrainee(traineeId) {
     };
 }
 
-async function upsertSimulationProgressForTrainee(traineeId, simulationId, { status = "IN_PROGRESS", bestScore = null, incrementAttempt = false } = {}) {
+async function completeSimulationForTrainee(traineeId, simulationId, bestScore) {
     const [traineeExists, simulationExists] = await Promise.all([
         pool.query("SELECT 1 FROM trainees WHERE trainee_id = $1", [traineeId]),
         pool.query("SELECT 1 FROM simulations WHERE simulation_id = $1", [simulationId]),
@@ -1677,48 +1604,19 @@ async function upsertSimulationProgressForTrainee(traineeId, simulationId, { sta
     await pool.query(
         `INSERT INTO trainee_simulation_progress
           (trainee_id, simulation_id, status, best_score, attempts_count, started_at, completed_at, last_accessed_at)
-         VALUES (
-           $1,
-           $2,
-           $3,
-           $4,
-           CASE WHEN $5::BOOLEAN THEN 1 ELSE 0 END,
-           NOW(),
-           CASE WHEN $3 = 'COMPLETED' THEN NOW() ELSE NULL END,
-           NOW()
-         )
+         VALUES ($1, $2, 'COMPLETED', $3, 1, NOW(), NOW(), NOW())
          ON CONFLICT (trainee_id, simulation_id)
          DO UPDATE SET
-           status = CASE
-             WHEN trainee_simulation_progress.status = 'COMPLETED' OR EXCLUDED.status = 'COMPLETED' THEN 'COMPLETED'
-             ELSE 'IN_PROGRESS'
-           END,
-           best_score = CASE
-             WHEN EXCLUDED.best_score IS NULL THEN trainee_simulation_progress.best_score
-             WHEN trainee_simulation_progress.best_score IS NULL THEN EXCLUDED.best_score
-             ELSE GREATEST(trainee_simulation_progress.best_score, EXCLUDED.best_score)
-           END,
-           attempts_count = trainee_simulation_progress.attempts_count + CASE WHEN $5::BOOLEAN THEN 1 ELSE 0 END,
-           started_at = COALESCE(trainee_simulation_progress.started_at, EXCLUDED.started_at),
-           completed_at = CASE
-             WHEN EXCLUDED.status = 'COMPLETED' THEN NOW()
-             WHEN trainee_simulation_progress.status = 'COMPLETED' THEN trainee_simulation_progress.completed_at
-             ELSE NULL
-           END,
+           status = 'COMPLETED',
+           best_score = COALESCE(EXCLUDED.best_score, trainee_simulation_progress.best_score),
+           attempts_count = trainee_simulation_progress.attempts_count + 1,
+           completed_at = NOW(),
            last_accessed_at = NOW()`,
-        [traineeId, simulationId, status, bestScore, incrementAttempt]
+        [traineeId, simulationId, bestScore]
     );
     invalidateAdminCaches();
 
     return { ok: true };
-}
-
-async function completeSimulationForTrainee(traineeId, simulationId, bestScore) {
-    return upsertSimulationProgressForTrainee(traineeId, simulationId, {
-        status: "COMPLETED",
-        bestScore,
-        incrementAttempt: true,
-    });
 }
 
 app.get("/api/health", async (req, res) => {
@@ -4579,45 +4477,6 @@ app.post("/api/me/simulations/:simulationId/complete", requireAuth, async (req, 
         res.json({ ok: true });
     } catch (e) {
         console.error("Simulation completion endpoint failed:", e);
-        res.status(500).json({ error: "Internal server error" });
-    }
-});
-
-app.post("/api/me/simulations/:simulationId/progress", requireAuth, async (req, res) => {
-    try {
-        const traineeId = ensureTraineeOwnership(req, res);
-        if (!traineeId) return;
-
-        const simulationId = parsePositiveIntParam(req.params.simulationId);
-        if (!simulationId) return res.status(400).json({ error: "Invalid simulationId" });
-
-        const rawStatus = typeof req.body?.status === "string" ? req.body.status.trim().toUpperCase() : "IN_PROGRESS";
-        if (rawStatus !== "IN_PROGRESS" && rawStatus !== "COMPLETED") {
-            return res.status(400).json({ error: "Invalid status" });
-        }
-
-        const rawBestScore = req.body?.bestScore;
-        let bestScore = null;
-
-        if (rawBestScore !== undefined && rawBestScore !== null) {
-            const isValidScore =
-                typeof rawBestScore === "number" && Number.isFinite(rawBestScore) && rawBestScore >= 0;
-
-            if (!isValidScore) return res.status(400).json({ error: "Invalid bestScore" });
-            bestScore = rawBestScore;
-        }
-
-        const incrementAttempt = req.body?.incrementAttempt === true;
-        const progressResult = await upsertSimulationProgressForTrainee(traineeId, simulationId, {
-            status: rawStatus,
-            bestScore,
-            incrementAttempt,
-        });
-        if (progressResult.error) return res.status(progressResult.status).json({ error: progressResult.error });
-
-        res.json({ ok: true });
-    } catch (e) {
-        console.error("Simulation progress endpoint failed:", e);
         res.status(500).json({ error: "Internal server error" });
     }
 });

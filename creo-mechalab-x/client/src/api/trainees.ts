@@ -81,24 +81,3 @@ export const completeSimulation = async (
         { method: "POST", body, signal: options?.signal }
     );
 };
-
-export const updateSimulationProgress = async (
-    simulationId: number,
-    body?: {
-        status?: "IN_PROGRESS" | "COMPLETED";
-        bestScore?: number | null;
-        incrementAttempt?: boolean;
-    },
-    options?: { signal?: AbortSignal }
-): Promise<{ ok: boolean }> => {
-
-    if (getAuthRole() === 'developer') {
-        return { ok: true };
-    }
-
-    const safeSimulationId = toPositiveInt(simulationId, "simulationId");
-    return requestJson<{ ok: boolean }>(
-        `/api/me/simulations/${safeSimulationId}/progress`,
-        { method: "POST", body, signal: options?.signal }
-    );
-};
