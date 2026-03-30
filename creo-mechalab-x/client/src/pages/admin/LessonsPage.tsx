@@ -16,11 +16,10 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Document, Page, pdfjs } from "react-pdf";
 import {
-  createAdminLesson,
   createAdminModuleLesson,
   deleteAdminModuleLesson,
   getAdminLessons,
@@ -30,10 +29,10 @@ import {
   uploadAdminModuleLessonPdf,
 } from "../../api/adminLessons";
 import { API_BASE_URL, ApiError } from "../../api/http";
-import AdminModalShell from "../../components/admin/ui/AdminModalShell";
 import type { AdminLessonItem, AdminLessonResource, AdminLessonResourceType } from "../../types/adminLesson";
 import { getAuthToken } from "../../utils/auth";
 import { resolveSupportedVideoLesson } from "../../utils/videoLessons";
+import CreateModuleModal from "../../components/admin/CreateModuleModal"; // <-- NEW IMPORT
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -106,10 +105,8 @@ export default function LessonsPage() {
   const [titleDraft, setTitleDraft] = useState("");
   const [titleError, setTitleError] = useState<string | null>(null);
 
-  const [addModalOpen, setAddModalOpen] = useState(false);
-  const [addTitleDraft, setAddTitleDraft] = useState("");
-  const [addSaving, setAddSaving] = useState(false);
-  const [addError, setAddError] = useState<string | null>(null);
+  // <-- Replaced old modal states with the new Master Modal state
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const [selectedModuleId, setSelectedModuleId] = useState<number | null>(null);
   const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null);
@@ -321,60 +318,6 @@ export default function LessonsPage() {
 
   const isModuleBusy = (moduleId: number): boolean => busyModuleId === moduleId && busyLessonId === null;
   const isLessonBusy = (resourceId: number): boolean => busyLessonId === resourceId;
-
-  const openAddModal = () => {
-    if (addSaving) return;
-    setAddError(null);
-    setAddTitleDraft("");
-    setAddModalOpen(true);
-  };
-
-  const closeAddModal = () => {
-    if (addSaving) return;
-    setAddModalOpen(false);
-    setAddTitleDraft("");
-    setAddError(null);
-  };
-
-  const handleCreateModule = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (addSaving) return;
-
-    const trimmedTitle = addTitleDraft.trim();
-    if (!trimmedTitle) {
-      setAddError("Title cannot be empty.");
-      return;
-    }
-    if (trimmedTitle.length > MODULE_TITLE_MAX_LENGTH) {
-      setAddError(`Title must be at most ${MODULE_TITLE_MAX_LENGTH} characters.`);
-      return;
-    }
-
-    setAddSaving(true);
-    setAddError(null);
-    setNotice(null);
-    setError(null);
-
-    try {
-      const response = await createAdminLesson(trimmedTitle);
-      const createdItem = response.item;
-      if (createdItem) {
-        const normalized = normalizeModuleItem(createdItem);
-        setItems((previous) => sortAdminLessonItems([...previous, normalized]));
-        setSelectedModuleId(normalized.module_id);
-      } else {
-        setRefreshSeq((value) => value + 1);
-      }
-      setAddModalOpen(false);
-      setAddTitleDraft("");
-      setAddError(null);
-      setNotice({ kind: "success", text: "Module created successfully." });
-    } catch (createError) {
-      setAddError(toErrorMessage(createError, "Failed to create module."));
-    } finally {
-      setAddSaving(false);
-    }
-  };
 
   const startModuleTitleEdit = (item: AdminLessonItem) => {
     if (busyModuleId !== null || busyLessonId !== null) return;
@@ -661,9 +604,6 @@ export default function LessonsPage() {
     }
   };
 
-  const trimmedAddTitle = addTitleDraft.trim();
-  const disableCreateModule =
-    addSaving || trimmedAddTitle.length === 0 || trimmedAddTitle.length > MODULE_TITLE_MAX_LENGTH;
   const trimmedAddLessonUrl = addLessonUrlDraft.trim();
   const isAddLessonVideoUrlSupported =
     addLessonTypeDraft !== "VIDEO" || !trimmedAddLessonUrl || !!resolveSupportedVideoLesson(trimmedAddLessonUrl);
@@ -714,9 +654,9 @@ export default function LessonsPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={openAddModal}
+              onClick={() => setShowCreateModal(true)}
               className="bg-[#3B82F6] text-white px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all duration-300 shadow-sm hover:brightness-110 disabled:opacity-70"
-              disabled={loading || addSaving}
+              disabled={loading}
             >
               <Plus size={16} aria-hidden="true" /> Add Module
             </button>
@@ -724,7 +664,7 @@ export default function LessonsPage() {
               type="button"
               onClick={() => setRefreshSeq((value) => value + 1)}
               className="bg-[#1E293B] dark:bg-slate-700 text-white px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all duration-300 shadow-sm hover:brightness-110 disabled:opacity-70"
-              disabled={loading || addSaving}
+              disabled={loading}
             >
               <RefreshCw size={16} aria-hidden="true" className={loading ? "animate-spin" : ""} /> Refresh
             </button>
@@ -953,6 +893,7 @@ export default function LessonsPage() {
                     <Layers3 size={14} /> Lessons
                   </h3>
 
+                  {/* Note: The inline "Add Lesson" form is preserved here to allow adding extra lessons to an EXISTING module without the big wizard */}
                   <div className="space-y-3 mb-4">
                     <div className="flex gap-2">
                       <input
@@ -1407,67 +1348,17 @@ export default function LessonsPage() {
           </AnimatePresence>
         </div>
 
-        <AdminModalShell
-          open={addModalOpen}
-          onClose={closeAddModal}
-          title="Add Module"
-          description="Create a new lesson module container."
-          icon={<Plus size={20} />}
-          maxWidthClass="max-w-md"
-          closeDisabled={addSaving}
-          closeOnBackdrop={!addSaving}
-          bodyClassName="p-6"
-          footer={(
-            <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
-              <button
-                type="button"
-                onClick={closeAddModal}
-                className="px-5 py-2.5 rounded-full text-xs font-bold text-slate-500 hover:text-[#0B1B3D] dark:hover:text-slate-200 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 transition-colors duration-500 disabled:opacity-50"
-                disabled={addSaving}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                form="add-module-form"
-                className="px-6 py-2.5 rounded-full text-xs font-bold text-white bg-[#3B82F6] hover:bg-[#2563EB] shadow-lg shadow-blue-500/20 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
-                disabled={disableCreateModule}
-              >
-                {addSaving ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} aria-hidden="true" />}
-                {addSaving ? "Creating..." : "Create Module"}
-              </button>
-            </div>
-          )}
-        >
-          <form id="add-module-form" onSubmit={handleCreateModule} className="space-y-4">
-            <label className="space-y-1.5 block">
-              <span className="text-sm font-bold text-[#0B1B3D] dark:text-slate-200">Module Title *</span>
-              <input
-                type="text"
-                value={addTitleDraft}
-                onChange={(event) => {
-                  setAddTitleDraft(event.target.value);
-                  if (addError) setAddError(null);
-                }}
-                placeholder="Enter module title"
-                maxLength={MODULE_TITLE_MAX_LENGTH}
-                className="w-full px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
-                disabled={addSaving}
-                required
-                autoFocus
-              />
-              <p className="text-xs text-slate-500 font-medium mt-1.5">
-                {trimmedAddTitle.length}/{MODULE_TITLE_MAX_LENGTH}
-              </p>
-            </label>
-
-            {addError ? (
-              <div className="rounded-xl bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 px-4 py-3 text-xs font-semibold text-red-600 dark:text-red-400">
-                {addError}
-              </div>
-            ) : null}
-          </form>
-        </AdminModalShell>
+        {/* Master Module Creation Wizard */}
+        {showCreateModal && (
+          <CreateModuleModal
+            onClose={() => setShowCreateModal(false)}
+            onSuccess={() => {
+              setShowCreateModal(false);
+              setNotice({ kind: "success", text: "Module and lessons created successfully." });
+              setRefreshSeq((val) => val + 1);
+            }}
+          />
+        )}
       </div>
     </div>
   );
