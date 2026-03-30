@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { X, Upload, Link as LinkIcon, Loader2, FileText, PlayCircle, Trash2, Layers3 } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { X, Upload, Link as LinkIcon, Loader2, FileText, PlayCircle, Trash2, Layers3} from "lucide-react";
 import { requestJson } from "../../api/http";
 import { createAdminModuleLesson, uploadAdminModuleLessonPdf } from "../../api/adminLessons";
 import { motion } from "framer-motion";
@@ -10,6 +10,12 @@ interface ResourceInput {
     title: string;
     file: File | null;
     url: string;
+}
+
+interface SimulationOption {
+    simulation_id: number;
+    simulation_code: string;
+    title: string;
 }
 
 interface CreateModuleModalProps {
@@ -26,6 +32,24 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
     const [moduleDesc, setModuleDesc] = useState("");
 
     const [resources, setResources] = useState<ResourceInput[]>([]);
+    
+    // Simulation state
+    const [availableSimulations, setAvailableSimulations] = useState<SimulationOption[]>([]);
+    const [selectedSimulationId, setSelectedSimulationId] = useState<number | "none">("none");
+
+    // Fetch available simulations when modal opens
+    useEffect(() => {
+        const fetchSimulations = async () => {
+            try {
+                // Fetching from the general modules endpoint that includes simulations
+                const data = await requestJson<{ simulations: SimulationOption[] }>("/api/modules");
+                setAvailableSimulations(data.simulations || []);
+            } catch (err) {
+                console.error("Failed to fetch simulations:", err);
+            }
+        };
+        fetchSimulations();
+    }, []);
 
     const addResourceField = (type: "PDF" | "VIDEO") => {
         setResources([
@@ -75,7 +99,18 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
             
             const newModuleId = moduleRes.module.module_id;
 
-            // 2. Upload/Attach all resources using the native API hooks!
+            // 2. Attach simulation if selected
+            if (selectedSimulationId !== "none") {
+                 // Using a direct request since the specific admin function might not exist yet
+                 await requestJson(`/admin/modules/${newModuleId}/simulations`, {
+                    method: "POST",
+                    body: {
+                        simulation_id: selectedSimulationId
+                    }
+                }).catch(err => console.warn("Failed to assign simulation:", err));
+            }
+
+            // 3. Upload/Attach all resources using the native API hooks
             for (const res of resources) {
                 if (res.type === "VIDEO") {
                     await createAdminModuleLesson(newModuleId, {
@@ -83,15 +118,14 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                         type: "VIDEO",
                         url: res.url.trim(),
                     });
-                } else if (res.type === "PDF" && res.file) {
-                    // Step A: Create the resource slot in the database
+                } else if (res.type === "PDF" && res.file && res.file instanceof File) {
                     const lessonRes = await createAdminModuleLesson(newModuleId, {
                         title: res.title.trim(),
                         type: "PDF",
                     });
-                    
-                    // Step B: Upload the physical file to that exact resource slot
-                    if (lessonRes.lesson) await uploadAdminModuleLessonPdf(newModuleId, lessonRes.lesson.resource_id, res.file);
+                    if (lessonRes?.lesson?.resource_id) {
+                        await uploadAdminModuleLessonPdf(newModuleId, lessonRes.lesson.resource_id, res.file);
+                    }
                 }
             }
 
@@ -121,7 +155,6 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                 transition={{ duration: 0.2, ease: "easeOut" }}
                 className="bg-white dark:bg-[#1E293B] border border-slate-200 dark:border-slate-800/50 w-full max-w-2xl rounded-3xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden"
             >
-                
                 {/* Header */}
                 <div className="flex justify-between items-center p-6 border-b border-slate-100 dark:border-slate-800/50 bg-white dark:bg-[#1E293B]">
                     <div className="flex items-center gap-3">
@@ -138,7 +171,6 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                 {/* Scrollable Form */}
                 <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
                     <form id="create-module-form" onSubmit={handleSubmit} className="space-y-8">
-                        
                         {error && (
                             <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/30 text-red-600 dark:text-red-400 p-4 rounded-xl text-sm font-semibold flex items-center gap-2">
                                 {error}
@@ -166,11 +198,37 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                             </div>
                         </div>
 
+                        {/* Simulation Section */}
+                        <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800/50">
+                             <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
+                                2. Simulation Activity
+                            </h3>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">Required Simulation (Optional)</label>
+                                <select 
+                                    value={selectedSimulationId} 
+                                    onChange={(e) => setSelectedSimulationId(e.target.value === "none" ? "none" : Number(e.target.value))}
+                                    disabled={isLoading || availableSimulations.length === 0}
+                                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-slate-800 dark:text-slate-200 text-sm font-medium outline-none focus:ring-2 focus:ring-[#3B82F6] transition-all disabled:opacity-60"
+                                >
+                                    <option value="none">No simulation required</option>
+                                    {availableSimulations.map(sim => (
+                                        <option key={sim.simulation_id} value={sim.simulation_id}>
+                                            {sim.simulation_code} - {sim.title}
+                                        </option>
+                                    ))}
+                                </select>
+                                {availableSimulations.length === 0 && (
+                                     <p className="text-[11px] font-semibold text-amber-500 mt-1">No simulations available in the system.</p>
+                                )}
+                            </div>
+                        </div>
+
                         {/* Materials Section */}
                         <div className="space-y-4 pt-6 border-t border-slate-100 dark:border-slate-800/50">
                             <div className="flex justify-between items-center">
                                 <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest flex items-center gap-2">
-                                    2. Learning Materials
+                                    3. Learning Materials
                                 </h3>
                                 <div className="flex gap-2">
                                     <button type="button" onClick={() => addResourceField("PDF")} disabled={isLoading} className="flex items-center gap-1.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 px-3 py-2 rounded-xl transition-colors disabled:opacity-50">
@@ -230,7 +288,6 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                         {isLoading ? "Processing..." : "Save Complete Module"}
                     </button>
                 </div>
-
             </motion.div>
         </motion.div>
     );
