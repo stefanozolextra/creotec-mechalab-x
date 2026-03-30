@@ -12,6 +12,14 @@ const { parse } = require("csv-parse/sync");
 const pool = require("./db");
 const { generateStrongPassword } = require("./utils/passwords");
 const { sendTraineeCredentialsEmail } = require("./utils/mailer");
+const { createClient } = require("@supabase/supabase-js");
+
+// --- Supabase Setup ---
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+const BUCKET_NAME = "mechalab-pdfs";
+// ----------------------
 
 const app = express();
 app.use(cors());
@@ -1210,15 +1218,36 @@ async function ensureLessonUploadsDirectory() {
     await fsPromises.mkdir(LESSON_UPLOADS_DIR, { recursive: true });
 }
 
-async function removeStoredLessonPdf(storageKey) {
-    try {
+// --- Supabase Storage Helpers ---
+async function storeLessonPdf(storageKey, buffer, mimeType) {
+    if (supabase) {
+        const { error } = await supabase.storage.from(BUCKET_NAME).upload(storageKey, buffer, {
+            contentType: mimeType,
+            upsert: true
+        });
+        if (error) throw new Error("Supabase upload failed: " + error.message);
+    } else {
         const filePath = resolveLessonPdfStoragePath(storageKey);
-        await fsPromises.unlink(filePath);
-    } catch (error) {
-        if (error?.code === "ENOENT") return;
-        console.error("Failed to remove stored lesson PDF:", error);
+        await ensureLessonUploadsDirectory();
+        await fsPromises.writeFile(filePath, buffer);
     }
 }
+
+async function removeStoredLessonPdf(storageKey) {
+    if (supabase) {
+        const { error } = await supabase.storage.from(BUCKET_NAME).remove([storageKey]);
+        if (error) console.error("Supabase delete failed:", error.message);
+    } else {
+        try {
+            const filePath = resolveLessonPdfStoragePath(storageKey);
+            await fsPromises.unlink(filePath);
+        } catch (error) {
+            if (error?.code === "ENOENT") return;
+            console.error("Failed to remove stored lesson PDF:", error);
+        }
+    }
+}
+// -------------------------------
 
 function extractFileNameFromUrl(urlValue) {
     if (!urlValue) return null;
@@ -2293,9 +2322,9 @@ app.post("/api/admin/modules/:moduleId/lessons/:resourceId/pdf", (req, res) => {
 
             const checksum = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
             newStorageKey = createLessonPdfStorageKey(moduleId);
-            const newStoragePath = resolveLessonPdfStoragePath(newStorageKey);
-            await ensureLessonUploadsDirectory();
-            await fsPromises.writeFile(newStoragePath, req.file.buffer, { flag: "wx" });
+            
+            // Use the dual-route storage function here
+            await storeLessonPdf(newStorageKey, req.file.buffer, mimeType || "application/pdf");
 
             try {
                 await client.query(
@@ -2432,6 +2461,7 @@ app.delete("/api/admin/modules/:moduleId/lessons/:resourceId/pdf", async (req, r
     }
 });
 
+// The legacy bulk upload route (retained for fallback)
 app.post("/api/admin/lessons/:moduleId/pdf", (req, res) => {
     upload.single("file")(req, res, async (uploadError) => {
         if (uploadError) {
@@ -2472,7 +2502,6 @@ app.post("/api/admin/lessons/:moduleId/pdf", (req, res) => {
         const client = await pool.connect();
         const staleStorageKeys = new Set();
         let newStorageKey = null;
-        let newStoragePath = null;
         let committed = false;
 
         try {
@@ -2590,9 +2619,9 @@ app.post("/api/admin/lessons/:moduleId/pdf", (req, res) => {
 
             const checksum = crypto.createHash("sha256").update(req.file.buffer).digest("hex");
             newStorageKey = createLessonPdfStorageKey(moduleId);
-            newStoragePath = resolveLessonPdfStoragePath(newStorageKey);
-            await ensureLessonUploadsDirectory();
-            await fsPromises.writeFile(newStoragePath, req.file.buffer, { flag: "wx" });
+            
+            // Use the dual-route storage function here
+            await storeLessonPdf(newStorageKey, req.file.buffer, mimeType || "application/pdf");
 
             try {
                 await client.query(
@@ -4295,38 +4324,55 @@ app.get("/api/resources/:resourceId/pdf", requireAuth, async (req, res) => {
         }
 
         const row = result.rows[0];
-        const storagePath = resolveLessonPdfStoragePath(row.storage_key);
-        let stats;
-        try {
-            stats = await fsPromises.stat(storagePath);
-        } catch (error) {
-            if (error?.code === "ENOENT") return res.status(404).json({ error: "PDF file not found" });
-            throw error;
-        }
-
-        if (!stats.isFile()) {
-            return res.status(404).json({ error: "PDF file not found" });
-        }
-
+        const storageKey = row.storage_key;
         const downloadName = sanitizePdfOriginalFilename(row.original_filename || `module-${resourceId}.pdf`);
-        const contentLength = Number(row.file_size) > 0 ? Number(row.file_size) : stats.size;
 
-        res.setHeader("Content-Type", row.mime_type || "application/pdf");
-        res.setHeader("Content-Disposition", `inline; filename=\"${downloadName}\"`);
-        res.setHeader("Content-Length", String(contentLength));
-        res.setHeader("X-Content-Type-Options", "nosniff");
-
-        const stream = fs.createReadStream(storagePath);
-        stream.on("error", (streamError) => {
-            console.error("PDF stream failed:", streamError);
-            if (!res.headersSent) {
-                res.status(500).json({ error: "Failed to stream PDF" });
-                return;
+        if (supabase) {
+            const { data, error } = await supabase.storage.from(BUCKET_NAME).download(storageKey);
+            if (error) {
+                console.error("Supabase download error:", error);
+                return res.status(404).json({ error: "PDF file not found in storage." });
             }
-            res.destroy(streamError);
-        });
+            
+            const buffer = Buffer.from(await data.arrayBuffer());
+            res.setHeader("Content-Type", row.mime_type || "application/pdf");
+            res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(downloadName)}"`);
+            res.setHeader("Content-Length", String(buffer.length));
+            res.setHeader("X-Content-Type-Options", "nosniff");
+            return res.send(buffer);
+        } else {
+            const storagePath = resolveLessonPdfStoragePath(storageKey);
+            let stats;
+            try {
+                stats = await fsPromises.stat(storagePath);
+            } catch (error) {
+                if (error?.code === "ENOENT") return res.status(404).json({ error: "PDF file not found" });
+                throw error;
+            }
 
-        return stream.pipe(res);
+            if (!stats.isFile()) {
+                return res.status(404).json({ error: "PDF file not found" });
+            }
+
+            const contentLength = Number(row.file_size) > 0 ? Number(row.file_size) : stats.size;
+
+            res.setHeader("Content-Type", row.mime_type || "application/pdf");
+            res.setHeader("Content-Disposition", `inline; filename=\"${downloadName}\"`);
+            res.setHeader("Content-Length", String(contentLength));
+            res.setHeader("X-Content-Type-Options", "nosniff");
+
+            const stream = fs.createReadStream(storagePath);
+            stream.on("error", (streamError) => {
+                console.error("PDF stream failed:", streamError);
+                if (!res.headersSent) {
+                    res.status(500).json({ error: "Failed to stream PDF" });
+                    return;
+                }
+                res.destroy(streamError);
+            });
+
+            return stream.pipe(res);
+        }
     } catch (error) {
         console.error("PDF read endpoint failed:", error);
         return res.status(500).json({ error: "Internal server error" });
@@ -4483,5 +4529,3 @@ app.post("/api/me/simulations/:simulationId/complete", requireAuth, async (req, 
 
 const PORT = Number(process.env.PORT || 4000);
 app.listen(PORT, "0.0.0.0", () => console.log(`✅ API running on port ${PORT}`));
-// const PORT = Number(process.env.PORT || 4000);
-// app.listen(PORT, () => console.log(`✅ API running on http://localhost:${PORT}`));
