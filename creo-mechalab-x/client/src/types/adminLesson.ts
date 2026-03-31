@@ -1,5 +1,12 @@
 export type AdminLessonResourceType = "PDF" | "VIDEO";
 
+export type AdminSimulationItem = {
+  simulation_id: number;
+  simulation_code: string;
+  title: string;
+  module_id: number | null;
+};
+
 export type AdminLessonResource = {
   resource_id: number;
   module_id: number;
@@ -26,6 +33,7 @@ export type AdminLessonItem = {
   order_no: number;
   is_active: boolean;
   lessons: AdminLessonResource[];
+  simulations: AdminSimulationItem[];
 };
 
 export type AdminLessonsListResponse = {

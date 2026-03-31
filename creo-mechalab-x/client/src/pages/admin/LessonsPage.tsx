@@ -15,6 +15,8 @@ import {
   Trash2,
   Upload,
   X,
+  Gamepad2,
+  Settings2
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -24,15 +26,14 @@ import {
   deleteAdminModuleLesson,
   getAdminLessons,
   removeAdminModuleLessonPdf,
-  updateAdminLessonTitle,
   updateAdminModuleLesson,
   uploadAdminModuleLessonPdf,
 } from "../../api/adminLessons";
-import { API_BASE_URL, ApiError } from "../../api/http";
+import { requestJson, API_BASE_URL, ApiError } from "../../api/http";
 import type { AdminLessonItem, AdminLessonResource, AdminLessonResourceType } from "../../types/adminLesson";
 import { getAuthToken } from "../../utils/auth";
 import { resolveSupportedVideoLesson } from "../../utils/videoLessons";
-import CreateModuleModal from "../../components/admin/CreateModuleModal"; // <-- NEW IMPORT
+import CreateModuleModal from "../../components/admin/CreateModuleModal";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -86,10 +87,12 @@ const sortLessons = (lessons: AdminLessonResource[]): AdminLessonResource[] => {
 const normalizeModuleItem = (item: AdminLessonItem): AdminLessonItem => ({
   ...item,
   lessons: sortLessons(item.lessons ?? []),
+  simulations: item.simulations ?? [], // Safely include simulations
 });
 
 export default function LessonsPage() {
   const [items, setItems] = useState<AdminLessonItem[]>([]);
+  const [availableSimulations, setAvailableSimulations] = useState<{ simulation_id: number; simulation_code: string; title: string }[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -98,18 +101,19 @@ export default function LessonsPage() {
   const [busyModuleId, setBusyModuleId] = useState<number | null>(null);
   const [busyLessonId, setBusyLessonId] = useState<number | null>(null);
   const [busyAction, setBusyAction] = useState<
-    "module-title" | "create-lesson" | "lesson-title" | "lesson-order" | "lesson-settings" | "upload" | "remove-pdf" | "delete-lesson" | null
+    "module-settings" | "create-lesson" | "lesson-title" | "lesson-order" | "lesson-settings" | "upload" | "remove-pdf" | "delete-lesson" | null
   >(null);
 
-  const [editingModuleId, setEditingModuleId] = useState<number | null>(null);
-  const [titleDraft, setTitleDraft] = useState("");
-  const [titleError, setTitleError] = useState<string | null>(null);
-
-  // <-- Replaced old modal states with the new Master Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
-
   const [selectedModuleId, setSelectedModuleId] = useState<number | null>(null);
   const [selectedLessonId, setSelectedLessonId] = useState<number | null>(null);
+
+  // --- New Multi-Select Edit State ---
+  const [editingModuleId, setEditingModuleId] = useState<number | null>(null);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [descDraft, setDescDraft] = useState("");
+  const [simIdsDraft, setSimIdsDraft] = useState<number[]>([]);
+  const [titleError, setTitleError] = useState<string | null>(null);
 
   const [addLessonDraft, setAddLessonDraft] = useState("");
   const [addLessonTypeDraft, setAddLessonTypeDraft] = useState<AdminLessonResourceType>(DEFAULT_LESSON_TYPE);
@@ -135,10 +139,16 @@ export default function LessonsPage() {
       setLoading(true);
       setError(null);
       try {
-        const response = await getAdminLessons();
+        // Fetch both modules and available simulations
+        const [response, simResponse] = await Promise.all([
+            getAdminLessons(),
+            requestJson<{ simulations: { simulation_id: number; simulation_code: string; title: string }[] }>("/api/admin/simulations").catch(() => ({ simulations: [] }))
+        ]);
+        
         if (!active) return;
         const normalized = sortAdminLessonItems((response.items ?? []).map(normalizeModuleItem));
         setItems(normalized);
+        setAvailableSimulations(simResponse.simulations || []);
       } catch (loadError) {
         if (!active) return;
         setItems([]);
@@ -161,7 +171,8 @@ export default function LessonsPage() {
         target.closest(".lesson-row") ||
         target.closest(".details-pane") ||
         target.closest(".top-bar-actions") ||
-        target.closest(".keep-selection")
+        target.closest(".keep-selection") ||
+        showCreateModal // Don't deselect if modal is open
       ) {
         return;
       }
@@ -170,7 +181,7 @@ export default function LessonsPage() {
 
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [showCreateModal]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -319,23 +330,29 @@ export default function LessonsPage() {
   const isModuleBusy = (moduleId: number): boolean => busyModuleId === moduleId && busyLessonId === null;
   const isLessonBusy = (resourceId: number): boolean => busyLessonId === resourceId;
 
-  const startModuleTitleEdit = (item: AdminLessonItem) => {
+  // --- New Module Edit Flow ---
+  const startModuleEdit = (item: AdminLessonItem) => {
     if (busyModuleId !== null || busyLessonId !== null) return;
     setNotice(null);
     setError(null);
     setTitleError(null);
+
     setEditingModuleId(item.module_id);
     setTitleDraft(item.module_title);
+    setDescDraft(item.description || "");
+    setSimIdsDraft(item.simulations?.map((s) => s.simulation_id) || []);
   };
 
-  const cancelModuleTitleEdit = () => {
-    if (busyAction === "module-title") return;
+  const cancelModuleEdit = () => {
+    if (busyAction === "module-settings") return;
     setEditingModuleId(null);
     setTitleDraft("");
+    setDescDraft("");
+    setSimIdsDraft([]);
     setTitleError(null);
   };
 
-  const handleSaveModuleTitle = async (moduleId: number) => {
+  const handleSaveModuleSettings = async (moduleId: number) => {
     if (busyModuleId !== null || busyLessonId !== null) return;
 
     const trimmedTitle = titleDraft.trim();
@@ -350,19 +367,29 @@ export default function LessonsPage() {
 
     setBusyModuleId(moduleId);
     setBusyLessonId(null);
-    setBusyAction("module-title");
+    setBusyAction("module-settings");
     setTitleError(null);
     setNotice(null);
     setError(null);
 
     try {
-      const response = await updateAdminLessonTitle(moduleId, trimmedTitle);
-      applyItemPatch(response.item, moduleId);
+      // 1. Update Title & Description
+      await requestJson(`/api/admin/lessons/${moduleId}`, {
+        method: "PATCH",
+        body: { title: trimmedTitle, description: descDraft.trim() }
+      });
+
+      // 2. Update Selected Simulations
+      await requestJson(`/api/admin/modules/${moduleId}/simulations`, {
+        method: "PUT",
+        body: { simulationIds: simIdsDraft }
+      });
+
       setEditingModuleId(null);
-      setTitleDraft("");
-      setNotice({ kind: "success", text: "Module title updated successfully." });
-    } catch (updateError) {
-      setTitleError(toErrorMessage(updateError, "Failed to update module title."));
+      setNotice({ kind: "success", text: "Module settings updated successfully." });
+      setRefreshSeq(s => s + 1); // Trigger a full refresh to get the updated simulations list
+    } catch (err) {
+      setTitleError(toErrorMessage(err, "Failed to update module settings."));
     } finally {
       setBusyAction(null);
       setBusyModuleId(null);
@@ -702,7 +729,7 @@ export default function LessonsPage() {
                   <tr className="text-[10px] uppercase font-black text-slate-400 tracking-wider border-b border-slate-100 dark:border-slate-800/50">
                     <th className="px-6 py-5 text-left w-32">Module Code</th>
                     <th className="px-6 py-5 text-left">Module Title</th>
-                    <th className="px-6 py-5 text-center w-36">Lessons</th>
+                    <th className="px-6 py-5 text-center">Activities</th>
                     <th className="px-6 py-5 text-left w-32">Status</th>
                   </tr>
                 </thead>
@@ -728,6 +755,7 @@ export default function LessonsPage() {
                       const isSelected = selectedModuleId === item.module_id;
                       const abbrev = item.module_code.substring(0, 2).toUpperCase() || "M0";
                       const lessonCount = item.lessons.length;
+                      const simCount = item.simulations?.length || 0;
                       const readyLessonCount = item.lessons.filter((lesson) => {
                         const url = (lesson.resolved_url || lesson.url || "").trim();
                         return url.length > 0;
@@ -781,9 +809,12 @@ export default function LessonsPage() {
                             </p>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex items-center justify-center gap-2 text-xs font-bold text-slate-500">
-                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50">
-                                <FileText size={14} className={lessonCount > 0 ? "text-[#3B82F6]" : "text-slate-400"} /> {lessonCount}
+                            <div className="flex items-center justify-center gap-2 text-[10px] font-bold text-slate-500">
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50" title={`${lessonCount} Lessons`}>
+                                <FileText size={12} className={lessonCount > 0 ? "text-[#3B82F6]" : "text-slate-400"} /> {lessonCount}
+                              </div>
+                              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/50" title={`${simCount} Simulations`}>
+                                <Gamepad2 size={12} className={simCount > 0 ? "text-indigo-500" : "text-slate-400"} /> {simCount}
                               </div>
                             </div>
                           </td>
@@ -821,7 +852,7 @@ export default function LessonsPage() {
                   <div className="flex items-center gap-2.5">
                     <BookOpen size={18} className="text-[#3B82F6]" />
                     <span className="font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest text-[12px]">
-                      Details
+                      Module Details
                     </span>
                     <span className="bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-[#3B82F6] px-2.5 py-0.5 rounded-full text-[10px] font-extrabold">
                       {selectedModule.module_code}
@@ -831,11 +862,11 @@ export default function LessonsPage() {
                     {!editingModuleId && (
                       <button
                         type="button"
-                        onClick={() => startModuleTitleEdit(selectedModule)}
-                        className="hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-                        title="Edit module title"
+                        onClick={() => startModuleEdit(selectedModule)}
+                        className="hover:text-[#3B82F6] dark:hover:text-blue-400 transition-colors bg-slate-100 dark:bg-slate-800 p-2 rounded-xl"
+                        title="Edit Module Settings"
                       >
-                        <Pencil size={15} />
+                        <Settings2 size={15} />
                       </button>
                     )}
                   </div>
@@ -843,58 +874,101 @@ export default function LessonsPage() {
 
                 <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
                   {editingModuleId === selectedModule.module_id ? (
-                    <div className="mb-6">
-                      <input
-                        type="text"
-                        value={titleDraft}
-                        maxLength={MODULE_TITLE_MAX_LENGTH}
-                        onChange={(e) => {
-                          setTitleDraft(e.target.value);
-                          setTitleError(null);
-                        }}
-                        disabled={isModuleBusy(selectedModule.module_id)}
-                        className="w-full text-2xl font-black text-[#0B1B3D] dark:text-white bg-slate-50 dark:bg-slate-900 border-2 border-[#3B82F6] rounded-xl px-4 py-3 outline-none"
-                        autoFocus
-                      />
-                      {titleError && <p className="mt-2 text-xs font-bold text-red-500">{titleError}</p>}
-                      <div className="flex items-center gap-2 mt-3">
-                        <button
-                          onClick={() => void handleSaveModuleTitle(selectedModule.module_id)}
-                          disabled={isModuleBusy(selectedModule.module_id) || !titleDraft.trim()}
-                          className="px-5 py-2 bg-[#3B82F6] hover:bg-blue-600 text-white text-xs font-bold rounded-xl flex items-center gap-2 disabled:opacity-50"
-                        >
-                          {isModuleBusy(selectedModule.module_id) && busyAction === "module-title" ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <CheckCircle2 size={14} />
-                          )}
-                          Save
-                        </button>
-                        <button
-                          onClick={cancelModuleTitleEdit}
-                          disabled={isModuleBusy(selectedModule.module_id)}
-                          className="px-5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl flex items-center gap-1.5"
-                        >
-                          <X size={14} /> Cancel
-                        </button>
+                    <div className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700/50 mb-6 space-y-4">
+                      <div className="flex justify-between items-center mb-1">
+                          <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">Edit Module</h3>
+                          <button onClick={cancelModuleEdit} className="text-slate-400 hover:text-slate-600"><X size={16}/></button>
                       </div>
+                      
+                      <div>
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Title</label>
+                          <input
+                            type="text"
+                            value={titleDraft}
+                            maxLength={MODULE_TITLE_MAX_LENGTH}
+                            onChange={(e) => {
+                              setTitleDraft(e.target.value);
+                              setTitleError(null);
+                            }}
+                            disabled={isModuleBusy(selectedModule.module_id)}
+                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-sm font-bold text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#3B82F6]"
+                          />
+                          {titleError && <p className="mt-1.5 text-[10px] font-bold text-red-500">{titleError}</p>}
+                      </div>
+                      
+                      <div>
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Description</label>
+                          <textarea 
+                            rows={2} 
+                            value={descDraft} 
+                            onChange={(e) => setDescDraft(e.target.value)} 
+                            disabled={isModuleBusy(selectedModule.module_id)} 
+                            className="w-full px-3 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-sm font-medium text-slate-800 dark:text-slate-200 outline-none focus:ring-2 focus:ring-[#3B82F6]" 
+                          />
+                      </div>
+                      
+                      <div>
+                          <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 block">Assigned Simulations</label>
+                          <div className="max-h-36 overflow-y-auto custom-scrollbar space-y-1.5 p-2 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 rounded-xl">
+                            {availableSimulations.length === 0 && <p className="text-[10px] text-slate-500 px-2 py-1">No simulations available.</p>}
+                            {availableSimulations.map(sim => (
+                                <label key={sim.simulation_id} className="flex items-center gap-2.5 p-2 hover:bg-slate-50 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition-colors">
+                                    <input 
+                                      type="checkbox" 
+                                      checked={simIdsDraft.includes(sim.simulation_id)} 
+                                      onChange={(e) => {
+                                        if (e.target.checked) setSimIdsDraft([...simIdsDraft, sim.simulation_id]);
+                                        else setSimIdsDraft(simIdsDraft.filter(id => id !== sim.simulation_id));
+                                      }} 
+                                      disabled={isModuleBusy(selectedModule.module_id)} 
+                                      className="w-4 h-4 text-[#3B82F6] rounded border-slate-300 focus:ring-[#3B82F6]" 
+                                    />
+                                    <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{sim.simulation_code} - {sim.title}</span>
+                                </label>
+                            ))}
+                          </div>
+                      </div>
+
+                      <button
+                        onClick={() => void handleSaveModuleSettings(selectedModule.module_id)}
+                        disabled={isModuleBusy(selectedModule.module_id) || !titleDraft.trim()}
+                        className="w-full mt-2 py-2.5 bg-[#3B82F6] hover:bg-blue-600 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                      >
+                        {isModuleBusy(selectedModule.module_id) && busyAction === "module-settings" ? (
+                          <Loader2 size={14} className="animate-spin" />
+                        ) : (
+                          <CheckCircle2 size={14} />
+                        )}
+                        Save Settings
+                      </button>
                     </div>
                   ) : (
-                    <h2 className="text-2xl font-black text-[#0B1B3D] dark:text-white leading-tight mb-2">
-                      {selectedModule.module_title}
-                    </h2>
+                    <div className="mb-6">
+                      <h2 className="text-2xl font-black text-[#0B1B3D] dark:text-white leading-tight mb-2">
+                        {selectedModule.module_title}
+                      </h2>
+                      <p className="text-xs font-semibold text-slate-500 leading-relaxed">
+                        {selectedModule.description || "No description provided."}
+                      </p>
+                      
+                      {(selectedModule).simulations && (selectedModule).simulations.length > 0 && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                           {(selectedModule).simulations.map((sim) => (
+                             <span key={sim.simulation_id} className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-500/20">
+                               <Gamepad2 size={12}/> {sim.simulation_code}
+                             </span>
+                           ))}
+                        </div>
+                      )}
+                    </div>
                   )}
 
-                  <p className="text-xs font-semibold text-slate-500 leading-relaxed mb-6">
-                    {selectedModule.description || "Module container for ordered lesson content."}
-                  </p>
-
                   <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-widest mt-8 mb-4 flex items-center gap-2">
-                    <Layers3 size={14} /> Lessons
+                    <Layers3 size={14} /> Lesson Content
                   </h3>
 
                   {/* Note: The inline "Add Lesson" form is preserved here to allow adding extra lessons to an EXISTING module without the big wizard */}
-                  <div className="space-y-3 mb-4">
+                  <div className="space-y-3 mb-4 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-2xl border border-slate-200 dark:border-slate-700/50">
                     <div className="flex gap-2">
                       <input
                         type="text"
@@ -955,7 +1029,7 @@ export default function LessonsPage() {
 
                   {selectedModuleLessons.length === 0 ? (
                     <div className="border border-dashed border-slate-200 dark:border-slate-700/50 rounded-2xl p-6 text-center text-sm font-semibold text-slate-500">
-                      No lessons yet. Add your first lesson item for this module.
+                      No lessons attached. Add your first lesson item for this module.
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -1341,14 +1415,14 @@ export default function LessonsPage() {
                 </div>
                 <p className="text-base font-black text-slate-800 dark:text-slate-200">Select a module</p>
                 <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mt-2 max-w-[250px] leading-relaxed">
-                  View module details, then create and manage ordered PDF and VIDEO lessons.
+                  View module details, select simulations, and manage ordered PDF and VIDEO lessons.
                 </p>
               </motion.div>
             )}
           </AnimatePresence>
         </div>
 
-{/* Master Module Creation Wizard */}
+        {/* Master Module Creation Wizard */}
         <AnimatePresence>
           {showCreateModal && (
             <CreateModuleModal

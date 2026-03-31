@@ -1516,7 +1516,7 @@ function findAdminLessonByResourceId(item, resourceId) {
 }
 
 async function getAdminLessonItems(moduleId = null) {
-    const [moduleResult, lessonRows] = await Promise.all([
+    const [moduleResult, lessonRows, simRows] = await Promise.all([
         pool.query(
             `SELECT
                m.module_id::INT AS module_id,
@@ -1531,6 +1531,13 @@ async function getAdminLessonItems(moduleId = null) {
             [moduleId]
         ),
         getAdminLessonResourceRows(moduleId),
+        pool.query(
+            `SELECT simulation_id::INT AS simulation_id, simulation_code, title, module_id::INT AS module_id
+             FROM simulations
+             WHERE ($1::BIGINT IS NULL OR module_id = $1)
+             ORDER BY order_no, simulation_id`,
+            [moduleId]
+        )
     ]);
 
     const lessonsByModuleId = new Map();
@@ -1540,10 +1547,15 @@ async function getAdminLessonItems(moduleId = null) {
         lessonsByModuleId.get(key).push(lesson);
     }
 
+    const simsByModuleId = new Map();
+    for (const sim of simRows.rows) {
+        const key = Number(sim.module_id);
+        if (!simsByModuleId.has(key)) simsByModuleId.set(key, []);
+        simsByModuleId.get(key).push(sim);
+    }
+
     return moduleResult.rows.map((row) => {
         const safeModuleId = Number(row.module_id) || 0;
-        const lessons = lessonsByModuleId.get(safeModuleId) || [];
-
         return {
             module_id: safeModuleId,
             module_code: row.module_code || "",
@@ -1551,10 +1563,64 @@ async function getAdminLessonItems(moduleId = null) {
             description: row.description || null,
             order_no: Number(row.order_no) || 0,
             is_active: row.is_active === true,
-            lessons,
+            lessons: lessonsByModuleId.get(safeModuleId) || [],
+            simulations: simsByModuleId.get(safeModuleId) || [],
         };
     });
 }
+
+app.get("/api/admin/simulations", verifyToken, requireAdmin, async (req, res) => {
+    try {
+        const result = await pool.query(
+            `SELECT simulation_id::INT, simulation_code, title, module_id::INT
+             FROM simulations
+             ORDER BY simulation_code, title`
+        );
+        res.json({ simulations: result.rows });
+    } catch (error) {
+        console.error("Admin simulations fetch failed:", error);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+app.put("/api/admin/modules/:moduleId/simulations", verifyToken, requireAdmin, async (req, res) => {
+    const moduleId = parsePositiveIntParam(req.params.moduleId);
+    if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
+
+    const { simulationIds } = req.body;
+    if (!Array.isArray(simulationIds)) {
+        return res.status(400).json({ error: "simulationIds must be an array" });
+    }
+
+    const client = await pool.connect();
+    try {
+        await client.query("BEGIN");
+        
+        // Unassign existing simulations for this module
+        await client.query(`UPDATE simulations SET module_id = NULL WHERE module_id = $1`, [moduleId]);
+
+        // Assign the new ones
+        const safeIds = simulationIds.map(id => Number(id)).filter(id => Number.isInteger(id) && id > 0);
+        if (safeIds.length > 0) {
+            await client.query(
+                `UPDATE simulations SET module_id = $1 WHERE simulation_id = ANY($2::INT[])`,
+                [moduleId, safeIds]
+            );
+        }
+
+        await client.query("COMMIT");
+        invalidateAdminCaches();
+        
+        const [item] = await getAdminLessonItems(moduleId);
+        res.json({ item });
+    } catch (error) {
+        await client.query("ROLLBACK");
+        console.error("Admin update module simulations failed:", error);
+        res.status(500).json({ error: "Internal server error" });
+    } finally {
+        client.release();
+    }
+});
 
 async function getModuleStatusRowsForTrainee(traineeId) {
     const result = await pool.query(
@@ -1836,37 +1902,27 @@ app.patch("/api/admin/lessons/:moduleId", async (req, res) => {
     if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
 
     const rawTitle = req.body?.title;
-    if (typeof rawTitle !== "string") {
-        return res.status(400).json({ error: "Title is required" });
-    }
+    if (typeof rawTitle !== "string") return res.status(400).json({ error: "Title is required" });
 
     const title = rawTitle.trim();
-    if (!title) {
-        return res.status(400).json({ error: "Title cannot be empty" });
-    }
-    if (title.length > MODULE_TITLE_MAX_LENGTH) {
-        return res.status(400).json({ error: `Title must be at most ${MODULE_TITLE_MAX_LENGTH} characters` });
-    }
+    if (!title) return res.status(400).json({ error: "Title cannot be empty" });
+    if (title.length > MODULE_TITLE_MAX_LENGTH) return res.status(400).json({ error: `Title must be at most ${MODULE_TITLE_MAX_LENGTH} characters` });
+
+    const description = req.body?.description ?? null; // NEW
 
     try {
         const updateResult = await pool.query(
             `UPDATE modules
-             SET title = $2
+             SET title = $2, description = $3
              WHERE module_id = $1
              RETURNING module_id`,
-            [moduleId, title]
+            [moduleId, title, description] // UPDATED
         );
 
-        if (updateResult.rowCount === 0) {
-            return res.status(404).json({ error: "Module not found" });
-        }
+        if (updateResult.rowCount === 0) return res.status(404).json({ error: "Module not found" });
 
         invalidateAdminCaches();
         const [item] = await getAdminLessonItems(moduleId);
-        if (!item) {
-            return res.status(500).json({ error: "Failed to load lesson after update" });
-        }
-
         return res.json({ item });
     } catch (error) {
         console.error("Admin lesson title update endpoint failed:", error);
