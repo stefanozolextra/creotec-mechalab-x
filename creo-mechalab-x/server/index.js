@@ -1569,7 +1569,7 @@ async function getAdminLessonItems(moduleId = null) {
     });
 }
 
-aapp.get("/api/admin/simulations", requireAuth, requireAdmin, async (req, res) => {
+app.get("/api/admin/simulations", requireAuth, requireAdmin, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT simulation_id::INT, simulation_code, title, module_id::INT
