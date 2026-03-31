@@ -103,6 +103,7 @@ const isCompletedValue = (value: boolean | string | number | null | undefined): 
     return false;
 };
 
+// --- FIX: Now checks both DB and LocalStorage to find the true next activity ---
 const getNextSimulationByModuleId = (
     simulations: SimulationApi[],
     simulationProgressById: Map<number, boolean>
@@ -150,10 +151,12 @@ const getNextSimulationByModuleId = (
 
     return nextByModule;
 };
+// -------------------------------------------------------------------------------
 
 const Dashboard = () => {
     const navigate = useNavigate();
 
+    // --- SMART DOOR STATE ---
     const [isHangarVisible, setIsHangarVisible] = useState(() => !sessionStorage.getItem('dashboard_entered'));
     const [isHangarClosed, setIsHangarClosed] = useState(() => !sessionStorage.getItem('dashboard_entered'));
     const isLoggingOutRef = useRef(false);
@@ -161,9 +164,10 @@ const Dashboard = () => {
     useEffect(() => {
         if (isHangarVisible && isHangarClosed && !isLoggingOutRef.current) {
             const timer = setTimeout(() => {
-                setIsHangarClosed(false);
+                setIsHangarClosed(false); // Slide doors open
                 sessionStorage.setItem('dashboard_entered', 'true');
 
+                // Remove doors from DOM after animation completes so they don't block clicks
                 setTimeout(() => {
                     if (!isLoggingOutRef.current) setIsHangarVisible(false);
                 }, 1500);
@@ -171,6 +175,7 @@ const Dashboard = () => {
             return () => clearTimeout(timer);
         }
     }, [isHangarVisible, isHangarClosed]);
+    // ------------------------
 
     const [dashboardState, setDashboardState] = useState<DashboardState>({
         data: null,
@@ -203,6 +208,7 @@ const Dashboard = () => {
         }
     };
 
+    // 4. DEFINE TUTORIAL STEPS
     const tutorialSteps: TutorialStep[] = [
         {
             message: "System initialized. I am M.A.X, your Mechatronics Assistant eXaminer. I will guide you through the CREOSim environment."
@@ -220,11 +226,11 @@ const Dashboard = () => {
             message: "When you select a module, your briefing and technical specifications appear here in the side panel."
         },
         {
-            targetId: "tour-simulation-btn",
+            targetId: "tour-simulation-btn", // NEW TARGET
             message: "When you are ready, click 'Initiate Simulation' to enter the hands-on electro-pneumatic routing environment."
         },
         {
-            targetId: "tour-lesson-btn",
+            targetId: "tour-lesson-btn", // NEW TARGET
             message: "If you need to review the theory, diagrams, or video lectures, you can open the Lesson Content directly from here."
         },
         {
@@ -496,11 +502,7 @@ const Dashboard = () => {
     return (
         <>
             <CyberTransition>
-                {/* 🚀 Added style={{ zoom: 0.85 }} here to scale the entire view down 🚀 */}
-                <div 
-                    className="min-h-screen w-full overflow-x-hidden bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white pb-8 relative transition-colors duration-300 z-0"
-                    style={{ zoom: 0.85 }}
-                >
+                <div className="min-h-screen w-full overflow-x-hidden bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200 font-sans selection:bg-cyan-500 selection:text-white pb-8 relative transition-colors duration-300 z-0">
                     {/* GAME HUD GRID BACKGROUND */}
                     <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:32px_32px] dark:bg-[linear-gradient(to_right,#ffffff0a_1px,transparent_1px),linear-gradient(to_bottom,#ffffff0a_1px,transparent_1px)] pointer-events-none -z-10" />
 
