@@ -1569,7 +1569,7 @@ async function getAdminLessonItems(moduleId = null) {
     });
 }
 
-app.get("/api/admin/simulations", verifyToken, requireAdmin, async (req, res) => {
+aapp.get("/api/admin/simulations", requireAuth, requireAdmin, async (req, res) => {
     try {
         const result = await pool.query(
             `SELECT simulation_id::INT, simulation_code, title, module_id::INT
@@ -1583,7 +1583,7 @@ app.get("/api/admin/simulations", verifyToken, requireAdmin, async (req, res) =>
     }
 });
 
-app.put("/api/admin/modules/:moduleId/simulations", verifyToken, requireAdmin, async (req, res) => {
+app.put("/api/admin/modules/:moduleId/simulations", requireAuth, requireAdmin, async (req, res) => {
     const moduleId = parsePositiveIntParam(req.params.moduleId);
     if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
 
