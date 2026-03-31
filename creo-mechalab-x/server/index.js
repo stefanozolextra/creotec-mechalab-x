@@ -1596,10 +1596,14 @@ app.put("/api/admin/modules/:moduleId/simulations", requireAuth, requireAdmin, a
     try {
         await client.query("BEGIN");
         
+        // 🔥 Self-healing DB patch: Allow simulations to sit in an unassigned pool
+        await client.query(`ALTER TABLE simulations ALTER COLUMN module_id DROP NOT NULL`)
+            .catch(e => console.warn("Notice: Could not auto-drop constraint. You may need to run this manually in Supabase."));
+
         // Unassign existing simulations for this module
         await client.query(`UPDATE simulations SET module_id = NULL WHERE module_id = $1`, [moduleId]);
 
-        // Assign the new ones
+        // Assign the newly selected ones
         const safeIds = simulationIds.map(id => Number(id)).filter(id => Number.isInteger(id) && id > 0);
         if (safeIds.length > 0) {
             await client.query(
