@@ -26,7 +26,7 @@ import { getActivityAnswerByRouteId, ACTIVITY_ANSWERS } from './constants/activi
 
 // M.A.X. DEPENDENCIES
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
-import { getAuthRole } from '../utils/auth'; // <-- IMPORTED GOD MODE UTILITY
+import { getAuthRole } from '../utils/auth'; 
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
 interface SimulationAppProps { routeId?: string; simulationId?: number; initialCompletedRoutes?: string[]; onNavigateBack?: () => void; }
@@ -83,7 +83,10 @@ const INITIAL_MANUAL_RELAY_BUTTON_STATE: Record<ManualRelayButtonId, boolean> = 
 
 const STORAGE_KEY = 'creosim_simulation_states';
 
-export default function SimulationApp({ routeId, simulationId, initialCompletedRoutes = [], onNavigateBack }: SimulationAppProps) {
+// 🔥 SMART SCALING CONSTANT: Defines the zoom level for the app wrapper
+const APP_SCALE = 0.90;
+
+export default function SimulationApp({ routeId, initialCompletedRoutes = [], onNavigateBack }: SimulationAppProps) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -160,6 +163,7 @@ export default function SimulationApp({ routeId, simulationId, initialCompletedR
   const [historyPast, setHistoryPast] = useState<Connection[][]>([]);
   const [historyFuture, setHistoryFuture] = useState<Connection[][]>([]);
 
+  // 🔥 Scaling Adjustments: Scale down sizes to compensate for the 90% outer container
   const GUIDE_PANEL_WIDTH = 360;
   const DEVICE_DRAWER_OPEN_WIDTH = 320;
   const DEVICE_DRAWER_COLLAPSED_WIDTH = 60;
@@ -167,9 +171,15 @@ export default function SimulationApp({ routeId, simulationId, initialCompletedR
   const BASE_CANVAS_WIDTH = 1280;
   const BASE_CANVAS_HEIGHT = 720;
 
-  const availableCanvasWidth = viewport.width - GUIDE_PANEL_WIDTH - PADDING * 2;
-  const availableCanvasHeight = viewport.height - PADDING * 2;
+  // We divide viewport width by APP_SCALE to get the true "unscaled" inner width
+  const scaledViewportWidth = viewport.width / APP_SCALE;
+  const scaledViewportHeight = viewport.height / APP_SCALE;
+
+  const availableCanvasWidth = scaledViewportWidth - GUIDE_PANEL_WIDTH - PADDING * 2;
+  const availableCanvasHeight = scaledViewportHeight - PADDING * 2 - 80; // Minus 80 for the header height
+
   const canvasScale = Math.max(0.1, Math.min(availableCanvasWidth / BASE_CANVAS_WIDTH, availableCanvasHeight / BASE_CANVAS_HEIGHT));
+  
   const activity5TimerDelaySeconds = useMemo(() => {
     const parsedValue = Number.parseFloat(activity5TimerDelayInput);
     return Number.isFinite(parsedValue) && parsedValue >= 0
@@ -181,9 +191,6 @@ export default function SimulationApp({ routeId, simulationId, initialCompletedR
   const currentIndex = routeKeys.indexOf(activityPreset.routeId);
   const nextRouteId = currentIndex !== -1 && currentIndex < routeKeys.length - 1 ? routeKeys[currentIndex + 1] : null;
 
-  // 🌟 GOD MODE OVERRIDE 🌟
-  // Instead of strictly locking the board when a saved state exists, 
-  // we check if the user is a developer. If they are, the board NEVER locks!
   const isSessionCompleted = getAuthRole() === 'developer' ? false : !!savedStates[activityPreset.routeId];
 
   const clearActivity5TimerTimeout = useCallback(() => {
@@ -214,7 +221,7 @@ export default function SimulationApp({ routeId, simulationId, initialCompletedR
   }, [clearActivity5TimerInterval, clearActivity5TimerTimeout]);
 
   useEffect(() => {
-    const handleResize = () => { if (containerRef.current) setViewport({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight }); };
+    const handleResize = () => { if (containerRef.current) setViewport({ width: window.innerWidth, height: window.innerHeight }); };
     window.addEventListener('resize', handleResize);
     handleResize();
     return () => window.removeEventListener('resize', handleResize);
@@ -430,6 +437,7 @@ export default function SimulationApp({ routeId, simulationId, initialCompletedR
     const pos = e.target.getStage()?.getPointerPosition();
     if (!pos) return;
 
+    // 🔥 Scaling Adjustment: Divide mouse position by canvas scale to perfectly map coordinates
     mousePosRef.current = { x: pos.x / canvasScale, y: pos.y / canvasScale };
 
     if (rafRef.current === null) {
@@ -831,547 +839,545 @@ export default function SimulationApp({ routeId, simulationId, initialCompletedR
     <PortraitGuard>
       <CyberTransition>
         <div className={`flex flex-col h-screen w-screen text-slate-800 dark:text-slate-200 font-sans overflow-hidden select-none transition-colors duration-300 ${isDarkMode ? 'dark bg-[#0B1120]' : 'bg-slate-50'}`}>
-          <style>{`
-            @keyframes popIn {
-              0% { transform: scale(0.8); opacity: 0; }
-              100% { transform: scale(1); opacity: 1; }
-            }
-            .animate-pop-in {
-              animation: popIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-            }
-          `}</style>
+          
+          {/* 🔥 THE MAGIC FIX 🔥: We wrap the entire UI in a fixed 90% scaling box centered from top left */}
+          <div 
+            className="w-[111.11%] h-[111.11%] origin-top-left flex flex-col relative"
+            style={{ transform: `scale(${APP_SCALE})` }}
+          >
 
-          <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-20 shadow-md relative">
-            <div className="flex items-center gap-4">
-              <button onClick={handleBackNavigation} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence"><ArrowLeft size={20} /></button>
-              <div>
-                <h1 className="font-black text-lg text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2"><Play size={16} className="text-cyan-600 dark:text-cyan-500" /> Laboratory Sequence</h1>
-                <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: Electro-Pneumatic Trainer • Task: {activityPreset.title || routeId || 'Default'}</p>
-              </div>
-            </div>
+            <style>{`
+              @keyframes popIn {
+                0% { transform: scale(0.8); opacity: 0; }
+                100% { transform: scale(1); opacity: 1; }
+              }
+              .animate-pop-in {
+                animation: popIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+              }
+            `}</style>
 
-            <div className="flex items-center gap-3">
-              {(canProceedToNext) && nextRouteId && (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/simulation/${nextRouteId}`)}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] animate-[pulse_2s_infinite] mr-2"
-                >
-                  Next Activity <ChevronRight size={16} strokeWidth={3} />
-                </button>
-              )}
-
-              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner">
-                <button onClick={deleteSelectedWire} disabled={!selectedWireId || isSessionCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
-                <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
-                <button onClick={handleUndo} disabled={!historyPast.length || isSessionCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Undo"><Undo2 size={16} /></button>
-                <button onClick={handleRedo} disabled={!historyFuture.length || isSessionCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Redo"><Redo2 size={16} /></button>
-                <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
-                <div className="px-2 flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full shadow-inner border border-slate-400" style={{ backgroundColor: wireColor }} />
-                  <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} disabled={isSessionCompleted} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1 disabled:opacity-50">
-                    <option value="#e74c3c" className="bg-white dark:bg-slate-900">24V Red</option>
-                    <option value="#111827" className="bg-white dark:bg-slate-900">0V Black</option>
-                    <option value="#3498db" className="bg-white dark:bg-slate-900">Signal Blue</option>
-                    <option value="#f1c40f" className="bg-white dark:bg-slate-900">Signal Yellow</option>
-                    <option value="#27ae60" className="bg-white dark:bg-slate-900">Earth Green</option>
-                  </select>
+            <header className="shrink-0 flex items-center justify-between px-6 py-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 z-20 shadow-md relative h-[80px]">
+              <div className="flex items-center gap-4">
+                <button onClick={handleBackNavigation} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence"><ArrowLeft size={20} /></button>
+                <div>
+                  <h1 className="font-black text-lg text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2"><Play size={16} className="text-cyan-600 dark:text-cyan-500" /> Laboratory Sequence</h1>
+                  <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: Electro-Pneumatic Trainer • Task: {activityPreset.title || routeId || 'Default'}</p>
                 </div>
               </div>
-              <button type="button" onClick={handleResetBoard} disabled={isSessionCompleted} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm disabled:opacity-50">
-                <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden xl:inline">Clear Board</span>
-              </button>
-              <button type="button" onClick={toggleTheme} className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm">
-                {isDarkMode ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
-              </button>
-            </div>
-          </header>
 
-          <main className="relative flex-1 flex flex-row w-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-950" ref={containerRef}>
+              <div className="flex items-center gap-3">
+                {(canProceedToNext) && nextRouteId && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/simulation/${nextRouteId}`)}
+                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] animate-[pulse_2s_infinite] mr-2"
+                  >
+                    Next Activity <ChevronRight size={16} strokeWidth={3} />
+                  </button>
+                )}
 
-            {/* ADD ID HERE */}
-            <aside id="tour-sim-controls" className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-800/50">
-                <h2 className="font-black text-slate-900 dark:text-white text-[1.35rem]">Controls</h2>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3">
-                <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40">
-                  <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">List of Devices to Use</h4>
-                  <div className="mt-3 space-y-3">
-                    {renderDeviceDropZone('input', 'Input Device')}
-                    {renderDeviceDropZone('output', 'Output/Control Device')}
+                <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner">
+                  <button onClick={deleteSelectedWire} disabled={!selectedWireId || isSessionCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
+                  <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
+                  <button onClick={handleUndo} disabled={!historyPast.length || isSessionCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Undo"><Undo2 size={16} /></button>
+                  <button onClick={handleRedo} disabled={!historyFuture.length || isSessionCompleted} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 disabled:opacity-30 rounded-lg" title="Redo"><Redo2 size={16} /></button>
+                  <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
+                  <div className="px-2 flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full shadow-inner border border-slate-400" style={{ backgroundColor: wireColor }} />
+                    <select value={wireColor} onChange={(e) => handleWireColorChange(e.target.value)} disabled={isSessionCompleted} className="bg-transparent text-xs text-slate-900 dark:text-white font-bold outline-none border-none cursor-pointer py-1 disabled:opacity-50">
+                      <option value="#e74c3c" className="bg-white dark:bg-slate-900">24V Red</option>
+                      <option value="#111827" className="bg-white dark:bg-slate-900">0V Black</option>
+                      <option value="#3498db" className="bg-white dark:bg-slate-900">Signal Blue</option>
+                      <option value="#f1c40f" className="bg-white dark:bg-slate-900">Signal Yellow</option>
+                      <option value="#27ae60" className="bg-white dark:bg-slate-900">Earth Green</option>
+                    </select>
                   </div>
-                </section>
+                </div>
+                <button type="button" onClick={handleResetBoard} disabled={isSessionCompleted} className="flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-black uppercase tracking-widest rounded-xl border border-slate-300 dark:border-slate-700 transition-colors shadow-sm disabled:opacity-50">
+                  <RefreshCw size={16} strokeWidth={2.5} /> <span className="hidden xl:inline">Clear Board</span>
+                </button>
+                <button type="button" onClick={toggleTheme} className="p-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-cyan-400 rounded-xl border border-slate-300 dark:border-slate-700 transition-all shadow-sm">
+                  {isDarkMode ? <Sun size={18} strokeWidth={2.5} /> : <Moon size={18} strokeWidth={2.5} />}
+                </button>
+              </div>
+            </header>
 
-                {activityPreset.routeId === '5' && (
+            <main className="relative flex-1 flex flex-row w-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-950" ref={containerRef}>
+
+              {/* ADD ID HERE */}
+              <aside id="tour-sim-controls" className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-800/50">
+                  <h2 className="font-black text-slate-900 dark:text-white text-[1.35rem]">Controls</h2>
+                </div>
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3">
                   <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Timer Runtime</h4>
-                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Click the TIMER/CTR device for runtime and setup. T1 runs as an on-delay timer after R1 latches.</p>
+                    <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">List of Devices to Use</h4>
+                    <div className="mt-3 space-y-3">
+                      {renderDeviceDropZone('input', 'Input Device')}
+                      {renderDeviceDropZone('output', 'Output/Control Device')}
+                    </div>
+                  </section>
+
+                  {activityPreset.routeId === '5' && (
+                    <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Timer Runtime</h4>
+                          <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Click the TIMER/CTR device for runtime and setup. T1 runs as an on-delay timer after R1 latches.</p>
+                        </div>
+                        <div className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${activity5TimerStatus === 'done'
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                          : activity5TimerStatus === 'timing'
+                            ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
+                            : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300'
+                          }`}>
+                          {activity5TimerStatusLabel}
+                        </div>
                       </div>
-                      <div className={`inline-flex items-center justify-center rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] ${activity5TimerStatus === 'done'
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
-                        : activity5TimerStatus === 'timing'
-                          ? 'border-amber-200 bg-amber-50 text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
-                          : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300'
-                        }`}>
-                        {activity5TimerStatusLabel}
+
+                      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                          <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">R1</p>
+                          <p className={`mt-1 text-sm font-black ${activity5RelayEnergized ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                            {activity5RelayEnergized ? 'ON' : 'OFF'}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                          <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">T1</p>
+                          <p className="mt-1 text-sm font-black text-slate-700 dark:text-slate-200">{activity5TimerStatusLabel}</p>
+                          <p className="mt-1 font-mono text-[11px] font-black tracking-[0.18em] text-slate-500 dark:text-slate-400">{activity5TimerDisplayText}</p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                          <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Green</p>
+                          <p className={`mt-1 text-sm font-black ${isActivity5GreenLampOn ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                            {isActivity5GreenLampOn ? 'ON' : 'OFF'}
+                          </p>
+                        </div>
+                        <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                          <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Yellow</p>
+                          <p className={`mt-1 text-sm font-black ${isActivity5YellowLampOn ? 'text-amber-600 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>
+                            {isActivity5YellowLampOn ? 'ON' : 'OFF'}
+                          </p>
+                        </div>
+                      </div>
+                    </section>
+                  )}
+
+                  <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40 flex flex-col">
+                    <div className="flex items-start justify-between gap-4">
+                      <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Ladder Diagram</h4>
+                      <div
+                        className={`inline-flex min-w-[56px] items-center justify-center rounded-xl border px-3 py-2 text-xs font-black ${isSessionCompleted || answerFeedback?.passed
+                          ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                          : 'border-rose-200 bg-rose-50 text-rose-500 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300'
+                          }`}
+                      >
+                        {isSessionCompleted ? '100%' : answerPercent}
                       </div>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
-                        <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">R1</p>
-                        <p className={`mt-1 text-sm font-black ${activity5RelayEnergized ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}>
-                          {activity5RelayEnergized ? 'ON' : 'OFF'}
+                    <div className="mt-4 flex flex-col gap-3">
+                      {isSessionCompleted ? (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200 shadow-sm flex items-center justify-between">
+                          <span className="font-black tracking-wide uppercase">Activity Cleared</span>
+                          <CheckCircle2 size={20} className="text-emerald-500" strokeWidth={3} />
+                        </div>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleCheckAnswer}
+                            className="rounded-xl bg-[#223a5a] px-4 py-3 text-sm font-black tracking-widest uppercase text-white shadow-sm transition-colors hover:bg-[#1a304d] dark:bg-cyan-600 dark:hover:bg-cyan-500 w-full"
+                          >
+                            Check Answer
+                          </button>
+                          {answerFeedback && (
+                            <div className={`rounded-xl border px-4 py-3 text-sm shadow-sm ${answerFeedback.passed
+                              ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200'
+                              : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200'
+                              }`}>
+                              <p className="font-black">
+                                {answerFeedback.passed ? 'Answer is correct.' : 'Answer is incorrect.'}
+                              </p>
+                              {shouldShowOnlyNoDeviceMessage && (
+                                <p className="mt-1 text-xs font-semibold text-rose-500 dark:text-rose-300">
+                                  No input and output devices.
+                                </p>
+                              )}
+                              {!shouldShowOnlyNoDeviceMessage && !answerFeedback.passed && answerFeedback.wrongConnections.length > 0 && (
+                                <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-rose-500 dark:text-rose-300">
+                                  Red dashed wires are wrong connections.
+                                </p>
+                              )}
+                              {shouldShowOnlyMissingWireMessage && (
+                                <p className="mt-1 text-xs font-semibold text-rose-500 dark:text-rose-300">
+                                  Missing wires.
+                                </p>
+                              )}
+                              {answerFeedback.issues.length > 0 && !shouldShowOnlyWrongWireMessage && !shouldShowOnlyNoDeviceMessage && !shouldShowOnlyMissingWireMessage && (
+                                <div className="mt-3 space-y-1.5 text-xs leading-5">
+                                  {answerFeedback.issues.map((issue) => (
+                                    <p key={issue}>{issue}</p>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    <div className="mt-5 flex flex-col">
+                      <p className="text-base font-black text-slate-900 dark:text-white">{activityPreset.title}</p>
+                      {activityPreset.instruction && (
+                        <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                          {activityPreset.instruction}
                         </p>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
-                        <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">T1</p>
-                        <p className="mt-1 text-sm font-black text-slate-700 dark:text-slate-200">{activity5TimerStatusLabel}</p>
-                        <p className="mt-1 font-mono text-[11px] font-black tracking-[0.18em] text-slate-500 dark:text-slate-400">{activity5TimerDisplayText}</p>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
-                        <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Green</p>
-                        <p className={`mt-1 text-sm font-black ${isActivity5GreenLampOn ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-700 dark:text-slate-200'}`}>
-                          {isActivity5GreenLampOn ? 'ON' : 'OFF'}
-                        </p>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900/70">
-                        <p className="font-black uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">Yellow</p>
-                        <p className={`mt-1 text-sm font-black ${isActivity5YellowLampOn ? 'text-amber-600 dark:text-amber-300' : 'text-slate-700 dark:text-slate-200'}`}>
-                          {isActivity5YellowLampOn ? 'ON' : 'OFF'}
-                        </p>
+                      )}
+                      <div className="mt-3 h-[220px] rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                        <img src={activityPreset.diagram} alt={activityPreset.title} className="h-full w-full rounded-xl object-contain" />
                       </div>
                     </div>
                   </section>
-                )}
+                </div>
+              </aside>
 
-                <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40 flex flex-col">
-                  <div className="flex items-start justify-between gap-4">
-                    <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Ladder Diagram</h4>
-                    <div
-                      className={`inline-flex min-w-[56px] items-center justify-center rounded-xl border px-3 py-2 text-xs font-black ${isSessionCompleted || answerFeedback?.passed
-                        ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
-                        : 'border-rose-200 bg-rose-50 text-rose-500 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300'
-                        }`}
-                    >
-                      {isSessionCompleted ? '100%' : answerPercent}
-                    </div>
-                  </div>
+              <div id="tour-sim-workspace" className="flex-1 relative flex items-center justify-center p-6">
 
-                  <div className="mt-4 flex flex-col gap-3">
-                    {isSessionCompleted ? (
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200 shadow-sm flex items-center justify-between">
-                        <span className="font-black tracking-wide uppercase">Activity Cleared</span>
-                        <CheckCircle2 size={20} className="text-emerald-500" strokeWidth={3} />
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={handleCheckAnswer}
-                          className="rounded-xl bg-[#223a5a] px-4 py-3 text-sm font-black tracking-widest uppercase text-white shadow-sm transition-colors hover:bg-[#1a304d] dark:bg-cyan-600 dark:hover:bg-cyan-500 w-full"
-                        >
-                          Check Answer
-                        </button>
-                        {answerFeedback && (
-                          <div className={`rounded-xl border px-4 py-3 text-sm shadow-sm ${answerFeedback.passed
-                            ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200'
-                            : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200'
-                            }`}>
-                            <p className="font-black">
-                              {answerFeedback.passed ? 'Answer is correct.' : 'Answer is incorrect.'}
-                            </p>
-                            {shouldShowOnlyNoDeviceMessage && (
-                              <p className="mt-1 text-xs font-semibold text-rose-500 dark:text-rose-300">
-                                No input and output devices.
-                              </p>
-                            )}
-                            {!shouldShowOnlyNoDeviceMessage && !answerFeedback.passed && answerFeedback.wrongConnections.length > 0 && (
-                              <p className="mt-1 text-xs font-semibold uppercase tracking-[0.18em] text-rose-500 dark:text-rose-300">
-                                Red dashed wires are wrong connections.
-                              </p>
-                            )}
-                            {shouldShowOnlyMissingWireMessage && (
-                              <p className="mt-1 text-xs font-semibold text-rose-500 dark:text-rose-300">
-                                Missing wires.
-                              </p>
-                            )}
-                            {answerFeedback.issues.length > 0 && !shouldShowOnlyWrongWireMessage && !shouldShowOnlyNoDeviceMessage && !shouldShowOnlyMissingWireMessage && (
-                              <div className="mt-3 space-y-1.5 text-xs leading-5">
-                                {answerFeedback.issues.map((issue) => (
-                                  <p key={issue}>{issue}</p>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
+                {/* TOP NAVIGATION HUD - ADD ID HERE */}
+                <div id="tour-sim-hud" className="absolute top-10 left-1/2 -translate-x-1/2 z-30 flex items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-2.5 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-lg">
+                  {routeKeys.map((key, index) => {
 
-                  <div className="mt-5 flex flex-col">
-                    <p className="text-base font-black text-slate-900 dark:text-white">{activityPreset.title}</p>
-                    {activityPreset.instruction && (
-                      <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
-                        {activityPreset.instruction}
-                      </p>
-                    )}
-                    <div className="mt-3 h-[220px] rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
-                      <img src={activityPreset.diagram} alt={activityPreset.title} className="h-full w-full rounded-xl object-contain" />
-                    </div>
-                  </div>
-                </section>
-              </div>
-            </aside>
+                    // SMART NODE PARSING
+                    const isNodeCompleted = !!savedStates[key] || dbCompletedRoutes.has(key);
+                    const isCurrent = key === activityPreset.routeId;
+                    const prevNodeKey = index > 0 ? routeKeys[index - 1] : null;
+                    const prevCompleted = prevNodeKey ? (!!savedStates[prevNodeKey] || dbCompletedRoutes.has(prevNodeKey)) : true;
 
-            <div className="flex-1 relative flex items-center justify-center p-6">
+                    const isUnlocked = index === 0 || isNodeCompleted || isCurrent || prevCompleted;
 
-              {/* TOP NAVIGATION HUD - ADD ID HERE */}
-              <div id="tour-sim-hud" className="absolute top-10 left-1/2 -translate-x-1/2 z-30 flex items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-2.5 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-lg">
-                {routeKeys.map((key, index) => {
+                    const activityTitle = getActivityAnswerByRouteId(key).title;
 
-                  // SMART NODE PARSING
-                  const isNodeCompleted = !!savedStates[key] || dbCompletedRoutes.has(key);
-                  const isCurrent = key === activityPreset.routeId;
-                  const prevNodeKey = index > 0 ? routeKeys[index - 1] : null;
-                  const prevCompleted = prevNodeKey ? (!!savedStates[prevNodeKey] || dbCompletedRoutes.has(prevNodeKey)) : true;
+                    let nodeClasses = "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ";
 
-                  const isUnlocked = index === 0 || isNodeCompleted || isCurrent || prevCompleted;
-
-                  const activityTitle = getActivityAnswerByRouteId(key).title;
-
-                  let nodeClasses = "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ";
-
-                  if (isNodeCompleted) {
-                    nodeClasses += "bg-emerald-500 text-white ";
-                    if (isCurrent) {
-                      nodeClasses += "scale-110 shadow-[0_0_15px_rgba(16,185,129,0.5)] ring-2 ring-emerald-500 ring-offset-2 ring-offset-slate-50 dark:ring-offset-slate-900 cursor-default ";
+                    if (isNodeCompleted) {
+                      nodeClasses += "bg-emerald-500 text-white ";
+                      if (isCurrent) {
+                        nodeClasses += "scale-110 shadow-[0_0_15px_rgba(16,185,129,0.5)] ring-2 ring-emerald-500 ring-offset-2 ring-offset-slate-50 dark:ring-offset-slate-900 cursor-default ";
+                      } else {
+                        nodeClasses += "hover:bg-emerald-400 shadow-sm cursor-pointer ";
+                      }
+                    } else if (isCurrent) {
+                      nodeClasses += "bg-cyan-500 text-white shadow-[0_0_10px_rgba(6,182,212,0.5)] scale-110 cursor-default ";
+                    } else if (isUnlocked) {
+                      nodeClasses += "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-2 border-slate-200 dark:border-slate-700 hover:border-cyan-400 dark:hover:border-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400 cursor-pointer shadow-sm ";
                     } else {
-                      nodeClasses += "hover:bg-emerald-400 shadow-sm cursor-pointer ";
+                      nodeClasses += "bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60 ";
                     }
-                  } else if (isCurrent) {
-                    nodeClasses += "bg-cyan-500 text-white shadow-[0_0_10px_rgba(6,182,212,0.5)] scale-110 cursor-default ";
-                  } else if (isUnlocked) {
-                    nodeClasses += "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-2 border-slate-200 dark:border-slate-700 hover:border-cyan-400 dark:hover:border-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400 cursor-pointer shadow-sm ";
-                  } else {
-                    nodeClasses += "bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60 ";
-                  }
 
-                  return (
-                    <div key={key} className="flex items-center">
-                      {index > 0 && (
-                        <div className={`w-8 h-1 mx-1 rounded-full ${prevCompleted ? 'bg-emerald-400 dark:bg-emerald-500/80' : 'bg-slate-200 dark:bg-slate-700'}`} />
-                      )}
+                    return (
+                      <div key={key} className="flex items-center">
+                        {index > 0 && (
+                          <div className={`w-8 h-1 mx-1 rounded-full ${prevCompleted ? 'bg-emerald-400 dark:bg-emerald-500/80' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                        )}
+                        <button
+                          onClick={() => isUnlocked && !isCurrent && navigate(`/simulation/${key}`)}
+                          disabled={!isUnlocked}
+                          className={nodeClasses}
+                          title={activityTitle}
+                        >
+                          {isNodeCompleted ? <CheckCircle2 size={16} strokeWidth={3} /> : index + 1}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
+                  {isCanvasReady && activityPreset.routeId === '5' && (
+                    <>
                       <button
-                        onClick={() => isUnlocked && !isCurrent && navigate(`/simulation/${key}`)}
-                        disabled={!isUnlocked}
-                        className={nodeClasses}
-                        title={activityTitle}
+                        ref={activity5TimerTriggerRef}
+                        type="button"
+                        aria-haspopup="dialog"
+                        aria-expanded={isActivity5TimerPopupOpen}
+                        aria-label="Open timer runtime and setup"
+                        title="Open timer runtime/setup"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setIsActivity5TimerPopupOpen((previous) => !previous);
+                        }}
+                        className={`absolute z-20 rounded-[8px] outline-none transition-all ${isActivity5TimerPopupOpen
+                          ? 'bg-cyan-400/10 ring-2 ring-cyan-400/70'
+                          : 'hover:bg-cyan-400/5'
+                          }`}
+                        style={{
+                          left: TIMER_WIDGET_BOUNDS.x * canvasScale,
+                          top: TIMER_WIDGET_BOUNDS.y * canvasScale,
+                          width: TIMER_WIDGET_BOUNDS.width * canvasScale,
+                          height: TIMER_WIDGET_BOUNDS.height * canvasScale,
+                        }}
+                      />
+
+                  {isActivity5TimerPopupOpen && (
+                        <div
+                          ref={activity5TimerPopupRef}
+                          role="dialog"
+                          aria-modal="false"
+                          aria-label="Timer runtime and setup"
+                          className="absolute z-30 w-[240px] -translate-x-1/2 -translate-y-full rounded-xl border border-slate-300 bg-white/95 p-4 shadow-xl backdrop-blur-xl dark:border-cyan-500/30 dark:bg-slate-900/95 dark:shadow-[0_15px_40px_-15px_rgba(6,182,212,0.4)]"
+                          style={{
+                            left: (TIMER_WIDGET_BOUNDS.x + (TIMER_WIDGET_BOUNDS.width / 2)) * canvasScale,
+                            top: Math.max(24, (TIMER_WIDGET_BOUNDS.y - 12) * canvasScale),
+                          }}
+                        >
+                          <div className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-slate-300 bg-white/95 dark:border-cyan-500/30 dark:bg-slate-900/95" />
+                          
+                          <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4 dark:border-slate-700">
+                            <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-800 dark:text-cyan-400">
+                              <span className="h-2 w-2 animate-pulse rounded-full bg-slate-800 dark:bg-cyan-400" />
+                              T1 Config
+                            </h4>
+                            <button
+                              type="button"
+                              onClick={() => setIsActivity5TimerPopupOpen(false)}
+                              className="text-slate-400 transition-colors hover:text-slate-700 dark:text-slate-500 dark:hover:text-cyan-400"
+                              title="Close"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                              </svg>
+                            </button>
+                          </div>
+
+                          <div className="rounded-lg border border-slate-300 bg-slate-100 p-3 shadow-inner dark:border-slate-800 dark:bg-slate-950">
+                              <div className="mb-4">
+                                  <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Elapsed Time (ET)</p>
+                                  <div className="flex items-center justify-center rounded border border-slate-300 bg-white px-3 py-2 shadow-inner dark:border-slate-800 dark:bg-black">
+                                      <span className="font-mono text-3xl font-black tracking-wider text-rose-600 dark:text-rose-500 dark:drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">
+                                          {activity5TimerDisplayText}
+                                      </span>
+                                  </div>
+                              </div>
+                              <div className="mb-4">
+                                  <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Preset Time (PT)</p>
+                                  <div className="flex items-center gap-3">
+                                      <input
+                                        id="activity-5-delay-popup"
+                                        type="number"
+                                        min="0"
+                                        step="0.1"
+                                        inputMode="decimal"
+                                        value={activity5TimerDelayInput}
+                                        onChange={handleActivity5TimerDelayChange}
+                                        onBlur={handleActivity5TimerDelayBlur}
+                                        disabled={activity5RelayEnergized || isSessionCompleted}
+                                        className="w-24 rounded border border-slate-300 bg-white px-3 py-1.5 font-mono text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-cyan-300"
+                                      />
+                                      <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-slate-500">Sec</span>
+                                  </div>
+                              </div>
+                              <div className="flex items-center justify-between border-t border-slate-300 pt-3 dark:border-slate-800/80">
+                                  <div className="flex items-center gap-2">
+                                      <div className={`h-2.5 w-2.5 rounded-full ${activity5RelayEnergized ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'border border-slate-400 bg-slate-300 dark:border-slate-700 dark:bg-slate-800'}`} />
+                                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">Coil (R1)</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                      <div className={`h-2.5 w-2.5 rounded-full ${activity5TimerStatus === 'done' ? 'bg-amber-500 shadow-[0_0_8px_#f59e0b]' : 'border border-slate-400 bg-slate-300 dark:border-slate-700 dark:bg-slate-800'}`} />
+                                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">Out (T1)</span>
+                                  </div>
+                              </div>
+                          </div>
+
+                          <div className="mt-3 text-center">
+                              <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
+                                {activity5RelayEnergized
+                                  ? 'Timer Active • PT Locked'
+                                  : isSessionCompleted
+                                    ? 'Activity Cleared • PT Locked'
+                                    : 'Set PT & Actuate Start'}
+                              </p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {!isCanvasReady ? (
+                    <div className="flex flex-col items-center justify-center h-full space-y-4">
+                      <div className="w-10 h-10 border-4 border-slate-300 border-t-cyan-500 rounded-full animate-spin"></div>
+                      <p className="text-sm font-bold text-slate-500 dark:text-slate-400 tracking-widest uppercase animate-pulse">
+                        Mounting Hardware Environment...
+                      </p>
+                    </div>
+                  ) : (
+                    <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseLeave={handleStageMouseLeave}>
+                      <RelayStaticBackground
+                        BASE_CANVAS_WIDTH={BASE_CANVAS_WIDTH}
+                        BASE_CANVAS_HEIGHT={BASE_CANVAS_HEIGHT}
+                        canvasScale={canvasScale}
+                        isDarkMode={isDarkMode}
+                        isMainSwitchOn={isMainSwitchOn}
+                        isGreenLampOn={isActivity1GreenLampOn || isActivity2GreenLampOn || isActivity3GreenLampOn || isActivity4GreenLampOn || isActivity5GreenLampOn}
+                        isYellowLampOn={isActivity3YellowLampOn || isActivity4YellowLampOn || isActivity5YellowLampOn}
+                        isRedLampOn={isActivity2RedLampOn}
+                        timerDisplayText={activity5TimerDisplayText}
+                        manualButtonState={pressedManualButtons}
+                        onToggleSwitch={handleToggleSwitch}
+                        onManualButtonPressChange={handleManualButtonPressChange}
+                      />
+
+                      <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
+                        {routedWires.map((wire) => {
+                          const isSelected = selectedWireId === wire.id;
+                          const isWrong = wrongWireKeySet.has(toWireKey(wire.fromPin, wire.toPin));
+                          return (
+                            <Line
+                              key={`wire-${wire.id}`}
+                              points={wire.points}
+                              stroke={isWrong ? '#ef4444' : wire.color}
+                              strokeWidth={isSelected ? 8 : isWrong ? 6 : 5}
+                              hitStrokeWidth={20}
+                              lineCap="round"
+                              lineJoin="round"
+                              dash={isWrong ? [14, 8] : undefined}
+                              shadowColor={isSelected ? '#f1c40f' : isWrong ? 'rgba(239,68,68,0.8)' : 'rgba(0,0,0,0.4)'}
+                              shadowBlur={isSelected ? 8 : isWrong ? 10 : 4}
+                              shadowOffsetY={isSelected ? 0 : 4}
+                              onMouseDown={(e) => {
+                                if (isSessionCompleted) return;
+                                e.cancelBubble = true;
+                                setSelectedWireId(wire.id);
+                                setWireColor(wire.color);
+                              }}
+                              onMouseEnter={(e) => {
+                                if (isSessionCompleted) return;
+                                const container = e.target.getStage()?.container();
+                                if (container) container.style.cursor = 'pointer';
+                              }}
+                              onMouseLeave={(e) => {
+                                if (isSessionCompleted) return;
+                                const container = e.target.getStage()?.container();
+                                if (container) container.style.cursor = 'default';
+                              }}
+                            />
+                          );
+                        })}
+
+                        {Object.entries(RELAY_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
+                      </Layer>
+
+                      <Layer scaleX={canvasScale} scaleY={canvasScale} id="overlay-layer" listening={false}>
+                        <Line ref={ghostWireRef} stroke={wireColor} strokeWidth={4} dash={[10, 8]} opacity={0.6} tension={0.4} visible={false} />
+
+                        <Circle ref={hoverRingRef} radius={9} stroke="#ffffff" strokeWidth={2} visible={false} />
+
+                        <Group ref={tooltipRef} visible={false}>
+                          <Rect ref={tooltipBgRef} height={0} width={0} fill="#1e293b" cornerRadius={4} />
+                          <Text ref={tooltipTextRef} fill="#ffffff" fontSize={11} fontFamily={HW_STYLES.technicalMono} padding={6} />
+                        </Group>
+                      </Layer>
+                    </Stage>
+                  )}
+                </div>
+
+                {showSuccessAnim && (
+                  <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-emerald-500/10 backdrop-blur-[2px] transition-opacity duration-500">
+                    <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-[0_0_40px_rgba(16,185,129,0.3)] border-2 border-emerald-400 flex flex-col items-center animate-pop-in">
+                      <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/50 rounded-full flex items-center justify-center mb-4">
+                        <CheckCircle2 size={48} className="text-emerald-500" strokeWidth={2.5} />
+                      </div>
+                      <h2 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-widest">Activity Cleared</h2>
+                      <p className="text-slate-500 dark:text-slate-400 mt-2 font-semibold">Configuration saved successfully.</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* DEVICE DRAWER - ADD ID HERE */}
+              <aside
+                id="tour-sim-toolbox"
+                className="absolute inset-y-0 right-0 z-20 border-l border-slate-200 bg-white shadow-[-18px_0_30px_-22px_rgba(15,23,42,0.6)] transition-[width] duration-300 dark:border-slate-800 dark:bg-slate-900"
+                style={{ width: isDeviceDrawerOpen ? DEVICE_DRAWER_OPEN_WIDTH : DEVICE_DRAWER_COLLAPSED_WIDTH }}
+              >
+                {isDeviceDrawerOpen ? (
+                  <div className="flex h-full flex-col">
+                    <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/50">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.32em] text-slate-500 dark:text-cyan-500/70">Device Dock</p>
+                        <h3 className="mt-1 text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">List of Devices</h3>
+                        <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Quick access to the installed trainer devices.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsDeviceDrawerOpen(false)}
+                        className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                        aria-label="Collapse device drawer"
+                        title="Collapse device drawer"
                       >
-                        {isNodeCompleted ? <CheckCircle2 size={16} strokeWidth={3} /> : index + 1}
+                        <ChevronRight size={18} />
                       </button>
                     </div>
-                  );
-                })}
-              </div>
 
-              <div className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
-                {isCanvasReady && activityPreset.routeId === '5' && (
-                  <>
-                    <button
-                      ref={activity5TimerTriggerRef}
-                      type="button"
-                      aria-haspopup="dialog"
-                      aria-expanded={isActivity5TimerPopupOpen}
-                      aria-label="Open timer runtime and setup"
-                      title="Open timer runtime/setup"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        setIsActivity5TimerPopupOpen((previous) => !previous);
-                      }}
-                      className={`absolute z-20 rounded-[8px] outline-none transition-all ${isActivity5TimerPopupOpen
-                        ? 'bg-cyan-400/10 ring-2 ring-cyan-400/70'
-                        : 'hover:bg-cyan-400/5'
-                        }`}
-                      style={{
-                        left: TIMER_WIDGET_BOUNDS.x * canvasScale,
-                        top: TIMER_WIDGET_BOUNDS.y * canvasScale,
-                        width: TIMER_WIDGET_BOUNDS.width * canvasScale,
-                        height: TIMER_WIDGET_BOUNDS.height * canvasScale,
-                      }}
-                    />
-
-                {isActivity5TimerPopupOpen && (
-                      <div
-                        ref={activity5TimerPopupRef}
-                        role="dialog"
-                        aria-modal="false"
-                        aria-label="Timer runtime and setup"
-                        // Theme-aware container sizing and styling
-                        className="absolute z-30 w-[240px] -translate-x-1/2 -translate-y-full rounded-xl border border-slate-300 bg-white/95 p-4 shadow-xl backdrop-blur-xl dark:border-cyan-500/30 dark:bg-slate-900/95 dark:shadow-[0_15px_40px_-15px_rgba(6,182,212,0.4)]"
-                        style={{
-                          left: (TIMER_WIDGET_BOUNDS.x + (TIMER_WIDGET_BOUNDS.width / 2)) * canvasScale,
-                          top: Math.max(24, (TIMER_WIDGET_BOUNDS.y - 12) * canvasScale),
-                        }}
-                      >
-                        {/* Caret pointing down to the hardware */}
-                        <div className="absolute left-1/2 top-full h-3 w-3 -translate-x-1/2 -translate-y-1/2 rotate-45 border-b border-r border-slate-300 bg-white/95 dark:border-cyan-500/30 dark:bg-slate-900/95" />
-                        
-                        {/* Header */}
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4 dark:border-slate-700">
-                          <h4 className="flex items-center gap-2 text-xs font-black uppercase tracking-widest text-slate-800 dark:text-cyan-400">
-                            <span className="h-2 w-2 animate-pulse rounded-full bg-slate-800 dark:bg-cyan-400" />
-                            T1 Config
-                          </h4>
+                    <div className="flex-1 overflow-y-auto p-4">
+                      <div className="grid grid-cols-3 gap-3">
+                        {DEVICE_LIBRARY.map((device) => (
                           <button
+                            key={device.name}
                             type="button"
-                            onClick={() => setIsActivity5TimerPopupOpen(false)}
-                            className="text-slate-400 transition-colors hover:text-slate-700 dark:text-slate-500 dark:hover:text-cyan-400"
-                            title="Close"
+                            draggable={!isSessionCompleted}
+                            onDragStart={(event) => handleDeviceDragStart(device.id, 'library', event)}
+                            onDragEnd={handleDeviceDragEnd}
+                            className={`group relative flex h-[124px] flex-col items-center justify-start rounded-2xl border bg-white px-2 pt-3 pb-2 text-center shadow-sm transition-all dark:bg-slate-900/70 ${isSessionCompleted ? 'cursor-default opacity-80 border-slate-200 dark:border-slate-700' : 'hover:-translate-y-0.5 hover:shadow-md'
+                              } ${assignedDeviceIds.has(device.id)
+                                ? 'border-emerald-400 dark:border-emerald-500/50'
+                                : 'border-slate-200 hover:border-cyan-400 dark:border-slate-700 dark:hover:border-cyan-500/70'
+                              }`}
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                <line x1="18" y1="6" x2="6" y2="18"></line>
-                                <line x1="6" y1="6" x2="18" y2="18"></line>
-                            </svg>
+                            <div className="flex shrink-0 h-12 w-12 items-center justify-center rounded-xl bg-slate-50 p-2 dark:bg-slate-800/80">
+                              <img src={device.image} alt={device.name} className={`h-full w-full object-contain ${isSessionCompleted ? 'grayscale' : ''}`} />
+                            </div>
+
+                            <span className="mt-2 text-[10px] font-bold leading-[1.15] text-slate-700 group-hover:text-slate-900 dark:text-slate-200 dark:group-hover:text-white line-clamp-2">
+                              {device.name}
+                            </span>
+
+                            {assignedDeviceIds.has(device.id) && (
+                              <div className="absolute bottom-2 left-1/2 w-10/12 -translate-x-1/2 rounded-full bg-emerald-50 py-0.5 text-[8px] font-black uppercase tracking-[0.15em] text-emerald-600 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/30">
+                                In Use
+                              </div>
+                            )}
                           </button>
-                        </div>
-
-                        {/* Module Faceplate */}
-                        <div className="rounded-lg border border-slate-300 bg-slate-100 p-3 shadow-inner dark:border-slate-800 dark:bg-slate-950">
-                            {/* Current Value Display (ET) */}
-                            <div className="mb-4">
-                                <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Elapsed Time (ET)</p>
-                                <div className="flex items-center justify-center rounded border border-slate-300 bg-white px-3 py-2 shadow-inner dark:border-slate-800 dark:bg-black">
-                                    <span className="font-mono text-3xl font-black tracking-wider text-rose-600 dark:text-rose-500 dark:drop-shadow-[0_0_8px_rgba(244,63,94,0.6)]">
-                                        {activity5TimerDisplayText}
-                                    </span>
-                                </div>
-                            </div>
-                            {/* Preset Value Input (PT) */}
-                            <div className="mb-4">
-                                <p className="mb-1 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">Preset Time (PT)</p>
-                                <div className="flex items-center gap-3">
-                                    <input
-                                      id="activity-5-delay-popup"
-                                      type="number"
-                                      min="0"
-                                      step="0.1"
-                                      inputMode="decimal"
-                                      value={activity5TimerDelayInput}
-                                      onChange={handleActivity5TimerDelayChange}
-                                      onBlur={handleActivity5TimerDelayBlur}
-                                      disabled={activity5RelayEnergized || isSessionCompleted}
-                                      // FIX: Replaced flex-1 with w-24 to keep it properly sized
-                                      className="w-24 rounded border border-slate-300 bg-white px-3 py-1.5 font-mono text-sm font-bold text-slate-900 outline-none transition-all focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-cyan-300"
-                                    />
-                                    {/* FIX: Added shrink-0 so it never gets crushed */}
-                                    <span className="shrink-0 text-[10px] font-bold uppercase tracking-widest text-slate-500">Sec</span>
-                                </div>
-                            </div>
-                            {/* LED Status Indicators */}
-                            <div className="flex items-center justify-between border-t border-slate-300 pt-3 dark:border-slate-800/80">
-                                <div className="flex items-center gap-2">
-                                    <div className={`h-2.5 w-2.5 rounded-full ${activity5RelayEnergized ? 'bg-emerald-500 shadow-[0_0_8px_#10b981]' : 'border border-slate-400 bg-slate-300 dark:border-slate-700 dark:bg-slate-800'}`} />
-                                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">Coil (R1)</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                    <div className={`h-2.5 w-2.5 rounded-full ${activity5TimerStatus === 'done' ? 'bg-amber-500 shadow-[0_0_8px_#f59e0b]' : 'border border-slate-400 bg-slate-300 dark:border-slate-700 dark:bg-slate-800'}`} />
-                                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-600 dark:text-slate-400">Out (T1)</span>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Status / Instructions */}
-                        <div className="mt-3 text-center">
-                            <p className="text-[9px] font-black uppercase tracking-wider text-slate-500">
-                              {activity5RelayEnergized
-                                ? 'Timer Active • PT Locked'
-                                : isSessionCompleted
-                                  ? 'Activity Cleared • PT Locked'
-                                  : 'Set PT & Actuate Start'}
-                            </p>
-                        </div>
+                        ))}
                       </div>
-                    )}
-                  </>
-                )}
-
-                {!isCanvasReady ? (
-                  <div className="flex flex-col items-center justify-center h-full space-y-4">
-                    <div className="w-10 h-10 border-4 border-slate-300 border-t-cyan-500 rounded-full animate-spin"></div>
-                    <p className="text-sm font-bold text-slate-500 dark:text-slate-400 tracking-widest uppercase animate-pulse">
-                      Mounting Hardware Environment...
-                    </p>
+                    </div>
                   </div>
                 ) : (
-                  <Stage width={BASE_CANVAS_WIDTH * canvasScale} height={BASE_CANVAS_HEIGHT * canvasScale} onMouseMove={handleMouseMove} onMouseUp={handleStageMouseUp} onMouseLeave={handleStageMouseLeave}>
-                    <RelayStaticBackground
-                      BASE_CANVAS_WIDTH={BASE_CANVAS_WIDTH}
-                      BASE_CANVAS_HEIGHT={BASE_CANVAS_HEIGHT}
-                      canvasScale={canvasScale}
-                      isDarkMode={isDarkMode}
-                      isMainSwitchOn={isMainSwitchOn}
-                      isGreenLampOn={isActivity1GreenLampOn || isActivity2GreenLampOn || isActivity3GreenLampOn || isActivity4GreenLampOn || isActivity5GreenLampOn}
-                      isYellowLampOn={isActivity3YellowLampOn || isActivity4YellowLampOn || isActivity5YellowLampOn}
-                      isRedLampOn={isActivity2RedLampOn}
-                      timerDisplayText={activity5TimerDisplayText}
-                      manualButtonState={pressedManualButtons}
-                      onToggleSwitch={handleToggleSwitch}
-                      onManualButtonPressChange={handleManualButtonPressChange}
-                    />
-
-                    <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
-                      {routedWires.map((wire) => {
-                        const isSelected = selectedWireId === wire.id;
-                        const isWrong = wrongWireKeySet.has(toWireKey(wire.fromPin, wire.toPin));
-                        return (
-                          <Line
-                            key={`wire-${wire.id}`}
-                            points={wire.points}
-                            stroke={isWrong ? '#ef4444' : wire.color}
-                            strokeWidth={isSelected ? 8 : isWrong ? 6 : 5}
-                            hitStrokeWidth={20}
-                            lineCap="round"
-                            lineJoin="round"
-                            dash={isWrong ? [14, 8] : undefined}
-                            shadowColor={isSelected ? '#f1c40f' : isWrong ? 'rgba(239,68,68,0.8)' : 'rgba(0,0,0,0.4)'}
-                            shadowBlur={isSelected ? 8 : isWrong ? 10 : 4}
-                            shadowOffsetY={isSelected ? 0 : 4}
-                            onMouseDown={(e) => {
-                              if (isSessionCompleted) return;
-                              e.cancelBubble = true;
-                              setSelectedWireId(wire.id);
-                              setWireColor(wire.color);
-                            }}
-                            onMouseEnter={(e) => {
-                              if (isSessionCompleted) return;
-                              const container = e.target.getStage()?.container();
-                              if (container) container.style.cursor = 'pointer';
-                            }}
-                            onMouseLeave={(e) => {
-                              if (isSessionCompleted) return;
-                              const container = e.target.getStage()?.container();
-                              if (container) container.style.cursor = 'default';
-                            }}
-                          />
-                        );
-                      })}
-
-                      {Object.entries(RELAY_PORTS).map(([id]) => renderHardwareJack(id, activePin === id))}
-                    </Layer>
-
-                    <Layer scaleX={canvasScale} scaleY={canvasScale} id="overlay-layer" listening={false}>
-                      <Line ref={ghostWireRef} stroke={wireColor} strokeWidth={4} dash={[10, 8]} opacity={0.6} tension={0.4} visible={false} />
-
-                      <Circle ref={hoverRingRef} radius={9} stroke="#ffffff" strokeWidth={2} visible={false} />
-
-                      <Group ref={tooltipRef} visible={false}>
-                        <Rect ref={tooltipBgRef} height={0} width={0} fill="#1e293b" cornerRadius={4} />
-                        <Text ref={tooltipTextRef} fill="#ffffff" fontSize={11} fontFamily={HW_STYLES.technicalMono} padding={6} />
-                      </Group>
-                    </Layer>
-                  </Stage>
-                )}
-              </div>
-
-              {showSuccessAnim && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none bg-emerald-500/10 backdrop-blur-[2px] transition-opacity duration-500">
-                  <div className="bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-[0_0_40px_rgba(16,185,129,0.3)] border-2 border-emerald-400 flex flex-col items-center animate-pop-in">
-                    <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/50 rounded-full flex items-center justify-center mb-4">
-                      <CheckCircle2 size={48} className="text-emerald-500" strokeWidth={2.5} />
-                    </div>
-                    <h2 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-widest">Activity Cleared</h2>
-                    <p className="text-slate-500 dark:text-slate-400 mt-2 font-semibold">Configuration saved successfully.</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* DEVICE DRAWER - ADD ID HERE */}
-            <aside
-              id="tour-sim-toolbox"
-              className="absolute inset-y-0 right-0 z-20 border-l border-slate-200 bg-white shadow-[-18px_0_30px_-22px_rgba(15,23,42,0.6)] transition-[width] duration-300 dark:border-slate-800 dark:bg-slate-900"
-              style={{ width: isDeviceDrawerOpen ? DEVICE_DRAWER_OPEN_WIDTH : DEVICE_DRAWER_COLLAPSED_WIDTH }}
-            >
-              {isDeviceDrawerOpen ? (
-                <div className="flex h-full flex-col">
-                  <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/50">
-                    <div>
-                      <p className="text-[10px] font-black uppercase tracking-[0.32em] text-slate-500 dark:text-cyan-500/70">Device Dock</p>
-                      <h3 className="mt-1 text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">List of Devices</h3>
-                      <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Quick access to the installed trainer devices.</p>
-                    </div>
+                  <div className="flex h-full flex-col items-center py-4 relative">
                     <button
                       type="button"
-                      onClick={() => setIsDeviceDrawerOpen(false)}
-                      className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                      aria-label="Collapse device drawer"
-                      title="Collapse device drawer"
+                      onClick={() => setIsDeviceDrawerOpen(true)}
+                      className="inline-flex shrink-0 h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      aria-label="Expand device drawer"
+                      title="Expand device drawer"
                     >
-                      <ChevronRight size={18} />
+                      <ChevronLeft size={18} />
                     </button>
-                  </div>
 
-                  <div className="flex-1 overflow-y-auto p-4">
-                    <div className="grid grid-cols-3 gap-3">
-                      {DEVICE_LIBRARY.map((device) => (
-                        <button
-                          key={device.name}
-                          type="button"
-                          draggable={!isSessionCompleted}
-                          onDragStart={(event) => handleDeviceDragStart(device.id, 'library', event)}
-                          onDragEnd={handleDeviceDragEnd}
-                          className={`group relative flex h-[124px] flex-col items-center justify-start rounded-2xl border bg-white px-2 pt-3 pb-2 text-center shadow-sm transition-all dark:bg-slate-900/70 ${isSessionCompleted ? 'cursor-default opacity-80 border-slate-200 dark:border-slate-700' : 'hover:-translate-y-0.5 hover:shadow-md'
-                            } ${assignedDeviceIds.has(device.id)
-                              ? 'border-emerald-400 dark:border-emerald-500/50'
-                              : 'border-slate-200 hover:border-cyan-400 dark:border-slate-700 dark:hover:border-cyan-500/70'
-                            }`}
-                        >
-                          <div className="flex shrink-0 h-12 w-12 items-center justify-center rounded-xl bg-slate-50 p-2 dark:bg-slate-800/80">
-                            <img src={device.image} alt={device.name} className={`h-full w-full object-contain ${isSessionCompleted ? 'grayscale' : ''}`} />
-                          </div>
-
-                          <span className="mt-2 text-[10px] font-bold leading-[1.15] text-slate-700 group-hover:text-slate-900 dark:text-slate-200 dark:group-hover:text-white line-clamp-2">
-                            {device.name}
-                          </span>
-
-                          {assignedDeviceIds.has(device.id) && (
-                            <div className="absolute bottom-2 left-1/2 w-10/12 -translate-x-1/2 rounded-full bg-emerald-50 py-0.5 text-[8px] font-black uppercase tracking-[0.15em] text-emerald-600 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/30">
-                              In Use
-                            </div>
-                          )}
-                        </button>
-                      ))}
+                    <div className="flex-1 flex items-center justify-center">
+                      <div
+                        className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400 dark:text-cyan-500/50"
+                        style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                      >
+                        Device Library
+                      </div>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <div className="flex h-full flex-col items-center py-4 relative">
-                  <button
-                    type="button"
-                    onClick={() => setIsDeviceDrawerOpen(true)}
-                    className="inline-flex shrink-0 h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                    aria-label="Expand device drawer"
-                    title="Expand device drawer"
-                  >
-                    <ChevronLeft size={18} />
-                  </button>
-
-                  <div className="flex-1 flex items-center justify-center">
-                    <div
-                      className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400 dark:text-cyan-500/50"
-                      style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-                    >
-                      Device Library
-                    </div>
-                  </div>
-                </div>
-              )}
-            </aside>
-          </main>
+                )}
+              </aside>
+            </main>
+          </div>
 
           {/* THE SELF MANAGED GUIDE! */}
           <TutorialGuide
