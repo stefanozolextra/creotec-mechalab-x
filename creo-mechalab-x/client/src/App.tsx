@@ -2,6 +2,7 @@
    - USE: Loads routing tools, animation libraries, security utilities, and page components.
 */
 import type { ReactElement } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 
@@ -61,6 +62,17 @@ const RequireAuth = ({ children, role }: RequireAuthProps) => {
 const AnimatedRoutes = () => {
   const location = useLocation();
   const currentRole = getAuthRole();
+
+  // 🔥 Smart UI Scaling Logic 🔥
+  // We apply the zoomed-out look universally, UNLESS we are in the simulation.
+  // The Canvas engine requires native 100% scale to calculate mouse physics accurately.
+  useEffect(() => {
+    if (location.pathname.includes('/simulation')) {
+      document.documentElement.classList.remove('zoomed-ui');
+    } else {
+      document.documentElement.classList.add('zoomed-ui');
+    }
+  }, [location.pathname]);
 
   return (
     <AnimatePresence mode="wait">

@@ -3,35 +3,33 @@
 @tailwind components;
 @tailwind utilities;
 
-/* FIX: Set the root background to match your app's theme and apply the global scale */
-html {
-  zoom: 0.85; /* Scales everything down to 85% */
-  @apply bg-slate-100 dark:bg-[#0B1120];
-}
-
 body {
-  @apply bg-slate-100 dark:bg-[#0B1120] text-slate-800 dark:text-slate-200;
+  background-color: #0f172a;
+  /* Slate-900 */
   margin: 0;
   height: 100%;
   overflow-x: hidden;
   /* Prevents scrollbars during transitions */
 }
 
-/* 🔥 THE FIX: Because zoom shrinks everything to 85%, a standard "100vh" 
-   container only covers 85% of the physical monitor. 
-   100 / 0.85 = 117.647 
-   This overrides Tailwind's screen classes so they stretch to the true bottom!
-*/
-.min-h-screen {
-  min-height: 117.647vh !important;
-}
-
-.h-screen {
-  height: 117.647vh !important;
-}
-
 #root {
   height: 100%;
+}
+
+/* 🔥 THE ROUTE-BASED ZOOM FIX 🔥
+   We only apply this zoom class on Dashboard and Admin pages.
+   It is removed on Simulation pages so the Canvas interactions don't break. 
+*/
+html.zoomed-ui {
+  zoom: 0.90;
+}
+
+html.zoomed-ui .min-h-screen {
+  min-height: 111.111vh !important;
+}
+
+html.zoomed-ui .h-screen {
+  height: 111.111vh !important;
 }
 
 /* Custom Modern Scrollbar */
@@ -80,4 +78,18 @@ body {
   animation-duration: 300ms;
   animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
   mix-blend-mode: normal;
+}
+
+/* Tutorial Highlight Effect */
+.tutorial-highlight {
+  position: relative;
+  z-index: 101 !important;
+  /* Bring above the tutorial overlay */
+  box-shadow: 0 0 0 4px rgba(6, 182, 212, 0.5), 0 0 20px rgba(6, 182, 212, 0.3) !important;
+  border-radius: inherit;
+  background-color: var(--tw-bg-opacity, rgba(15, 23, 42, 1));
+  /* Keep it dark */
+  transition: all 0.3s ease;
+  pointer-events: none;
+  /* Prevent clicking while tutorial is active */
 }
