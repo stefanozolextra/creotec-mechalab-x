@@ -6,6 +6,7 @@
 /* FIX: Set the root background to match your app's dark theme */
 html,
 body {
+  zoom: 0.85;
   background-color: #0f172a;
   /* Slate-900 */
   margin: 0;

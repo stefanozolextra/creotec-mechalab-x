@@ -136,11 +136,13 @@ const AnimatedRoutes = () => {
 /* SECTION: MAIN APP COMPONENT */
 function App() {
   return (
+    <div style={{ zoom: 0.85 }}>
     <Router>
       <GodModeListener />
       <DeveloperDock />
       <AnimatedRoutes />
     </Router>
+    </div>
   );
 }
 
