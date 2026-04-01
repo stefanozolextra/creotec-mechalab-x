@@ -24,20 +24,24 @@ export default function CyberTransition({ children }: CyberTransitionProps) {
                 {children}
             </motion.div>
 
-            {/* Cyber Shutter (Top) */}
+            {/* Cyber Shutter (Top) 
+                Changed from 51vh to 60vh to account for the 0.85 global zoom!
+            */}
             <motion.div
-                initial={{ height: "51vh" }}
+                initial={{ height: "60vh" }}
                 animate={{ height: "0vh" }}
-                exit={{ height: "51vh" }}
+                exit={{ height: "60vh" }}
                 transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 className="fixed top-0 left-0 w-full bg-white/95 dark:bg-[#0B1120]/95 backdrop-blur-xl z-[100] border-b-[3px] border-cyan-500 shadow-[0_10px_30px_rgba(6,182,212,0.15)] dark:shadow-[0_10px_30px_rgba(6,182,212,0.3)] pointer-events-none transition-colors duration-300"
             />
 
-            {/* Cyber Shutter (Bottom) */}
+            {/* Cyber Shutter (Bottom) 
+                Changed from 51vh to 60vh to account for the 0.85 global zoom!
+            */}
             <motion.div
-                initial={{ height: "51vh" }}
+                initial={{ height: "60vh" }}
                 animate={{ height: "0vh" }}
-                exit={{ height: "51vh" }}
+                exit={{ height: "60vh" }}
                 transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                 className="fixed bottom-0 left-0 w-full bg-white/95 dark:bg-[#0B1120]/95 backdrop-blur-xl z-[100] border-t-[3px] border-cyan-500 shadow-[0_-10px_30px_rgba(6,182,212,0.15)] dark:shadow-[0_-10px_30px_rgba(6,182,212,0.3)] pointer-events-none transition-colors duration-300"
             />
