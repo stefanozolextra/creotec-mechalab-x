@@ -12,14 +12,17 @@ interface TutorialGuideProps {
     storageKey?: string;
 }
 
+// Custom type to handle our math-adjusted rectangles
+type RectData = { top: number; left: number; width: number; height: number };
+
 export default function TutorialGuide({ steps, storageKey }: TutorialGuideProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [displayedText, setDisplayedText] = useState('');
     const [isTyping, setIsTyping] = useState(false);
 
-    const [targetRect, setTargetRect] = useState<DOMRect | null>(null);
-    const [panelRect, setPanelRect] = useState<DOMRect | null>(null);
+    const [targetRect, setTargetRect] = useState<RectData | null>(null);
+    const [panelRect, setPanelRect] = useState<RectData | null>(null);
 
     const panelRef = useRef<HTMLDivElement>(null);
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -67,14 +70,24 @@ export default function TutorialGuide({ steps, storageKey }: TutorialGuideProps)
         }
     }, [currentStepIndex, currentStep, isExpanded]);
 
-    // Track Coordinates for the SVG Spotlight
+    // 🔥 THE FIX: Track Coordinates and adjust for CSS Zoom 🔥
     useEffect(() => {
         let animationFrameId: number;
         const trackElements = () => {
             if (!isExpanded) return;
 
+            // Safely get the current zoom factor from the HTML document
+            const htmlZoom = parseFloat(window.getComputedStyle(document.documentElement).zoom || "1");
+            const zoom = Number.isNaN(htmlZoom) || htmlZoom === 0 ? 1 : htmlZoom;
+
             if (panelRef.current) {
-                const rect = panelRef.current.getBoundingClientRect();
+                const rawRect = panelRef.current.getBoundingClientRect();
+                const rect = {
+                    top: rawRect.top / zoom,
+                    left: rawRect.left / zoom,
+                    width: rawRect.width / zoom,
+                    height: rawRect.height / zoom
+                };
                 setPanelRect((prev) => {
                     if (!prev || Math.abs(prev.top - rect.top) > 1 || Math.abs(prev.left - rect.left) > 1 || Math.abs(prev.width - rect.width) > 1 || Math.abs(prev.height - rect.height) > 1) return rect;
                     return prev;
@@ -84,7 +97,13 @@ export default function TutorialGuide({ steps, storageKey }: TutorialGuideProps)
             if (currentStep?.targetId) {
                 const el = document.getElementById(currentStep.targetId);
                 if (el) {
-                    const rect = el.getBoundingClientRect();
+                    const rawRect = el.getBoundingClientRect();
+                    const rect = {
+                        top: rawRect.top / zoom,
+                        left: rawRect.left / zoom,
+                        width: rawRect.width / zoom,
+                        height: rawRect.height / zoom
+                    };
                     setTargetRect((prev) => {
                         if (!prev || Math.abs(prev.top - rect.top) > 1 || Math.abs(prev.left - rect.left) > 1 || Math.abs(prev.width - rect.width) > 1 || Math.abs(prev.height - rect.height) > 1) return rect;
                         return prev;
