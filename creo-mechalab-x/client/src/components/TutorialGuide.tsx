@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { ChevronRight, X, HelpCircle } from 'lucide-react';
 
@@ -143,7 +144,7 @@ export default function TutorialGuide({ steps, storageKey }: TutorialGuideProps)
         }, 650);
     };
 
-    return (
+    return createPortal(
         <LayoutGroup>
             {/* 1. COLLAPSED STATE: The Floating Button */}
             {!isExpanded && (
@@ -285,6 +286,7 @@ export default function TutorialGuide({ steps, storageKey }: TutorialGuideProps)
                     </>
                 )}
             </AnimatePresence>
-        </LayoutGroup>
+        </LayoutGroup>,
+        document.body
     );
 }
