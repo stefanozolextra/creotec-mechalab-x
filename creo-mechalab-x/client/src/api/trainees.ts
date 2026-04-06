@@ -9,71 +9,33 @@ const toPositiveInt = (value: number, label: string): number => {
     return value;
 };
 
-const OFFLINE_DUMMY_SIMULATIONS = [
-    ...Array.from({ length: 5 }, (_, index) => ({
-        simulation_id: 101 + index,
-        module_id: 1,
-        title: `M1 Simulation ${index + 1}`,
-        is_required: true,
-        order_no: index + 1,
-    })),
-    ...Array.from({ length: 5 }, (_, index) => ({
-        simulation_id: 501 + index,
-        module_id: 5,
-        title: `M5 Simulation ${index + 1}`,
-        is_required: true,
-        order_no: index + 1,
-    })),
-];
-
-const OFFLINE_DUMMY_DASHBOARD = {
-    trainee: {
-        trainee_id: 999999,
-        account_id: 999999,
-        first_name: "God Mode",
-        last_name: "Developer",
-        trainee_code: "DEV-OVERRIDE",
-        batch_id: 1,
-        batch_code: "SYS-ADMIN",
-        created_at: new Date().toISOString()
-    },
-    moduleContent: {
-        modules: [
-            { module_id: 1, title: "Basic Electro-Pneumatics", module_code: "M1", description: "Offline Developer Access", order_no: 1 },
-            { module_id: 2, title: "Advanced Relay Logic", module_code: "M2", description: "Offline Developer Access", order_no: 2 },
-            { module_id: 3, title: "PLC Fundamentals", module_code: "M3", description: "Offline Developer Access", order_no: 3 },
-            { module_id: 5, title: "Electro-Pneumatic Sequencing", module_code: "M5", description: "Offline Developer Access", order_no: 5 },
-        ],
-        resources: [
-            { resource_id: 1, module_id: 1, title: "System Override Protocol", type: "VIDEO", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", resolved_url: null, order_no: 1 },
-            { resource_id: 2, module_id: 2, title: "Relay Override Protocol", type: "VIDEO", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", resolved_url: null, order_no: 1 },
-            { resource_id: 3, module_id: 3, title: "PLC Override Protocol", type: "VIDEO", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", resolved_url: null, order_no: 1 },
-            { resource_id: 5, module_id: 5, title: "Electro-Pneumatic Sequencing Protocol", type: "VIDEO", url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", resolved_url: null, order_no: 1 },
-        ],
-        simulations: OFFLINE_DUMMY_SIMULATIONS,
-    },
-    moduleStatus: [
-        { module_id: 1, module_status: "COMPLETED", required_sims: 1, completed_required_sims: 1 },
-        { module_id: 2, module_status: "COMPLETED", required_sims: 1, completed_required_sims: 1 },
-        { module_id: 3, module_status: "COMPLETED", required_sims: 1, completed_required_sims: 1 },
-        { module_id: 5, module_status: "COMPLETED", required_sims: 1, completed_required_sims: 1 },
-    ],
-    simulationProgress: OFFLINE_DUMMY_SIMULATIONS.map((simulation) => ({
-        simulation_id: simulation.simulation_id,
-        is_completed: true,
-        best_score: 100,
-    })),
-} as unknown as DashboardResponseApi;
-
 export const getTraineeDashboard = async (
     options?: { signal?: AbortSignal }
 ): Promise<DashboardResponseApi> => {
 
+    // 🚀 THE ULTIMATE SHORT-CIRCUIT 🚀
+    // No token checks, no backend trainee validation. 
+    // If you are the Developer, you get the live curriculum data injected into a simulated dashboard struct!
     if (getAuthRole() === 'developer') {
-        console.warn("DEV MODE: Detached from backend. Injecting offline curriculum.");
-        return OFFLINE_DUMMY_DASHBOARD;
+        const data = await requestJson<any>("/api/curriculum/public", { signal: options?.signal });
+        
+        return {
+            trainee: {
+                trainee_id: 999999, account_id: 999999, first_name: "God Mode", last_name: "Developer",
+                trainee_code: "DEV-OVERRIDE", batch_id: 1, batch_code: "SYS-ADMIN", created_at: new Date().toISOString()
+            },
+            moduleContent: {
+                modules: data.modules,
+                resources: data.resources,
+                simulations: data.simulations
+            },
+            // Auto-complete all tasks to unlock navigation for the developer
+            moduleStatus: data.modules.map((m: any) => ({ module_id: m.module_id, module_status: "COMPLETED", required_sims: 1, completed_required_sims: 1 })),
+            simulationProgress: data.simulations.map((s: any) => ({ simulation_id: s.simulation_id, is_completed: true, best_score: 100 }))
+        } as unknown as DashboardResponseApi;
     }
 
+    // --- STANDARD BEHAVIOR FOR REAL ACCOUNTS ---
     return requestJson<DashboardResponseApi>("/api/me/dashboard", {
         signal: options?.signal,
     });

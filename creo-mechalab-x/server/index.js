@@ -4611,6 +4611,23 @@ app.get("/api/trainees/:traineeId/dashboard", requireAuth, async (req, res) => {
     }
 });
 
+app.get("/api/curriculum/public", async (req, res) => {
+    try {
+        const modules = await pool.query("SELECT * FROM modules ORDER BY order_no");
+        const resources = await getModuleResourcesRowsSafe();
+        const simulations = await pool.query("SELECT * FROM simulations ORDER BY module_id, order_no");
+        
+        res.json({
+            modules: modules.rows,
+            resources: resources,
+            simulations: simulations.rows
+        });
+    } catch (e) {
+        console.error("Public curriculum endpoint failed:", e);
+        res.status(500).json({ error: "Internal server error" });
+    }
+});
+
 app.get("/api/me/dashboard", requireAuth, async (req, res) => {
     try {
         const traineeId = ensureTraineeOwnership(req, res);
