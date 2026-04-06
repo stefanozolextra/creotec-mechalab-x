@@ -480,10 +480,10 @@ export default function UsersPage() {
   ];
 
   return (
-    <div className="flex-1 flex flex-col gap-4 min-h-0 min-w-0 w-full relative">
-      <TutorialGuide steps={tutorialSteps} storageKey="creosim_tutorial_admin_users" />
+    <div className="flex-1 flex flex-col gap-4 sm:gap-6 min-h-0 relative z-0">
+      <TutorialGuide variant="admin" steps={tutorialSteps} storageKey="creosim_tutorial_admin_users" />
 
-      {/* SECTION: VIEW TOGGLE & BANNERS */}
+      {/* SUCCESS / ERROR NOTICES & BANNERS */}
       <div className="flex flex-col gap-3 shrink-0">
         {viewToggle}
 

@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { flushSync } from "react-dom";
 import { clearAuthRole, getAuthRole } from "../../utils/auth"; // <-- Imported getAuthRole
+import TutorialGuide, { type TutorialStep } from "../TutorialGuide";
 
 const navItems = [
   { to: "/admin/dashboard", label: "Dashboard", icon: Home },
@@ -67,8 +68,17 @@ const AdminLayout = () => {
     }
   };
 
+  const tutorialSteps: TutorialStep[] = [
+    { targetId: "admin-nav-dashboard", message: "Dashboard: Your home base. View high-level KPIs, activity feeds, and system health." },
+    { targetId: "admin-nav-trainees", message: "Trainees: Manage all your students, import lists, and reset credentials here." },
+    { targetId: "admin-nav-cohorts", message: "Cohorts: View all your organized batches of trainees to track group progress." },
+    { targetId: "admin-nav-lessons", message: "Lessons: Build your curriculum by creating Modules and assigning interactive Simulations to them." },
+    { targetId: "admin-nav-activity-logs", message: "Activity Logs: A complete timeline of everything trainees have done inside the platform." }
+  ];
+
   return (
     <div className="h-screen w-full flex overflow-hidden font-sans select-none bg-[#EEF2F6] dark:bg-[#0F172A] text-slate-800 dark:text-slate-200">
+      <TutorialGuide variant="admin" steps={tutorialSteps} storageKey="creosim_tutorial_admin_layout" />
       <aside
         className={`relative flex flex-col shrink-0 border-r transition-all duration-500 ease-in-out z-20 
           ${isCollapsed ? "w-[80px]" : "w-[240px]"} 
@@ -105,6 +115,7 @@ const AdminLayout = () => {
               <NavLink
                 key={item.to}
                 to={item.to}
+                id={`admin-nav-${item.label.toLowerCase().replace(" ", "-")}`}
                 className={({ isActive }) =>
                   `flex items-center h-[48px] sm:h-[52px] rounded-2xl font-bold transition-all duration-300 overflow-hidden ${isActive
                     ? "bg-white text-[#0B1B3D] shadow-sm dark:bg-[#3B82F6]/20 dark:text-[#60A5FA]"

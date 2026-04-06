@@ -258,7 +258,7 @@ export default function CohortsPage() {
 
   return (
     <div className="flex-1 flex flex-col gap-6 min-h-0 relative">
-      <TutorialGuide steps={tutorialSteps} storageKey="creosim_tutorial_admin_cohorts" />
+      <TutorialGuide variant="admin" steps={tutorialSteps} storageKey="creosim_tutorial_admin_cohorts" />
 
       {/* ERROR & SUCCESS BANNERS */}
       {error && (
@@ -300,11 +300,10 @@ export default function CohortsPage() {
                   <tr
                     key={item.batch_code}
                     onClick={() => setSelectedBatchCode(item.batch_code)}
-                    className={`group transition-colors duration-300 ${
-                      isSelected
+                    className={`group transition-colors duration-300 ${isSelected
                         ? "bg-blue-50/60 dark:bg-blue-500/10"
                         : "hover:bg-slate-50 dark:hover:bg-white/[0.02]"
-                    }`}
+                      }`}
                   >
                     <td className={`px-8 py-5 text-left font-bold text-[#0B1B3D] dark:text-slate-200 transition-colors duration-500 sticky left-0 z-[5] ${stickyBatchCellClass}`}>
                       <div className="flex items-center gap-3">

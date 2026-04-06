@@ -342,7 +342,7 @@ export default function OverviewPage() {
   return (
     // OPTIMIZATION: Removed `-mt-2` to prevent shadow clipping. Added `pb-4` to ensure smooth bottom scrolling.
     <div className="flex-1 flex flex-col xl:flex-row gap-4 xl:min-h-0 relative animate-in fade-in slide-in-from-bottom-4 duration-500 pb-4">
-      <TutorialGuide steps={tutorialSteps} storageKey="creosim_tutorial_admin_overview" />
+      <TutorialGuide variant="admin" steps={tutorialSteps} storageKey="creosim_tutorial_admin_overview" />
 
       {/* LEFT COLUMN */}
       <div className="flex-1 flex flex-col gap-4 xl:min-h-0">
