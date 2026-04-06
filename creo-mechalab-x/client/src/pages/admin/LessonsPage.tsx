@@ -34,6 +34,7 @@ import type { AdminLessonItem, AdminLessonResource, AdminLessonResourceType } fr
 import { getAuthToken } from "../../utils/auth";
 import { resolveSupportedVideoLesson } from "../../utils/videoLessons";
 import CreateModuleModal from "../../components/admin/CreateModuleModal";
+import { useToast } from "../../contexts/ToastContext";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -96,7 +97,14 @@ export default function LessonsPage() {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<NoticeState>(null);
+  const [notice, _setNotice] = useState<NoticeState>(null);
+  const toast = useToast();
+
+  const setNotice = (state: NoticeState) => {
+    _setNotice(state);
+    if (state?.kind === "success") toast.success(state.text);
+    if (state?.kind === "error") toast.error(state.text);
+  };
 
   const [busyModuleId, setBusyModuleId] = useState<number | null>(null);
   const [busyLessonId, setBusyLessonId] = useState<number | null>(null);

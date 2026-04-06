@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { X, Upload, Link as LinkIcon, Loader2, FileText, PlayCircle, Trash2, Layers3 } from "lucide-react";
 import { requestJson } from "../../api/http";
 import { motion } from "framer-motion";
+import { useToast } from "../../contexts/ToastContext";
 
 interface ResourceInput {
     id: string;
@@ -23,6 +24,7 @@ interface CreateModuleModalProps {
 }
 
 export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleModalProps) {
+    const toast = useToast();
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
 
@@ -124,6 +126,7 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                 }
             }
 
+            toast.success("Module and lessons successfully created!");
             onSuccess();
         } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "An unexpected error occurred while saving the module.");

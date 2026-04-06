@@ -5,6 +5,7 @@ import { createAdminBatch } from "../../api/adminImport";
 import { ApiError } from "../../api/http";
 import type { BatchFilter } from "../../types/adminTrainee";
 import AdminModalShell from "./ui/AdminModalShell";
+import { useToast } from "../../contexts/ToastContext";
 
 type CreateBatchModalProps = {
   open: boolean;
@@ -24,6 +25,7 @@ export default function CreateBatchModal({ open, onClose, onCreated }: CreateBat
   const [batchCode, setBatchCode] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   const resetModalState = () => {
     setBatchCode("");
@@ -56,6 +58,7 @@ export default function CreateBatchModal({ open, onClose, onCreated }: CreateBat
 
     try {
       const result = await createAdminBatch(normalized);
+      toast.success(`Batch ${result.item.batch_code} created successfully`);
       await onCreated(result.item);
       resetModalState();
     } catch (submitError) {

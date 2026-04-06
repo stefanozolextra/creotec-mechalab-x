@@ -145,14 +145,18 @@ const AnimatedRoutes = () => {
   );
 };
 
+import { ToastProvider } from './contexts/ToastContext';
+
 /* SECTION: MAIN APP COMPONENT */
 function App() {
   return (
-    <Router>
-      <GodModeListener />
-      <DeveloperDock />
-      <AnimatedRoutes />
-    </Router>
+    <ToastProvider>
+      <Router>
+        <GodModeListener />
+        <DeveloperDock />
+        <AnimatedRoutes />
+      </Router>
+    </ToastProvider>
   );
 }
   

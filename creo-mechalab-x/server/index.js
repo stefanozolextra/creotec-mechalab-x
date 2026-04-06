@@ -408,6 +408,14 @@ function encodeAdminActivityLogsCursor(occurredAt, eventId) {
     ).toString("base64url");
 }
 
+async function logAdminAction(clientOrPool, accountId, type, batchCode, message, meta = {}) {
+    await clientOrPool.query(
+        `INSERT INTO admin_action_logs (actor_account_id, type, batch_code, message, meta)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [accountId || null, type, batchCode || null, message, JSON.stringify(meta)]
+    ).catch(e => console.error("Failed to log admin action:", e));
+}
+
 function normalizeAdminActivityLogsBeforeCursor(beforeInput) {
     if (typeof beforeInput !== "string" || beforeInput.trim() === "") return null;
 
@@ -433,13 +441,15 @@ function normalizeAdminActivityLogsBeforeCursor(beforeInput) {
 function mapAdminActivityLogRow(row) {
     const occurredAt = row.occurred_at ? new Date(row.occurred_at).toISOString() : new Date().toISOString();
     const normalizedType =
-        row.type === "system_reset"
-            ? "system_reset"
-            : row.type === "trainee_created"
-              ? "trainee_created"
-              : row.type === "simulation_completed"
-                ? "simulation_completed"
-                : "batch_export";
+        row.type && String(row.type).startsWith("admin_")
+            ? row.type
+            : row.type === "system_reset"
+              ? "system_reset"
+              : row.type === "trainee_created"
+                ? "trainee_created"
+                : row.type === "simulation_completed"
+                  ? "simulation_completed"
+                  : "batch_export";
     const meta = row.meta && typeof row.meta === "object" ? row.meta : undefined;
     const item = {
         event_id:
@@ -562,6 +572,19 @@ async function fetchSystemAdminActivityLogs({ batchCode = null, limit, before } 
            FROM system_resets sr
            LEFT JOIN accounts actor ON actor.account_id = sr.reset_by_account_id
            LEFT JOIN batches b ON b.batch_code = sr.batch_code
+
+           UNION ALL
+
+           SELECT
+             CONCAT('admin_action:', al.action_id)::TEXT AS event_id,
+             al.type::TEXT AS type,
+             al.occurred_at AS occurred_at,
+             al.batch_code AS batch_code,
+             actor.login_email AS actor,
+             al.message AS message,
+             al.meta AS meta
+           FROM admin_action_logs al
+           LEFT JOIN accounts actor ON actor.account_id = al.actor_account_id
          ) events
          WHERE ($1::TEXT IS NULL OR events.batch_code = $1)
            AND (
@@ -1612,6 +1635,8 @@ app.put("/api/admin/modules/:moduleId/simulations", requireAuth, requireAdmin, a
             );
         }
 
+        await logAdminAction(client, req.user?.account_id || null, 'admin_simulation_moved', null, `Updated simulation assignments for Module ${moduleId} (${safeIds.length} mapped)`, { module_id: moduleId, simulations: safeIds });
+
         await client.query("COMMIT");
         invalidateAdminCaches();
         
@@ -2066,6 +2091,8 @@ app.post("/api/admin/modules/:moduleId/lessons", async (req, res) => {
             return res.status(500).json({ error: "Failed to create lesson" });
         }
 
+        await logAdminAction(client, req.user?.account_id || null, 'admin_lesson_added', null, `Added a new lesson "${title}" to Module ${moduleId}`, { module_id: moduleId, resource_id: createdResourceId });
+
         await client.query("COMMIT");
         committed = true;
         invalidateAdminCaches();
@@ -2238,6 +2265,8 @@ app.patch("/api/admin/modules/:moduleId/lessons/:resourceId", async (req, res) =
                 }
             }
         }
+
+        await logAdminAction(client, req.user?.account_id || null, 'admin_lesson_edited', null, `Edited lesson details for Resource ${resourceId} in Module ${moduleId}`, { module_id: moduleId, resource_id: resourceId });
 
         await client.query("COMMIT");
         committed = true;
@@ -3197,7 +3226,11 @@ app.post("/api/admin/batches", async (req, res) => {
             [batchCode]
         );
 
-        return res.status(201).json({ item: result.rows[0] });
+        const item = result.rows[0];
+        
+        await logAdminAction(pool, req.user?.account_id || null, 'admin_batch_created', batchCode, `Added new batch ${batchCode}`);
+        
+        return res.status(201).json({ item });
     } catch (error) {
         if (error?.code === "23505") {
             return res.status(409).json({ error: "Batch code already exists" });
