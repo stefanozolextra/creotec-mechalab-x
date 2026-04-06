@@ -1,4 +1,4 @@
-import { getAuthToken } from "../utils/auth";
+import { getAuthToken, getAuthRole } from "../utils/auth";
 
 // In local Vite dev, use same-origin `/api` requests so mobile devices can
 // reach the app through the Vite server and let the dev proxy forward to the API.
@@ -60,6 +60,15 @@ export const requestJson = async <T>(path: string, options: ApiRequestOptions = 
         headers.set("Content-Type", "application/json");
     }
 
+    const method = options.method?.toUpperCase() || "GET";
+    const isMutating = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
+    const role = getAuthRole();
+
+    // 🛡️ GOD MODE SAFETY: Freeze all mutating data requests 🛡️
+    if (isMutating && role === "developer") {
+        throw new ApiError("System is frozen in Developer Mode. Data modifications are blocked.", 403, { developerMode: true });
+    }
+
     const authToken = getAuthToken();
     if (authToken && !headers.has("Authorization")) {
         headers.set("Authorization", `Bearer ${authToken}`);
@@ -94,6 +103,15 @@ export const requestBlob = async (path: string, options: ApiRequestOptions = {})
 
     if (body !== undefined && !isFormData && !headers.has("Content-Type")) {
         headers.set("Content-Type", "application/json");
+    }
+
+    const method = options.method?.toUpperCase() || "GET";
+    const isMutating = ["POST", "PUT", "DELETE", "PATCH"].includes(method);
+    const role = getAuthRole();
+
+    // 🛡️ GOD MODE SAFETY: Freeze all mutating data requests 🛡️
+    if (isMutating && role === "developer") {
+        throw new ApiError("System is frozen in Developer Mode. Data modifications are blocked.", 403, { developerMode: true });
     }
 
     const authToken = getAuthToken();
