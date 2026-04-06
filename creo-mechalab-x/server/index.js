@@ -1635,7 +1635,10 @@ app.put("/api/admin/modules/:moduleId/simulations", requireAuth, requireAdmin, a
             );
         }
 
-        await logAdminAction(client, req.user?.account_id || null, 'admin_simulation_moved', null, `Updated simulation assignments for Module ${moduleId} (${safeIds.length} mapped)`, { module_id: moduleId, simulations: safeIds });
+        const modRes = await client.query(`SELECT module_code FROM modules WHERE module_id = $1`, [moduleId]);
+        const moduleCode = modRes.rows[0]?.module_code || moduleId;
+
+        await logAdminAction(client, req.user?.account_id || req.auth?.account_id || null, 'admin_simulation_moved', null, `Updated simulation assignments for Module ${moduleCode} (${safeIds.length} mapped)`, { module_id: moduleId, simulations: safeIds });
 
         await client.query("COMMIT");
         invalidateAdminCaches();
@@ -2001,11 +2004,14 @@ app.patch("/api/admin/lessons/:moduleId", async (req, res) => {
             `UPDATE modules
              SET title = $2, description = $3
              WHERE module_id = $1
-             RETURNING module_id`,
+             RETURNING module_id, module_code`,
             [moduleId, title, description] // UPDATED
         );
 
         if (updateResult.rowCount === 0) return res.status(404).json({ error: "Module not found" });
+
+        const moduleCode = updateResult.rows[0].module_code;
+        await logAdminAction(pool, req.user?.account_id || req.auth?.account_id || null, 'admin_module_edited', null, `Updated module details for Module ${moduleCode}`, { module_id: moduleId });
 
         invalidateAdminCaches();
         const [item] = await getAdminLessonItems(moduleId);

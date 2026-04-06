@@ -381,21 +381,42 @@ export default function LessonsPage() {
     setError(null);
 
     try {
+      const item = items.find((i) => i.module_id === moduleId);
+      const originalTitle = item ? item.module_title : "";
+      const originalDesc = item?.description || "";
+      const titleOrDescChanged = trimmedTitle !== originalTitle || descDraft.trim() !== originalDesc;
+
+      const originalSimIds = item?.simulations?.map(s => s.simulation_id).sort((a,b) => a - b).join(",") || "";
+      const newSimIds = [...simIdsDraft].sort((a,b) => a - b).join(",");
+      const simsChanged = originalSimIds !== newSimIds;
+
+      let moduleUpdated = false;
+
       // 1. Update Title & Description
-      await requestJson(`/api/admin/lessons/${moduleId}`, {
-        method: "PATCH",
-        body: { title: trimmedTitle, description: descDraft.trim() }
-      });
+      if (titleOrDescChanged || !item) {
+        await requestJson(`/api/admin/lessons/${moduleId}`, {
+          method: "PATCH",
+          body: { title: trimmedTitle, description: descDraft.trim() }
+        });
+        moduleUpdated = true;
+      }
 
       // 2. Update Selected Simulations
-      await requestJson(`/api/admin/modules/${moduleId}/simulations`, {
-        method: "PUT",
-        body: { simulationIds: simIdsDraft }
-      });
+      if (simsChanged || !item) {
+        await requestJson(`/api/admin/modules/${moduleId}/simulations`, {
+          method: "PUT",
+          body: { simulationIds: simIdsDraft }
+        });
+        moduleUpdated = true;
+      }
 
       setEditingModuleId(null);
-      setNotice({ kind: "success", text: "Module settings updated successfully." });
-      setRefreshSeq(s => s + 1); // Trigger a full refresh to get the updated simulations list
+      if (moduleUpdated) {
+        setNotice({ kind: "success", text: "Module settings updated successfully." });
+        setRefreshSeq(s => s + 1); // Trigger a full refresh to get the updated simulations list
+      } else {
+        setNotice({ kind: "success", text: "No changes made." });
+      }
     } catch (err) {
       setTitleError(toErrorMessage(err, "Failed to update module settings."));
     } finally {
