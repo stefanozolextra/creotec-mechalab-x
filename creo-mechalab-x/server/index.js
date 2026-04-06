@@ -1791,6 +1791,63 @@ app.post("/api/auth/login", async (req, res) => {
     }
 });
 
+app.post("/api/auth/forgot-password", async (req, res) => {
+    const client = await pool.connect();
+    try {
+        const email = normalizeEmail(req.body?.email);
+
+        if (!email) {
+            return res.status(400).json({ error: "Email is required" });
+        }
+
+        const result = await client.query(
+            `SELECT a.account_id, a.role, a.trainee_id, t.first_name, t.middle_name, t.last_name, b.batch_code
+             FROM accounts a
+             LEFT JOIN trainees t ON t.trainee_id = a.trainee_id
+             LEFT JOIN batches b ON b.batch_id = t.batch_id
+             WHERE lower(a.login_email) = $1 AND a.is_active = TRUE AND a.role = 'trainee'
+             LIMIT 1`,
+            [email]
+        );
+
+        if (result.rowCount === 0) {
+            return res.json({ message: "If an active trainee account with that email exists, new credentials have been sent." });
+        }
+
+        const account = result.rows[0];
+        const generatedPassword = generateStrongPassword();
+        const passwordHash = await bcrypt.hash(generatedPassword, 10);
+
+        await client.query(
+            `UPDATE accounts SET password_hash = $1 WHERE account_id = $2`,
+            [passwordHash, account.account_id]
+        );
+
+        const traineeName = [account.first_name, account.middle_name, account.last_name].filter(Boolean).join(" ").trim() || "Trainee";
+
+        try {
+            await sendTraineeCredentialsEmail({
+                to: email,
+                traineeName,
+                loginEmail: email,
+                password: generatedPassword,
+                batchCode: account.batch_code || ""
+            });
+        } catch (mailError) {
+            console.error("Forgot password email failed:", mailError);
+            return res.status(500).json({ error: "Failed to send email. Please try again later." });
+        }
+
+        res.json({ message: "If an active trainee account with that email exists, new credentials have been sent." });
+
+    } catch (e) {
+        console.error("Forgot password endpoint failed:", e);
+        res.status(500).json({ error: "Internal server error" });
+    } finally {
+        client.release();
+    }
+});
+
 app.use("/api/admin", requireAuth, requireAdmin);
 
 app.get("/api/admin/auth-check", (req, res) => {

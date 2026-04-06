@@ -148,6 +148,8 @@ const Login = () => {
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [isForgotPasswordMode, setIsForgotPasswordMode] = useState(false);
+    const [forgotPasswordSuccessMessage, setForgotPasswordSuccessMessage] = useState('');
 
     // --- THEME TOGGLE STATE ---
     const [isDarkMode, setIsDarkMode] = useState<boolean>(() =>
@@ -229,6 +231,39 @@ const Login = () => {
         }
     };
 
+    const handleForgotPassword = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (loading) return;
+
+        const normalizedEmail = email.trim().toLowerCase();
+        if (!normalizedEmail) {
+            setError('Email is required.');
+            return;
+        }
+
+        setError('');
+        setForgotPasswordSuccessMessage('');
+        setLoading(true);
+
+        try {
+            const result = await requestJson<{ message?: string; error?: string }>('/api/auth/forgot-password', {
+                method: 'POST',
+                body: { email: normalizedEmail },
+            });
+            if (result.error) {
+                throw new Error(result.error);
+            } else if (result.message) {
+                setForgotPasswordSuccessMessage(result.message);
+                setEmail('');
+            }
+        } catch (err) {
+            const message = err instanceof Error && err.message ? err.message : 'Request failed.';
+            setError(message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         // <PageTransition>
         <div className={`min-h-screen flex flex-col items-center justify-center bg-[#f8fafc] dark:bg-slate-900 font-sans relative z-0 overflow-hidden px-4 sm:px-6 select-none transition-colors duration-500 ${isDarkMode ? 'dark' : ''}`}>
@@ -297,94 +332,165 @@ const Login = () => {
 
                     {/* Terminal Body */}
                     <div className="p-8">
-                        <form onSubmit={handleLogin} className="flex flex-col gap-5">
-
-                            {/* Email Input */}
-                            <div className="flex flex-col gap-1.5">
-                                <label className="text-[10px] font-black tracking-widest uppercase text-slate-500 dark:text-slate-300 flex justify-between">
-                                    <span>Username / Email</span>
-                                </label>
-                                <div className="relative flex items-center group">
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-300 dark:bg-slate-600 group-focus-within:bg-cyan-500 transition-colors" />
-                                    <User size={16} className="absolute left-4 text-slate-400 dark:text-slate-400 group-focus-within:text-cyan-600 dark:group-focus-within:text-cyan-400 transition-colors" strokeWidth={2} />
-                                    <input
-                                        type="email"
-                                        id="email"
-                                        name="email"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                        className="w-full bg-slate-50 dark:bg-slate-900 border-y border-r border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm font-mono px-11 py-3.5 focus:outline-none focus:bg-white dark:focus:bg-slate-950 focus:border-cyan-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
-                                        placeholder="cadet@creosim.net"
-                                        autoComplete="email"
-                                        required
-                                    />
+                        {isForgotPasswordMode ? (
+                            <form onSubmit={handleForgotPassword} className="flex flex-col gap-5">
+                                {/* Email Input */}
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[10px] font-black tracking-widest uppercase text-slate-500 dark:text-slate-300 flex justify-between">
+                                        <span>Trainee Email</span>
+                                    </label>
+                                    <div className="relative flex items-center group">
+                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-300 dark:bg-slate-600 group-focus-within:bg-cyan-500 transition-colors" />
+                                        <User size={16} className="absolute left-4 text-slate-400 dark:text-slate-400 group-focus-within:text-cyan-600 dark:group-focus-within:text-cyan-400 transition-colors" strokeWidth={2} />
+                                        <input
+                                            type="email"
+                                            id="email-forgot"
+                                            name="email"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            className="w-full bg-slate-50 dark:bg-slate-900 border-y border-r border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm font-mono px-11 py-3.5 focus:outline-none focus:bg-white dark:focus:bg-slate-950 focus:border-cyan-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                            placeholder="cadet@creosim.net"
+                                            autoComplete="email"
+                                            required
+                                        />
+                                    </div>
                                 </div>
-                            </div>
 
-                            {/* Password Input */}
-                            <div className="flex flex-col gap-1.5 mt-2">
-                                <label className="text-[10px] font-black tracking-widest uppercase text-slate-500 dark:text-slate-300 flex justify-between">
-                                    <span>Password</span>
-                                </label>
-                                <div className="relative flex items-center group">
-                                    <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-300 dark:bg-slate-600 group-focus-within:bg-cyan-500 transition-colors" />
-                                    <Lock size={16} className="absolute left-4 text-slate-400 dark:text-slate-400 group-focus-within:text-cyan-600 dark:group-focus-within:text-cyan-400 transition-colors" strokeWidth={2} />
-                                    <input
-                                        type={showPassword ? 'text' : 'password'}
-                                        id="password"
-                                        name="password"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        className="w-full bg-slate-50 dark:bg-slate-900 border-y border-r border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm font-mono px-11 py-3.5 focus:outline-none focus:bg-white dark:focus:bg-slate-950 focus:border-cyan-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
-                                        placeholder="••••••••"
-                                        autoComplete="current-password"
-                                        required
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                        className="absolute right-4 text-slate-400 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors outline-none"
-                                    >
-                                        {showPassword ? <EyeOff size={16} strokeWidth={2} /> : <Eye size={16} strokeWidth={2} />}
-                                    </button>
-                                </div>
-                            </div>
-
-                            {/* Error Message */}
-                            {error && (
-                                <div className="mt-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-md p-3 flex items-start gap-3">
-                                    <AlertTriangle size={16} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5 animate-pulse" strokeWidth={2.5} />
-                                    <p id="login-error" className="text-[11px] font-mono uppercase tracking-wider text-rose-700 dark:text-rose-300 leading-relaxed" role="alert">
-                                        <span className="font-black">AUTH FAULT:</span> {error}
-                                    </p>
-                                </div>
-                            )}
-
-                            {/* Submit Button */}
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className="mt-6 w-full bg-cyan-600 hover:bg-cyan-500 dark:bg-cyan-600/80 dark:hover:bg-cyan-500 text-white dark:text-white border border-transparent dark:border-cyan-500/50 py-4 rounded-md font-black text-xs tracking-[0.2em] uppercase transition-all duration-300 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-3 relative overflow-hidden group"
-                            >
-                                {/* Button Scanline Effect */}
-                                <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_50%,rgba(255,255,255,0.1)_50%)] bg-[length:100%_4px] pointer-events-none group-hover:opacity-50 transition-opacity" />
-
-                                {loading ? (
-                                    <>
-                                        <div className="w-4 h-4 border-2 border-white/30 dark:border-white/50 border-t-white dark:border-t-white rounded-full animate-spin" />
-                                        AUTHORIZING...
-                                    </>
-                                ) : (
-                                    'LOG IN'
+                                {/* Success Message */}
+                                {forgotPasswordSuccessMessage && (
+                                    <div className="mt-2 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/60 rounded-md p-3 flex items-start gap-3">
+                                        <div className="w-4 h-4 mt-0.5 shrink-0 bg-emerald-500 rounded-full flex items-center justify-center">
+                                           <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+                                        </div>
+                                        <p className="text-[11px] font-mono uppercase tracking-wider text-emerald-700 dark:text-emerald-300 leading-relaxed" role="alert">
+                                            {forgotPasswordSuccessMessage}
+                                        </p>
+                                    </div>
                                 )}
-                            </button>
-                        </form>
+
+                                {/* Error Message */}
+                                {error && (
+                                    <div className="mt-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-md p-3 flex items-start gap-3">
+                                        <AlertTriangle size={16} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5 animate-pulse" strokeWidth={2.5} />
+                                        <p id="forgot-error" className="text-[11px] font-mono uppercase tracking-wider text-rose-700 dark:text-rose-300 leading-relaxed" role="alert">
+                                            <span className="font-black">SYS FAULT:</span> {error}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Submit Button */}
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="mt-6 w-full bg-cyan-600 hover:bg-cyan-500 dark:bg-cyan-600/80 dark:hover:bg-cyan-500 text-white dark:text-white border border-transparent dark:border-cyan-500/50 py-4 rounded-md font-black text-xs tracking-[0.2em] uppercase transition-all duration-300 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-3 relative overflow-hidden group"
+                                >
+                                    <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_50%,rgba(255,255,255,0.1)_50%)] bg-[length:100%_4px] pointer-events-none group-hover:opacity-50 transition-opacity" />
+                                    {loading ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 dark:border-white/50 border-t-white dark:border-t-white rounded-full animate-spin" />
+                                            SENDING...
+                                        </>
+                                    ) : (
+                                        'SEND CREDENTIALS'
+                                    )}
+                                </button>
+                            </form>
+                        ) : (
+                            <form onSubmit={handleLogin} className="flex flex-col gap-5">
+
+                                {/* Email Input */}
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[10px] font-black tracking-widest uppercase text-slate-500 dark:text-slate-300 flex justify-between">
+                                        <span>Username / Email</span>
+                                    </label>
+                                    <div className="relative flex items-center group">
+                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-300 dark:bg-slate-600 group-focus-within:bg-cyan-500 transition-colors" />
+                                        <User size={16} className="absolute left-4 text-slate-400 dark:text-slate-400 group-focus-within:text-cyan-600 dark:group-focus-within:text-cyan-400 transition-colors" strokeWidth={2} />
+                                        <input
+                                            type="email"
+                                            id="email"
+                                            name="email"
+                                            value={email}
+                                            onChange={(e) => setEmail(e.target.value)}
+                                            className="w-full bg-slate-50 dark:bg-slate-900 border-y border-r border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm font-mono px-11 py-3.5 focus:outline-none focus:bg-white dark:focus:bg-slate-950 focus:border-cyan-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                            placeholder="cadet@creosim.net"
+                                            autoComplete="email"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Password Input */}
+                                <div className="flex flex-col gap-1.5 mt-2">
+                                    <label className="text-[10px] font-black tracking-widest uppercase text-slate-500 dark:text-slate-300 flex justify-between">
+                                        <span>Password</span>
+                                    </label>
+                                    <div className="relative flex items-center group">
+                                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-slate-300 dark:bg-slate-600 group-focus-within:bg-cyan-500 transition-colors" />
+                                        <Lock size={16} className="absolute left-4 text-slate-400 dark:text-slate-400 group-focus-within:text-cyan-600 dark:group-focus-within:text-cyan-400 transition-colors" strokeWidth={2} />
+                                        <input
+                                            type={showPassword ? 'text' : 'password'}
+                                            id="password"
+                                            name="password"
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className="w-full bg-slate-50 dark:bg-slate-900 border-y border-r border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm font-mono px-11 py-3.5 focus:outline-none focus:bg-white dark:focus:bg-slate-950 focus:border-cyan-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                                            placeholder="••••••••"
+                                            autoComplete="current-password"
+                                            required
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-4 text-slate-400 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors outline-none"
+                                        >
+                                            {showPassword ? <EyeOff size={16} strokeWidth={2} /> : <Eye size={16} strokeWidth={2} />}
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Error Message */}
+                                {error && (
+                                    <div className="mt-2 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-md p-3 flex items-start gap-3">
+                                        <AlertTriangle size={16} className="text-rose-600 dark:text-rose-400 shrink-0 mt-0.5 animate-pulse" strokeWidth={2.5} />
+                                        <p id="login-error" className="text-[11px] font-mono uppercase tracking-wider text-rose-700 dark:text-rose-300 leading-relaxed" role="alert">
+                                            <span className="font-black">AUTH FAULT:</span> {error}
+                                        </p>
+                                    </div>
+                                )}
+
+                                {/* Submit Button */}
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="mt-6 w-full bg-cyan-600 hover:bg-cyan-500 dark:bg-cyan-600/80 dark:hover:bg-cyan-500 text-white dark:text-white border border-transparent dark:border-cyan-500/50 py-4 rounded-md font-black text-xs tracking-[0.2em] uppercase transition-all duration-300 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 disabled:cursor-not-allowed flex justify-center items-center gap-3 relative overflow-hidden group"
+                                >
+                                    {/* Button Scanline Effect */}
+                                    <div className="absolute inset-0 bg-[linear-gradient(to_bottom,transparent_50%,rgba(255,255,255,0.1)_50%)] bg-[length:100%_4px] pointer-events-none group-hover:opacity-50 transition-opacity" />
+
+                                    {loading ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 dark:border-white/50 border-t-white dark:border-t-white rounded-full animate-spin" />
+                                            AUTHORIZING...
+                                        </>
+                                    ) : (
+                                        'LOG IN'
+                                    )}
+                                </button>
+                            </form>
+                        )}
 
                         <div className="mt-8 flex justify-between items-center text-[10px] font-bold font-mono tracking-widest uppercase text-slate-500 dark:text-slate-400 pt-6 border-t border-slate-200 dark:border-slate-700">
                             <span>V_1.0.0 ONLINE</span>
-                            <button type="button" className="hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors">
-                                FORGOT PASSWORD?
-                            </button>
+                            {isForgotPasswordMode ? (
+                                <button type="button" onClick={() => { setIsForgotPasswordMode(false); setError(''); setForgotPasswordSuccessMessage(''); }} className="hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors">
+                                    BACK TO LOGIN
+                                </button>
+                            ) : (
+                                <button type="button" onClick={() => { setIsForgotPasswordMode(true); setError(''); setForgotPasswordSuccessMessage(''); }} className="hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors">
+                                    FORGOT PASSWORD?
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>
