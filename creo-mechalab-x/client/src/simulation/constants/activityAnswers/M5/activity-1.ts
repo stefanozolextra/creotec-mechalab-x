@@ -8,7 +8,7 @@ const VMINUS_PINS = Object.values(RELAY_PIN_IDS.vminus);
 const connectToAny = (sourcePin: string, targetPins: string[]): ActivityConnectionPair[] =>
   targetPins.map((targetPin) => [sourcePin, targetPin] as ActivityConnectionPair);
 
-export const activityAnswer: ActivityAnswerDefinition = {
+export const activity1Answer: ActivityAnswerDefinition = {
   routeId: '1',
   title: 'Start-Stop Control Unit',
   instruction: 'Follow the ladder diagram, place the required devices, and complete the wiring path for the start-stop control circuit. With the main switch on, pressing START-1 should turn the green light on and keep it on until STOP-1 is pressed.',
