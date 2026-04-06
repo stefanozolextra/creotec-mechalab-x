@@ -17,6 +17,7 @@ import TraineeReportsPanel from "../../components/admin/TraineeReportsPanel";
 import TraineeFormModal, { type TraineeFormSaveResult } from "../../components/admin/TraineeFormModal";
 import type { AdminTraineeItem, BatchFilter } from "../../types/adminTrainee";
 import { getAuthToken } from "../../utils/auth";
+import TutorialGuide, { type TutorialStep } from "../../components/TutorialGuide";
 
 type StatusFilter = "all" | "active" | "inactive";
 type PillStatus = "Passed" | "Active" | "Inactive";
@@ -472,8 +473,15 @@ export default function UsersPage() {
     );
   }
 
+  const tutorialSteps: TutorialStep[] = [
+    { targetId: "admin-users-filters", message: "Use the search bar and drop-downs to filter the trainee list by name, batch, or status." },
+    { targetId: "admin-users-actions", message: "Here you can Add Trainees individually, or use CSV Import for bulk processing!" },
+    { targetId: "admin-users-table", message: "Manage trainees directly from this table. You can edit profiles, deactivate accounts, and resend login credentials." },
+  ];
+
   return (
     <div className="flex-1 flex flex-col gap-4 min-h-0 min-w-0 w-full relative">
+      <TutorialGuide steps={tutorialSteps} storageKey="creosim_tutorial_admin_users" />
 
       {/* SECTION: VIEW TOGGLE & BANNERS */}
       <div className="flex flex-col gap-3 shrink-0">
@@ -497,7 +505,7 @@ export default function UsersPage() {
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 shrink-0 z-20 w-full min-w-0">
 
         {/* Left Side: Search & Filters */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto flex-1 min-w-0">
+        <div id="admin-users-filters" className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto flex-1 min-w-0">
           <DebouncedSearchInput initialValue={debouncedSearch} onSearch={handleSearch} />
 
           <div className="flex flex-col sm:flex-row gap-3 flex-1 sm:flex-none">
@@ -525,7 +533,7 @@ export default function UsersPage() {
         </div>
 
         {/* Right Side: Actions */}
-        <div className="flex items-center gap-2 justify-start sm:justify-end w-full lg:w-auto overflow-x-auto pb-1 sm:pb-0 hide-scrollbar shrink-0">
+        <div id="admin-users-actions" className="flex items-center gap-2 justify-start sm:justify-end w-full lg:w-auto overflow-x-auto pb-1 sm:pb-0 hide-scrollbar shrink-0">
           {selectedIds.size > 0 ? (
             <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-4 mr-2">
               <button
@@ -568,7 +576,7 @@ export default function UsersPage() {
 
       {/* SECTION: DATA TABLE */}
       {/* OPTIMIZED: Removed fixed min-w-[950px] so table can fully compress dynamically into portrait screens */}
-      <div className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden transition-colors relative z-0 border border-slate-100 dark:border-slate-800/50 w-full">
+      <div id="admin-users-table" className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 min-w-0 overflow-hidden transition-colors relative z-0 border border-slate-100 dark:border-slate-800/50 w-full">
         <div className="flex-1 overflow-x-auto overflow-y-auto scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700 w-full">
 
           <table className="w-full text-sm whitespace-nowrap border-collapse min-w-full">

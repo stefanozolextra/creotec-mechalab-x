@@ -35,6 +35,7 @@ import { getAuthToken } from "../../utils/auth";
 import { resolveSupportedVideoLesson } from "../../utils/videoLessons";
 import CreateModuleModal from "../../components/admin/CreateModuleModal";
 import { useToast } from "../../contexts/ToastContext";
+import TutorialGuide, { type TutorialStep } from "../../components/TutorialGuide";
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
@@ -680,8 +681,15 @@ export default function LessonsPage() {
     lessonSettingsChanged &&
     (lessonTypeDraft === "PDF" || (trimmedLessonUrlDraft.length > 0 && isLessonVideoUrlSupported));
 
+  const tutorialSteps: TutorialStep[] = [
+    { targetId: "admin-lessons-add", message: "Click 'Add Module' to create a new Module." },
+    { targetId: "admin-lessons-list", message: "Select any module from this list to view and manage its contents." },
+    { targetId: "admin-lessons-details", message: "Once a module is selected, use this panel to add PDFs, link Video lessons, and map interactive simulations." },
+  ];
+
   return (
     <div className="flex-1 flex flex-col gap-6 min-h-0 relative">
+      <TutorialGuide steps={tutorialSteps} storageKey="creosim_tutorial_admin_lessons" />
       {error && (
         <div className="keep-selection bg-red-50 border border-red-200 rounded-2xl px-6 py-4 text-sm font-semibold text-red-700 shadow-sm shrink-0">
           {error}
@@ -710,6 +718,7 @@ export default function LessonsPage() {
           <div className="flex items-center gap-2">
             <button
               type="button"
+              id="admin-lessons-add"
               onClick={() => setShowCreateModal(true)}
               className="bg-[#3B82F6] text-white px-5 py-2.5 rounded-full text-sm font-bold flex items-center gap-2 transition-all duration-300 shadow-sm hover:brightness-110 disabled:opacity-70"
               disabled={loading}
@@ -751,7 +760,7 @@ export default function LessonsPage() {
         </div>
 
         <div className="flex-1 flex flex-col lg:flex-row gap-6 min-h-0 relative">
-          <div className="flex-1 bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/50 flex flex-col overflow-hidden">
+          <div id="admin-lessons-list" className="flex-1 bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/50 flex flex-col overflow-hidden">
             <div className="flex-1 overflow-y-auto custom-scrollbar">
               <table className="w-full text-left border-collapse">
                 <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 keep-selection">
@@ -875,6 +884,7 @@ export default function LessonsPage() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -20 }}
                 transition={{ duration: 0.2 }}
+                id="admin-lessons-details"
                 className="details-pane w-full lg:w-[440px] shrink-0 bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm border border-slate-200 dark:border-slate-800/50 flex flex-col overflow-hidden relative"
               >
                 <div className="px-6 py-5 flex items-center justify-between border-b border-slate-100 dark:border-slate-800/50">

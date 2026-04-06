@@ -1,5 +1,6 @@
 import { Users, Activity, BookOpen, Bell, History, ArrowRight, AlertTriangle, Loader2, Filter } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import TutorialGuide, { type TutorialStep } from "../../components/TutorialGuide";
 import { useNavigate } from "react-router-dom";
 import { getAdminActivityLogs, getAdminTraineeProgressActivityLogs } from "../../api/adminActivityLogs";
 import { listAdminBatches } from "../../api/adminBatches";
@@ -311,6 +312,14 @@ export default function OverviewPage() {
     [feedItems],
   );
 
+  const tutorialSteps: TutorialStep[] = [
+    { message: "Welcome to the Admin Dashboard! This gives you a high-level overview of how your trainees and modules are performing." },
+    { targetId: "admin-overview-kpis", message: "These metric cards provide a snapshot of total trainees, module progress, and active curriculum." },
+    { targetId: "admin-overview-filter", message: "Use this drop-down to filter all metrics and graphs by a specific batch. Useful for checking cohort progress." },
+    { targetId: "admin-overview-chart", message: "The Milestone Tracker displays real-time progress for each module so you can quickly spot challenges." },
+    { targetId: "admin-overview-feeds", message: "Keep an eye on real-time system alerts and trainee activity logs in these feeds." },
+  ];
+
   if (error && !loading) {
     return (
       <div className="flex-1 flex flex-col gap-4 min-h-0 relative animate-in fade-in duration-500">
@@ -333,13 +342,14 @@ export default function OverviewPage() {
   return (
     // OPTIMIZATION: Removed `-mt-2` to prevent shadow clipping. Added `pb-4` to ensure smooth bottom scrolling.
     <div className="flex-1 flex flex-col xl:flex-row gap-4 xl:min-h-0 relative animate-in fade-in slide-in-from-bottom-4 duration-500 pb-4">
+      <TutorialGuide steps={tutorialSteps} storageKey="creosim_tutorial_admin_overview" />
 
       {/* LEFT COLUMN */}
       <div className="flex-1 flex flex-col gap-4 xl:min-h-0">
 
         {/* A. KPI Summary Cards (FORCED TO 1 ROW: grid-cols-4) */}
         {/* We use responsive text & padding to shrink items safely without wrapping */}
-        <div className="grid grid-cols-4 gap-2 sm:gap-3 xl:gap-4 shrink-0">
+        <div id="admin-overview-kpis" className="grid grid-cols-4 gap-2 sm:gap-3 xl:gap-4 shrink-0">
 
           {/* 1. Trainees Card */}
           <div
@@ -411,7 +421,7 @@ export default function OverviewPage() {
           </div>
 
           {/* 4. Active View Filter */}
-          <div className="bg-slate-50 dark:bg-[#1E293B] rounded-xl sm:rounded-2xl p-2.5 sm:p-4 lg:p-5 shadow-inner border border-slate-200 dark:border-slate-800/50 flex flex-col justify-between">
+          <div id="admin-overview-filter" className="bg-slate-50 dark:bg-[#1E293B] rounded-xl sm:rounded-2xl p-2.5 sm:p-4 lg:p-5 shadow-inner border border-slate-200 dark:border-slate-800/50 flex flex-col justify-between">
             <div className="text-slate-500 dark:text-slate-400 font-bold text-[8px] sm:text-[10px] lg:text-xs uppercase tracking-widest flex items-center gap-1.5 relative z-10 truncate mb-1.5 sm:mb-2">
               <Filter size={14} className="text-slate-400 shrink-0 hidden sm:block" /> Active View
             </div>
@@ -432,7 +442,7 @@ export default function OverviewPage() {
         </div>
 
         {/* B. Milestone Tracker */}
-        <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col flex-1 min-h-[350px] xl:min-h-0 transition-colors">
+        <div id="admin-overview-chart" className="bg-white dark:bg-[#1E293B] rounded-2xl p-5 sm:p-6 shadow-sm border border-slate-100 dark:border-slate-800/50 flex flex-col flex-1 min-h-[350px] xl:min-h-0 transition-colors">
 
           <div className="flex items-center justify-between mb-4 shrink-0">
             <div>
@@ -526,7 +536,7 @@ export default function OverviewPage() {
       </div>
 
       {/* RIGHT COLUMN */}
-      <div className="w-full xl:w-[320px] shrink-0 flex flex-col gap-4 min-h-[400px] xl:min-h-0">
+      <div id="admin-overview-feeds" className="w-full xl:w-[320px] shrink-0 flex flex-col gap-4 min-h-[400px] xl:min-h-0">
 
         {/* Notifications Panel */}
         <div className="bg-white dark:bg-[#1E293B] rounded-2xl p-5 shadow-sm border border-slate-100 dark:border-slate-800/50 flex-1 flex flex-col min-h-0">

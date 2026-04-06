@@ -9,6 +9,7 @@ import RowActionsMenu from "../../components/admin/ui/RowActionsMenu";
 import type { AdminBatchItem } from "../../types/adminBatch";
 import type { BatchFilter } from "../../types/adminTrainee";
 import { getAuthToken } from "../../utils/auth";
+import TutorialGuide, { type TutorialStep } from "../../components/TutorialGuide";
 
 const SELECTED_BATCH_STORAGE_KEY = "mechalabx.selectedBatchCode";
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -249,8 +250,15 @@ export default function CohortsPage() {
     setTimeout(() => setSuccess(null), 5000);
   };
 
+  const tutorialSteps: TutorialStep[] = [
+    { message: "Welcome to Cohorts! This page shows a high-level view of all the trainee batches you have configured." },
+    { targetId: "admin-cohorts-list", message: "Here you can quickly see which cohorts are active, how many trainees they have, and when they were last exported or reset." },
+    { message: "To create a brand new Cohort, navigate back to the Trainees page and click the 'Create Batch' button. It's that simple!" },
+  ];
+
   return (
     <div className="flex-1 flex flex-col gap-6 min-h-0 relative">
+      <TutorialGuide steps={tutorialSteps} storageKey="creosim_tutorial_admin_cohorts" />
 
       {/* ERROR & SUCCESS BANNERS */}
       {error && (
@@ -266,7 +274,7 @@ export default function CohortsPage() {
       )}
 
       {/* SECTION: DATA TABLE */}
-      <div className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden transition-colors duration-500 relative z-0 border border-slate-100 dark:border-slate-800/50">
+      <div id="admin-cohorts-list" className="bg-white dark:bg-[#1E293B] rounded-3xl shadow-sm flex-1 flex flex-col min-h-0 overflow-hidden transition-colors duration-500 relative z-0 border border-slate-100 dark:border-slate-800/50">
         <AdminTableScroll className="flex-1 min-h-0 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-slate-700">
           <table className="min-w-[980px] w-full text-sm whitespace-nowrap border-collapse">
             <thead className="sticky top-0 bg-white dark:bg-[#1E293B] z-10 transition-colors duration-500 after:content-[''] after:absolute after:bottom-0 after:left-4 after:right-4 after:border-b-2 after:border-slate-100 dark:after:border-slate-700/50">
