@@ -1,4 +1,4 @@
-import activity1Diagram from '../../../../assets/ladder-diagrams/M5activity-5.1.png';
+import activity1Diagram from '../../../../assets/ladder-diagrams/M5/activity-5.1.png';
 import type { ActivityAnswerDefinition, ActivityConnectionPair } from '../types';
 import { RELAY_PIN_IDS } from '../../pinConfiguration';
 
