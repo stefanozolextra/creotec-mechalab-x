@@ -150,7 +150,7 @@ async function sendTraineeCredentialsEmail({ to, traineeName, loginEmail, passwo
         "<ul>",
         `<li>${batchLine}</li>`,
         `<li>Login email: ${safeLoginEmail}</li>`,
-        `<li>Temporary password: <strong>${password}</strong></li>`,
+        `<li>Temporary password: <code style="background-color: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-family: monospace; font-size: 14px; color: #0f172a;">${password}</code></li>`,
         "</ul>",
         "<p>Please sign in and change this password as soon as possible.</p>",
     ].join("");

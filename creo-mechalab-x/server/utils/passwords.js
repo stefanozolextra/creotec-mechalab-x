@@ -3,7 +3,7 @@ const crypto = require("crypto");
 const UPPERCASE_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const LOWERCASE_CHARS = "abcdefghijklmnopqrstuvwxyz";
 const DIGIT_CHARS = "0123456789";
-const SYMBOL_CHARS = "!@#$%^&*()-_=+[]{};:,.?";
+const SYMBOL_CHARS = "!@#$%^*()_+-=[]{};:,?";
 
 const ALL_PASSWORD_CHARS = `${UPPERCASE_CHARS}${LOWERCASE_CHARS}${DIGIT_CHARS}${SYMBOL_CHARS}`;
 

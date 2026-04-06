@@ -1731,7 +1731,7 @@ app.post("/api/auth/login", async (req, res) => {
     const client = await pool.connect();
     try {
         const email = normalizeEmail(req.body?.email);
-        const password = req.body?.password;
+        const password = typeof req.body?.password === "string" ? req.body.password.trim() : req.body?.password;
 
         if (!email || typeof password !== "string" || password.length === 0) {
             return res.status(400).json({ error: "Email and password are required" });
