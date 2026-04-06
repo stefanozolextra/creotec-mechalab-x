@@ -27,6 +27,11 @@ import { resolveSupportedVideoLesson } from '../utils/videoLessons';
 import HangarDoors from '../components/HangarDoors';
 import CyberTransition from '../components/CyberTransition';
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
+import {
+    SIMULATION_STATE_STORAGE_KEY,
+    getStoredSimulationStates,
+    hasStoredActivityState,
+} from '../simulation/utils/activityState';
 import type {
     DashboardState,
     ModuleStatusApi,
@@ -108,16 +113,7 @@ const getNextSimulationByModuleId = (
     simulations: SimulationApi[],
     simulationProgressById: Map<number, boolean>
 ): Map<number, number> => {
-
-    const localStates = (() => {
-        try {
-            const stored = localStorage.getItem('creosim_simulation_states');
-            return stored ? JSON.parse(stored) : {};
-        } catch {
-            return {};
-        }
-    })();
-    const localCompletedRouteIds = new Set(Object.keys(localStates));
+    const localStates = getStoredSimulationStates();
 
     const grouped = new Map<number, SimulationApi[]>();
 
@@ -138,7 +134,11 @@ const getNextSimulationByModuleId = (
                 ? requiredSimulations.find(
                     (simulation) => {
                         const isDbCompleted = simulationProgressById.get(toNumber(simulation.simulation_id));
-                        const isLocalCompleted = localCompletedRouteIds.has(String(simulation.order_no));
+                        const isLocalCompleted = hasStoredActivityState(
+                            localStates,
+                            String(simulation.order_no),
+                            moduleId,
+                        );
                         return !isDbCompleted && !isLocalCompleted;
                     }
                 ) ?? requiredSimulations[0]
@@ -482,16 +482,21 @@ const Dashboard = () => {
 
         setTimeout(() => {
             sessionStorage.removeItem('dashboard_entered');
-            localStorage.removeItem('creosim_simulation_states');
+            localStorage.removeItem(SIMULATION_STATE_STORAGE_KEY);
             clearAuthRole();
             navigate('/login', { replace: true });
         }, 1500);
     };
 
     const handleStartSimulation = () => {
-        if (!selectedSimulation) return;
+        if (!selectedSimulation || !selectedLevelData) return;
         const targetRoute = selectedSimulation.order_no ?? 1;
-        navigate(`/simulation/${targetRoute}`);
+        navigate(`/simulation/${targetRoute}`, {
+            state: {
+                moduleId: selectedLevelData.id,
+                simulationId: toNumber(selectedSimulation.simulation_id),
+            },
+        });
     };
 
     const handleViewModule = () => {

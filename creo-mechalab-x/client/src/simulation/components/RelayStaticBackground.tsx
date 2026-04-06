@@ -239,6 +239,9 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={544} y={380} width={240} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="TERMINALS (RELAY 3)" x={544} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
 
+                <Rect x={792} y={380} width={240} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="TERMINALS (RELAY 4)" x={792} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
+
                 {/* Bottom Labels */}
                 <Rect x={60} y={604} width={216} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="BUTTONS" x={60} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
@@ -318,7 +321,8 @@ export const RelayStaticBackground = React.memo(({
 
             {renderTerminalStripBase('relay1_top', 66, 402, 14, false)}
             {renderTerminalStripBase('relay2_top', 314, 402, 14, false)}
-            {renderTerminalStripBase('timer_top', 562, 402, 14, false)}
+            {renderTerminalStripBase('relay3_top', 562, 402, 14, false)}
+            {renderTerminalStripBase('relay4_top', 810, 402, 14, false)}
 
             {renderTerminalStripBase('button_bot', 82, 626, 12, false)}
             {renderTerminalStripBase('counter_bot', 330, 626, 12, false)}

@@ -124,7 +124,7 @@ const isTopTerminalStrip = (id: string) =>
     id.startsWith('vplus_') || id.startsWith('vminus_') || id.startsWith('lights_');
 
 const isMidTerminalStrip = (id: string) =>
-    id.startsWith('relay1_') || id.startsWith('relay2_') || id.startsWith('relay3_');
+    id.startsWith('relay1_') || id.startsWith('relay2_') || id.startsWith('relay3_') || id.startsWith('relay4_');
 
 const isBotTerminalStrip = (id: string) =>
     id.startsWith('button_') || id.startsWith('counter_') || id.startsWith('timer_');

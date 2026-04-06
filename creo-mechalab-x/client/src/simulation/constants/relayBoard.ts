@@ -39,6 +39,7 @@ generateTerminalStrip('lights', 572, 252, 12, false, HW_STYLES.jackBlue, 'Signal
 generateTerminalStrip('relay1', 66, 402, 14, false, HW_STYLES.jackYellow, 'Relay 1');
 generateTerminalStrip('relay2', 314, 402, 14, false, HW_STYLES.jackYellow, 'Relay 2');
 generateTerminalStrip('relay3', 562, 402, 14, false, HW_STYLES.jackYellow, 'Relay 3');
+generateTerminalStrip('relay4', 810, 402, 14, false, HW_STYLES.jackYellow, 'Relay 4');
 
 // 3. Bottom Terminals
 generateTerminalStrip('button', 82, 626, 12, false, HW_STYLES.jackYellow, 'Buttons');

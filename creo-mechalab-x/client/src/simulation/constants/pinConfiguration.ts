@@ -2,6 +2,23 @@ type RelayPortLike = {
     desc: string;
 };
 
+type RelayTerminalIds = Readonly<{
+    terminal14: string;
+    terminal13: string;
+    terminal1: string;
+    terminal2: string;
+    terminal3: string;
+    terminal4: string;
+    terminal5: string;
+    terminal6: string;
+    terminal7: string;
+    terminal8: string;
+    terminal9: string;
+    terminal10: string;
+    terminal11: string;
+    terminal12: string;
+}>;
+
 const createIndexedPinDescriptions = (prefix: string, descriptions: string[]): Record<string, string> =>
     Object.fromEntries(descriptions.map((desc, index) => [`${prefix}_${index + 1}`, desc]));
 
@@ -10,7 +27,12 @@ const createIndexedPinIds = <T extends string>(prefix: string, keyPrefix: T, cou
         Array.from({ length: count }, (_, index) => [`${keyPrefix}${index + 1}`, `${prefix}_${index + 1}`]),
     ) as Record<`${T}${number}`, string>;
 
-const createRelayTerminalIds = (prefix: 'relay1' | 'relay2' | 'relay3') => ({
+const createPinIdAliases = <T extends Record<string, number>>(prefix: string, aliases: T) =>
+    Object.fromEntries(
+        Object.entries(aliases).map(([alias, index]) => [alias, `${prefix}_${index}`]),
+    ) as { [K in keyof T]: string };
+
+const createRelayTerminalIds = (prefix: 'relay1' | 'relay2' | 'relay3' | 'relay4'): RelayTerminalIds => ({
     terminal14: `${prefix}_1`,
     terminal13: `${prefix}_2`,
     terminal1: `${prefix}_3`,
@@ -29,8 +51,71 @@ const createRelayTerminalIds = (prefix: 'relay1' | 'relay2' | 'relay3') => ({
 
 const counterPinIds = createIndexedPinIds('counter', 'terminal', 12);
 const timerPinIds = createIndexedPinIds('timer', 'terminal', 12);
-const solenoid1PinIds = createIndexedPinIds('solenoid1', 'terminal', 12);
-const solenoid2PinIds = createIndexedPinIds('solenoid2', 'terminal', 12);
+const relay1PinIds = createRelayTerminalIds('relay1');
+const relay2PinIds = createRelayTerminalIds('relay2');
+const relay3PinIds = createRelayTerminalIds('relay3');
+const relay4PinIds = createRelayTerminalIds('relay4');
+const SOLENOID1_PIN_DESCRIPTIONS = [
+    'A+ +',
+    'A+ -',
+    '',
+    'A- +',
+    'A- -',
+    '',
+    'LS1 - COM',
+    'LS1 - NO',
+    'LS1 - NC',
+    'LS2 - COM',
+    'LS2 - NO',
+    'LS2 - NC',
+] as const;
+
+const SOLENOID2_PIN_DESCRIPTIONS = [
+    'B+ +',
+    'B+ -',
+    '',
+    'B- +',
+    'B- -',
+    '',
+    'LS3 - COM',
+    'LS3 - NO',
+    'LS3 - NC',
+    'LS4 - COM',
+    'LS4 - NO',
+    'LS4 - NC',
+] as const;
+
+const solenoid1PinIds = {
+    ...createIndexedPinIds('solenoid1', 'terminal', SOLENOID1_PIN_DESCRIPTIONS.length),
+    ...createPinIdAliases('solenoid1', {
+        aPlusPositive: 1,
+        aPlusNegative: 2,
+        aMinusPositive: 4,
+        aMinusNegative: 5,
+        ls1Com: 7,
+        ls1No: 8,
+        ls1Nc: 9,
+        ls2Com: 10,
+        ls2No: 11,
+        ls2Nc: 12,
+    }),
+} as const;
+
+const solenoid2PinIds = {
+    ...createIndexedPinIds('solenoid2', 'terminal', SOLENOID2_PIN_DESCRIPTIONS.length),
+    ...createPinIdAliases('solenoid2', {
+        bPlusPositive: 1,
+        bPlusNegative: 2,
+        bMinusPositive: 4,
+        bMinusNegative: 5,
+        ls3Com: 7,
+        ls3No: 8,
+        ls3Nc: 9,
+        ls4Com: 10,
+        ls4No: 11,
+        ls4Nc: 12,
+    }),
+} as const;
 
 export const RELAY_PIN_IDS = {
     vplus: createIndexedPinIds('vplus', 'supply', 12),
@@ -45,9 +130,10 @@ export const RELAY_PIN_IDS = {
         buzzerPositive: 'lights_7',
         buzzerNegative: 'lights_8',
     },
-    relay1: createRelayTerminalIds('relay1'),
-    relay2: createRelayTerminalIds('relay2'),
-    relay3: createRelayTerminalIds('relay3'),
+    relay1: relay1PinIds,
+    relay2: relay2PinIds,
+    relay3: relay3PinIds,
+    relay4: relay4PinIds,
     counter: counterPinIds,
     counter1: counterPinIds,
     timer: timerPinIds,
@@ -77,11 +163,12 @@ export const RELAY_PIN_DESCRIPTIONS: Record<string, string> = {
     ...createIndexedPinDescriptions('relay1', ['14', '13', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']),
     ...createIndexedPinDescriptions('relay2', ['14', '13', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']),
     ...createIndexedPinDescriptions('relay3', ['14', '13', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']),
+    ...createIndexedPinDescriptions('relay4', ['14', '13', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']),
     ...createIndexedPinDescriptions('button', ['PB1-23', 'PB1-24', 'PB2-23', 'PB2-24', 'PB3-11', 'PB3-12', 'PB4-11', 'PB4-12', 'ESTOP-11', 'ESTOP-12', '', '']),
     ...createIndexedPinDescriptions('counter', ['1', '2', '3', '4', '5', '6', '7', '8', '', '', '', '']),
     ...createIndexedPinDescriptions('timer', ['1', '2', '3', '4', '5', '6', '7', '8', '', '', '', '']),
-    ...createIndexedPinDescriptions('solenoid1', ['A+ +', 'A+ -', '', 'A- +', 'A- -', '', 'LS1 - COM', 'LS1 - NO', 'LS1 - NC', 'LS2 - COM', 'LS2 - NO', 'LS2 - NC', '', '']),
-    ...createIndexedPinDescriptions('solenoid2', ['B+ +', 'B+ -', '', 'B- +', 'B- -', '', 'LS3 - COM', 'LS3 - NO', 'LS3 - NC', 'LS4 - COM', 'LS4 - NO', 'LS4 - NC', '', '']),
+    ...createIndexedPinDescriptions('solenoid1', [...SOLENOID1_PIN_DESCRIPTIONS]),
+    ...createIndexedPinDescriptions('solenoid2', [...SOLENOID2_PIN_DESCRIPTIONS]),
 };
 
 export const applyRelayPinConfiguration = (ports: Record<string, RelayPortLike>) => {

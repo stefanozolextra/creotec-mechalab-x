@@ -1,15 +1,34 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import CyberTransition from '../components/CyberTransition';
 import SimulationApp from '../simulation/SimulationApp';
 import { getTraineeDashboard } from '../api/trainees';
+import {
+    buildActivityStateKey,
+    normalizeActivityModuleId,
+    normalizeActivityRouteId,
+} from '../simulation/utils/activityState';
+
+type SimulationLocationState = {
+    moduleId?: unknown;
+    simulationId?: unknown;
+} | null;
 
 export default function SimulationView() {
     const { id } = useParams();
+    const location = useLocation();
     const navigate = useNavigate();
 
-    // The route ID is directly the Activity Number (1, 2, 3, 4, 5)
-    const simulationRouteId = id ?? '1';
+    const locationState = (location.state as SimulationLocationState) ?? null;
+    const moduleId = normalizeActivityModuleId(
+        locationState?.moduleId as string | number | null | undefined,
+    );
+    const simulationId = (() => {
+        const parsedSimulationId = Number(locationState?.simulationId);
+        return Number.isInteger(parsedSimulationId) && parsedSimulationId > 0 ? parsedSimulationId : undefined;
+    })();
+
+    const simulationRouteId = normalizeActivityRouteId(id) ?? '1';
 
     const [completedRoutes, setCompletedRoutes] = useState<string[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -20,31 +39,49 @@ export default function SimulationView() {
 
         const fetchProgress = async () => {
             try {
-                // Ping the backend to get the exact trainee progress
                 const dashboard = await getTraineeDashboard({ signal: controller.signal });
                 if (!active) return;
 
-                // 1. Map the raw database simulation_ids to their completion status
                 const progressMap = new Map<number, boolean>();
-                dashboard.simulationProgress.forEach(p => {
-                    const isCompleted = Number(p.is_completed) === 1 || p.is_completed === true || String(p.is_completed).toLowerCase() === 'true';
-                    progressMap.set(Number(p.simulation_id), isCompleted);
+                dashboard.simulationProgress.forEach((progressRow) => {
+                    const isCompleted =
+                        Number(progressRow.is_completed) === 1
+                        || progressRow.is_completed === true
+                        || String(progressRow.is_completed).toLowerCase() === 'true';
+                    progressMap.set(Number(progressRow.simulation_id), isCompleted);
                 });
 
-                // 2. Cross-reference the completed IDs with the Activity Numbers (order_no)
                 const completedOrderNos: string[] = [];
-                dashboard.moduleContent.simulations.forEach(s => {
-                    if (progressMap.get(Number(s.simulation_id))) {
-                        const orderNo = Number(s.order_no);
-                        if (orderNo > 0) {
-                            completedOrderNos.push(String(orderNo));
-                        }
+                dashboard.moduleContent.simulations.forEach((simulationRow) => {
+                    const simulationModuleId = Number(simulationRow.module_id);
+                    if (moduleId !== null && simulationModuleId !== moduleId) {
+                        return;
+                    }
+
+                    if (moduleId === null && simulationModuleId !== 1) {
+                        return;
+                    }
+
+                    if (!progressMap.get(Number(simulationRow.simulation_id))) {
+                        return;
+                    }
+
+                    const orderNo = Number(simulationRow.order_no);
+                    if (orderNo <= 0) {
+                        return;
+                    }
+
+                    const completionKey = moduleId === null
+                        ? String(orderNo)
+                        : buildActivityStateKey(orderNo, moduleId);
+                    if (completionKey) {
+                        completedOrderNos.push(completionKey);
                     }
                 });
 
                 setCompletedRoutes(completedOrderNos);
-            } catch (e) {
-                console.error("Failed to sync simulation progress", e);
+            } catch (error) {
+                console.error('Failed to sync simulation progress', error);
             } finally {
                 if (active) {
                     setIsLoading(false);
@@ -58,7 +95,7 @@ export default function SimulationView() {
             active = false;
             controller.abort();
         };
-    }, []);
+    }, [moduleId]);
 
     return (
         <CyberTransition>
@@ -72,8 +109,10 @@ export default function SimulationView() {
                 </div>
             ) : (
                 <SimulationApp
-                    key={simulationRouteId}
+                    key={`${moduleId ?? 'legacy'}:${simulationRouteId}`}
                     routeId={simulationRouteId}
+                    moduleId={moduleId ?? undefined}
+                    simulationId={simulationId}
                     initialCompletedRoutes={completedRoutes}
                     onNavigateBack={() => navigate('/dashboard')}
                 />

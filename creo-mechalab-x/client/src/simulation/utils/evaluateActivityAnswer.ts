@@ -55,6 +55,7 @@ const RELAY_PORT_ALIAS_PATTERNS: Array<[RegExp, string]> = [
   [/^relay1_(\d+)$/, 'relay1_top_$1'],
   [/^relay2_(\d+)$/, 'relay2_top_$1'],
   [/^relay3_(\d+)$/, 'relay3_top_$1'],
+  [/^relay4_(\d+)$/, 'relay4_top_$1'],
 ];
 
 const incrementCount = (counts: Record<string, number>, key: string) => {

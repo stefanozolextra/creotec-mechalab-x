@@ -8,6 +8,10 @@ import { getTraineeDashboard } from '../api/trainees';
 import { getAuthRole, getAuthToken } from '../utils/auth';
 import { setNativeSecureScreen } from '../utils/nativeSecureScreen';
 import { resolveSupportedVideoLesson } from '../utils/videoLessons';
+import {
+    getStoredSimulationStates,
+    hasStoredActivityState,
+} from '../simulation/utils/activityState';
 import type { ResourceType } from '../types/traineeDashboard';
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
 
@@ -226,15 +230,7 @@ const ModuleView = () => {
                     progressMap.set(toNumber(p.simulation_id), isCompletedValue(p.is_completed));
                 });
 
-                const localStates = (() => {
-                    try {
-                        const stored = localStorage.getItem('creosim_simulation_states');
-                        return stored ? JSON.parse(stored) : {};
-                    } catch {
-                        return {};
-                    }
-                })();
-                const localCompletedRouteIds = new Set(Object.keys(localStates));
+                const localStates = getStoredSimulationStates();
 
                 const rawSimulations = dashboard.moduleContent.simulations
                     .filter((simulation) => toNumber(simulation.module_id) === moduleId)
@@ -249,7 +245,11 @@ const ModuleView = () => {
                 const candidate = requiredSimulations.length > 0
                     ? requiredSimulations.find(s => {
                         const isDbCompleted = progressMap.get(toNumber(s.simulation_id));
-                        const isLocalCompleted = localCompletedRouteIds.has(String(s.order_no));
+                        const isLocalCompleted = hasStoredActivityState(
+                            localStates,
+                            String(s.order_no),
+                            moduleId,
+                        );
                         return !isDbCompleted && !isLocalCompleted;
                     }) ?? requiredSimulations[0]
                     : rawSimulations[0];
@@ -530,7 +530,12 @@ const ModuleView = () => {
                             onClick={() => {
                                 if (!moduleSimulationLaunch) return;
                                 const targetRoute = moduleSimulationLaunch.orderNo ?? 1;
-                                navigate(`/simulation/${targetRoute}`);
+                                navigate(`/simulation/${targetRoute}`, {
+                                    state: {
+                                        moduleId,
+                                        simulationId: moduleSimulationLaunch.simulationId,
+                                    },
+                                });
                             }}
                             disabled={!moduleSimulationLaunch}
                             className="hidden sm:flex items-center gap-2 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-cyan-600 dark:text-cyan-400 border border-cyan-500/50 px-6 py-2.5 rounded font-black text-xs tracking-widest uppercase transition-all duration-300 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
