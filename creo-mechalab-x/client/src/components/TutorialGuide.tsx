@@ -12,12 +12,13 @@ interface TutorialGuideProps {
     steps: TutorialStep[];
     storageKey?: string;
     variant?: "admin" | "trainee";
+    renderTrigger?: (onClick: () => void) => React.ReactNode;
 }
 
 // Custom type to handle our math-adjusted rectangles
 type RectData = { top: number; left: number; width: number; height: number };
 
-export default function TutorialGuide({ steps, storageKey, variant = "trainee" }: TutorialGuideProps) {
+export default function TutorialGuide({ steps, storageKey, variant = "trainee", renderTrigger }: TutorialGuideProps) {
     const [isExpanded, setIsExpanded] = useState(false);
     const [currentStepIndex, setCurrentStepIndex] = useState(0);
     const [displayedText, setDisplayedText] = useState('');
@@ -145,10 +146,13 @@ export default function TutorialGuide({ steps, storageKey, variant = "trainee" }
         }, 650);
     };
 
-    return createPortal(
-        <LayoutGroup>
-            {/* 1. COLLAPSED STATE: The Floating Button */}
-            {!isExpanded && (
+    return (
+        <>
+            {renderTrigger && !isExpanded && renderTrigger(() => setIsExpanded(true))}
+            {createPortal(
+                <LayoutGroup>
+                    {/* 1. COLLAPSED STATE: The Floating Button (if no custom trigger) */}
+                    {!isExpanded && !renderTrigger && (
                 <motion.button
                     layoutId={variant === "admin" ? "admin-assist-avatar" : "assist-avatar"}
                     type="button"
@@ -313,7 +317,9 @@ export default function TutorialGuide({ steps, storageKey, variant = "trainee" }
                     </>
                 )}
             </AnimatePresence>
-        </LayoutGroup>,
-        document.body
+                </LayoutGroup>,
+                document.body
+            )}
+        </>
     );
 }

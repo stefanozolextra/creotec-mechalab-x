@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Folder, Home, Layers, LogOut as LogOutIcon, Moon, PieChart, Sun, Users } from "lucide-react";
+import { ChevronLeft, ChevronRight, Folder, Home, Layers, LogOut as LogOutIcon, Moon, PieChart, Sun, Users, Info } from "lucide-react";
 import { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { flushSync } from "react-dom";
@@ -78,7 +78,6 @@ const AdminLayout = () => {
 
   return (
     <div className="h-screen w-full flex overflow-hidden font-sans select-none bg-[#EEF2F6] dark:bg-[#0F172A] text-slate-800 dark:text-slate-200">
-      <TutorialGuide variant="admin" steps={tutorialSteps} storageKey="creosim_tutorial_admin_layout" />
       <aside
         className={`relative flex flex-col shrink-0 border-r transition-all duration-500 ease-in-out z-20 
           ${isCollapsed ? "w-[80px]" : "w-[240px]"} 
@@ -135,7 +134,26 @@ const AdminLayout = () => {
         </nav>
 
 {/* BOTTOM SECTION - Mathematically Centered */}
-        <div className={`p-3 space-y-3 sm:space-y-4 ${role === 'developer' ? 'mb-24' : 'mb-2 sm:mb-4'}`}>
+        <div className={`p-3 space-y-3 sm:space-y-4 flex flex-col ${role === 'developer' ? 'mb-24' : 'mb-2 sm:mb-4'}`}>
+
+          {/* Sidebar Guide Feature */}
+          <TutorialGuide 
+             variant="admin" 
+             steps={tutorialSteps} 
+             storageKey="creosim_tutorial_admin_layout" 
+             renderTrigger={(onClick) => (
+                <div onClick={onClick} className="flex items-center h-10 sm:h-11 rounded-[14px] bg-white dark:bg-[#0F172A] shadow-sm hover:shadow-md cursor-pointer transition-all border border-slate-200 dark:border-slate-800 hover:border-blue-300 group">
+                   <div className="w-[44px] flex items-center justify-center shrink-0">
+                      <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-900/40 flex items-center justify-center text-blue-500 transition-transform group-hover:scale-110">
+                         <Info size={14} strokeWidth={3} />
+                      </div>
+                   </div>
+                   <div className={`text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-200 whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? "w-0 opacity-0" : "flex-1 opacity-100 pr-3"}`}>
+                      System Guide
+                   </div>
+                </div>
+             )}
+          />
 
           {/* Theme Toggle */}
           <div
