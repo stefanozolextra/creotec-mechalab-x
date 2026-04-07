@@ -107,6 +107,7 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
   const activityPreset = getActivityAnswerByRouteId(routeId, moduleId);
   const resolvedModuleId = normalizeActivityModuleId(moduleId) ?? DEFAULT_ACTIVITY_MODULE_ID;
   const activityStateKey = buildActivityStateKey(activityPreset.routeId, moduleId) ?? activityPreset.routeId;
+  const isLegacyM1Runtime = resolvedModuleId === DEFAULT_ACTIVITY_MODULE_ID;
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
