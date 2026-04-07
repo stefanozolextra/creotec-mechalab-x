@@ -18,8 +18,10 @@ export const activity4Answer: ActivityAnswerDefinition = {
         requiredOutputDevices: { relayModule: 1, lightIndicator: 1 },
         requiredComponents: { battery: 1, relayModule: 1, lightIndicator: 1 },
         minWires: 7,
-        // different combination of connections can work, but these are the ones expected based on the diagram
+        // These are the expected connections from the diagram.
+        // Button mapping: PB1/PB2 = START-1/START-2, PB3/PB4 = STOP-1/STOP-2.
         customConnections: [
+            // These are START-1 and START-2 supply lines and parallel jumpers.
             connectToAny(RELAY_PIN_IDS.button.pb1Terminal23, VPLUS_PINS),
             [RELAY_PIN_IDS.button.pb1Terminal24, RELAY_PIN_IDS.button.pb3Terminal11],
             [RELAY_PIN_IDS.button.pb2Terminal24, RELAY_PIN_IDS.button.pb3Terminal11],
@@ -27,20 +29,34 @@ export const activity4Answer: ActivityAnswerDefinition = {
                 [RELAY_PIN_IDS.button.pb2Terminal24, RELAY_PIN_IDS.relay1.terminal5],
                 [RELAY_PIN_IDS.button.pb3Terminal11, RELAY_PIN_IDS.relay1.terminal5],
             ],
+
+
+            // This line sends the STOP side path to relay 1 terminal 14.
             [RELAY_PIN_IDS.button.pb3Terminal12, RELAY_PIN_IDS.relay1.terminal14],
+
+
+            // These lines provide 24V to relay feed points.
             connectToAny(RELAY_PIN_IDS.relay1.terminal9, VPLUS_PINS),
             connectToAny(RELAY_PIN_IDS.relay1.terminal10, VPLUS_PINS),
+            // These connect relay outputs to green and yellow lamp inputs.
             [RELAY_PIN_IDS.relay1.terminal6, RELAY_PIN_IDS.lights.greenX1],
             [RELAY_PIN_IDS.relay1.terminal2, RELAY_PIN_IDS.lights.yellowX1],
 
+
+            // Lamp returns can be tied together or sent directly to 0V.
             [
                 ...connectToAny(RELAY_PIN_IDS.lights.greenX2, VMINUS_PINS),
                 [RELAY_PIN_IDS.lights.greenX2, RELAY_PIN_IDS.lights.yellowX2],
             ],
+
+
             [
                 ...connectToAny(RELAY_PIN_IDS.lights.yellowX2, VMINUS_PINS),
                 [RELAY_PIN_IDS.lights.yellowX2, RELAY_PIN_IDS.lights.greenX2],
             ],
+
+
+            // This gives relay return to 0V and supplies START-2 (PB2) from 24V.
             connectToAny(RELAY_PIN_IDS.relay1.terminal13, VMINUS_PINS),
             connectToAny(RELAY_PIN_IDS.button.pb2Terminal23, VPLUS_PINS),
         ],

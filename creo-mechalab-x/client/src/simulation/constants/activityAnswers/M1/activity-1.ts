@@ -18,14 +18,36 @@ export const activity1Answer: ActivityAnswerDefinition = {
     requiredOutputDevices: { relayModule: 1, lightIndicator: 1 },
     requiredComponents: { battery: 1, relayModule: 1, lightIndicator: 1 },
     minWires: 7,
-    // different combination of connections can work, but these are the ones expected based on the diagram
+
+
+    // These are the expected connections from the diagram.
+    // Button mapping: PB1/PB2 = START-1/START-2, PB3/PB4 = STOP-1/STOP-2.
     customConnections: [
+      // This connects relay output to the green lamp.
       [RELAY_PIN_IDS.lights.greenX2, RELAY_PIN_IDS.relay1.terminal5],
+
+
+      // This gives the green lamp a return path to 0V.
       connectToAny(RELAY_PIN_IDS.lights.greenX1, VMINUS_PINS),
+
+
+      // This returns relay 1 terminal 13 to 0V.
       connectToAny(RELAY_PIN_IDS.relay1.terminal13, VMINUS_PINS),
+
+
+      // This feeds relay 1 terminal 9 from 24V+.
       connectToAny(RELAY_PIN_IDS.relay1.terminal9, VPLUS_PINS),
+
+
+      // This supplies START-1 (PB1) from 24V+.
       connectToAny(RELAY_PIN_IDS.button.pb1Terminal23, VPLUS_PINS),
+
+
+      // This joins START-1 output (PB1-24) with STOP-1 input side (PB3-11).
       [RELAY_PIN_IDS.button.pb1Terminal24, RELAY_PIN_IDS.button.pb3Terminal11],
+
+
+      // This sends the STOP-1 path to relay 1 terminal 14.
       [RELAY_PIN_IDS.button.pb3Terminal12, RELAY_PIN_IDS.relay1.terminal14],
     ],
   },
