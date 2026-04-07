@@ -107,7 +107,6 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
   const activityPreset = getActivityAnswerByRouteId(routeId, moduleId);
   const resolvedModuleId = normalizeActivityModuleId(moduleId) ?? DEFAULT_ACTIVITY_MODULE_ID;
   const activityStateKey = buildActivityStateKey(activityPreset.routeId, moduleId) ?? activityPreset.routeId;
-  const isLegacyM1Runtime = resolvedModuleId === DEFAULT_ACTIVITY_MODULE_ID;
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -264,10 +263,10 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
       return;
     }
 
-    if (isLegacyM1Runtime && activityPreset.routeId === '3') {
+    if (activityPreset.routeId === '3') {
       setActivity3LampMode('yellow');
     }
-  }, [activityPreset.routeId, isLegacyM1Runtime, isMainSwitchOn, resetActivity5Runtime]);
+  }, [activityPreset.routeId, isMainSwitchOn, resetActivity5Runtime]);
 
   const handleActivity5TimerDelayChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     setActivity5TimerDelayInput(event.target.value);
@@ -290,18 +289,14 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
 
     if (!isPressed) return;
 
-    if (!isLegacyM1Runtime) {
-      return;
-    }
-
     const isCurrentSetupValid = evaluateActivityAnswer(activityPreset, {
       inputDeviceIds: assignedDevices.input,
       outputDeviceIds: assignedDevices.output,
       wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
     }).passed;
-    const isM1Activity1Route = isLegacyM1Runtime && activityPreset.routeId === '1';
+    const isActivity1Route = activityPreset.routeId === '1';
 
-    if (isM1Activity1Route && (buttonId === 'stop-1' || buttonId === 'emergency-stop')) {
+    if (isActivity1Route && (buttonId === 'stop-1' || buttonId === 'emergency-stop')) {
       setIsActivity1GreenLampLatched(false);
       return;
     }
@@ -394,10 +389,10 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
 
     if (buttonId !== 'start-1' || !isMainSwitchOn) return;
 
-    if (isM1Activity1Route) {
+    if (isActivity1Route) {
       setIsActivity1GreenLampLatched(true);
     }
-  }, [activity5TimerDelaySeconds, activity5TimerStatus, activityPreset, assignedDevices.input, assignedDevices.output, clearActivity5TimerInterval, clearActivity5TimerTimeout, isLegacyM1Runtime, isMainSwitchOn, resetActivity5Runtime, wires]);
+  }, [activity5TimerDelaySeconds, activity5TimerStatus, activityPreset, assignedDevices.input, assignedDevices.output, clearActivity5TimerInterval, clearActivity5TimerTimeout, isMainSwitchOn, resetActivity5Runtime, wires]);
 
   const handleBackNavigation = () => {
     if (onNavigateBack) {
