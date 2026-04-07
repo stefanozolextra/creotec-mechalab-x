@@ -9,7 +9,7 @@ export type ActivityDeviceType =
   | 'lightIndicator'
   | 'magneticMotorContactor'
   | 'relayModule'
-  | 'rollerLever'
+  | 'limitSwitch'
   | 'solenoidValve';
 
 export interface ActivityValidationContext {

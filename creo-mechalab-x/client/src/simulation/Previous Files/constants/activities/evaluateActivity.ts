@@ -11,7 +11,7 @@ const DEVICE_LABELS: Record<ActivityDeviceType, string> = {
   lightIndicator: 'Light Indicator',
   magneticMotorContactor: 'Magnetic Contactor',
   relayModule: 'Relay Module',
-  rollerLever: 'Roller Lever',
+  limitSwitch: 'Limit Switch',
   solenoidValve: 'Solenoid Valve',
 };
 

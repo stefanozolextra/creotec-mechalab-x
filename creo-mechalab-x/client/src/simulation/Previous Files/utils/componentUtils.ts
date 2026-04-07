@@ -9,7 +9,7 @@ export const SIMULATION_COMPONENT_TYPES = [
   'lightIndicator',
   'magneticMotorContactor',
   'relayModule',
-  'rollerLever',
+  'limitSwitch',
   'solenoidValve',
 ] as const;
 

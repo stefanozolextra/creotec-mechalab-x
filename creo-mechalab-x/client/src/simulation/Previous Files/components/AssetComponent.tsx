@@ -103,7 +103,7 @@ const AssetComponent: React.FC<AssetComponentProps> = ({
             const fullPinId = `${id}-${pinId}`;
             const wireFill = pinWireColorForPin ? pinWireColorForPin(fullPinId) : undefined;
             const pinName = normalizePinName(fullPinId);
-            const isTallComponent = id.startsWith('magneticMotor') || id.startsWith('rollerLever') || id.startsWith('solenoidValve');
+            const isTallComponent = id.startsWith('magneticMotor') || id.startsWith('limitSwitch') || id.startsWith('solenoidValve');
             const extra = isTallComponent ? Math.max(12, nodeSize * 2) : 0;
             const topOffset = -Math.max(18, nodeSize * 4 + 6) - extra;
             const bottomOffset = Math.max(6, nodeSize * 4 - 6) + extra;
@@ -113,7 +113,7 @@ const AssetComponent: React.FC<AssetComponentProps> = ({
               : BOTTOM_ROW_PINS.includes(pinName)
                 ? { x: rightOffset, y: bottomOffset }
                 : { x: rightOffset, y: -18 };
-              return (
+            return (
               <Pin
                 key={fullPinId}
                 id={fullPinId}
@@ -140,7 +140,7 @@ const AssetComponent: React.FC<AssetComponentProps> = ({
               (() => {
                 const fullA = `${id}-${pinAId}`;
                 const pinAName = normalizePinName(fullA);
-                const isTallA = id.startsWith('magneticMotor') || id.startsWith('rollerLever') || id.startsWith('solenoidValve');
+                const isTallA = id.startsWith('magneticMotor') || id.startsWith('limitSwitch') || id.startsWith('solenoidValve');
                 const extraA = isTallA ? Math.max(12, nodeSize * 2) : 0;
                 const topOffsetA = -Math.max(18, nodeSize * 4 + 6) - extraA;
                 const bottomOffsetA = Math.max(6, nodeSize * 4 - 6) + extraA;
@@ -148,7 +148,7 @@ const AssetComponent: React.FC<AssetComponentProps> = ({
 
                 const fullB = `${id}-${pinBId}`;
                 const pinBName = normalizePinName(fullB);
-                const isTallB = id.startsWith('magneticMotor') || id.startsWith('rollerLever') || id.startsWith('solenoidValve');
+                const isTallB = id.startsWith('magneticMotor') || id.startsWith('limitSwitch') || id.startsWith('solenoidValve');
                 const extraB = isTallB ? Math.max(12, nodeSize * 2) : 0;
                 const topOffsetB = -Math.max(18, nodeSize * 4 + 6) - extraB;
                 const bottomOffsetB = Math.max(6, nodeSize * 4 - 6) + extraB;
@@ -161,7 +161,7 @@ const AssetComponent: React.FC<AssetComponentProps> = ({
                     {pinCId && pinCOffset && (() => {
                       const fullC = `${id}-${pinCId}`;
                       const pinCName = normalizePinName(fullC);
-                      const isTallC = id.startsWith('magneticMotor') || id.startsWith('rollerLever') || id.startsWith('solenoidValve');
+                      const isTallC = id.startsWith('magneticMotor') || id.startsWith('limitSwitch') || id.startsWith('solenoidValve');
                       const extraC = isTallC ? Math.max(12, nodeSize * 2) : 0;
                       const topOffsetC = -Math.max(18, nodeSize * 4 + 6) - extraC;
                       const bottomOffsetC = Math.max(6, nodeSize * 4 - 6) + extraC;

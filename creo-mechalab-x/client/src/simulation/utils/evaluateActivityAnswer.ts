@@ -37,7 +37,7 @@ const DEVICE_RULE_KEY_BY_ID: Record<string, string> = {
   'light-indicator': 'lightIndicator',
   'magnetic-contactor': 'magneticMotorContactor',
   'relay-module': 'relayModule',
-  'roller-lever': 'rollerLever',
+  'limit-switch': 'limitSwitch',
   'solenoid-valve': 'solenoidValve',
   timer: 'timer',
 };

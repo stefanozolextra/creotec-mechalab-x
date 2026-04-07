@@ -19,7 +19,7 @@ import counterDevice from '../assets/devices/counter.png';
 import lightIndicatorDevice from '../assets/devices/light-indicator.png';
 import magneticContactorDevice from '../assets/devices/magnetic-motor-contactor.png';
 import relayModuleDevice from '../assets/devices/relay-module.png';
-import rollerLeverDevice from '../assets/devices/roller-lever.png';
+import limitSwitchDevice from '../assets/devices/limit-switch.png';
 import solenoidValveDevice from '../assets/devices/solenoid-valve.png';
 import timerDevice from '../assets/devices/timer.jpg';
 import { getActivityAnswerByRouteId, getActivityRouteIds } from './constants/activityAnswers';
@@ -79,7 +79,7 @@ const DEVICE_LIBRARY = [
   { id: 'light-indicator', name: 'Light Indicator', image: lightIndicatorDevice },
   { id: 'magnetic-contactor', name: 'Magnetic Contactor', image: magneticContactorDevice },
   { id: 'relay-module', name: 'Relay Module', image: relayModuleDevice },
-  { id: 'roller-lever', name: 'Roller Lever', image: rollerLeverDevice },
+  { id: 'limit-switch', name: 'Limit Switch', image: limitSwitchDevice },
   { id: 'solenoid-valve', name: 'Solenoid Valve', image: solenoidValveDevice },
   { id: 'timer', name: 'Timer', image: timerDevice },
 ] as const;
