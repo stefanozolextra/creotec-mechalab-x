@@ -16,8 +16,8 @@ import {
     X,
     Moon,
     Sun,
-    Crosshair
 } from 'lucide-react';
+import logoSrc from '../assets/logo.png';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { API_BASE_URL } from '../api/http';
@@ -519,7 +519,7 @@ const Dashboard = () => {
                         {/* Logo & Trainee Info */}
                         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                             <div className="bg-cyan-500/10 p-1.5 sm:p-2 border-l-2 border-cyan-500 transition-colors shrink-0 flex items-center justify-center -skew-x-6">
-                                <Crosshair aria-hidden="true" className="text-cyan-600 dark:text-cyan-400 w-4 h-4 sm:w-6 sm:h-6 animate-[spin_10s_linear_infinite]" />
+                                <img src={logoSrc} alt="CREOSim Logo" className="w-4 h-4 sm:w-6 sm:h-6 object-contain skew-x-6 animate-[spin_10s_linear_infinite] drop-shadow-[0_0_6px_rgba(6,182,212,0.5)]" />
                             </div>
                             <div className="flex flex-col min-w-0">
                                 <h1 className="font-black text-sm sm:text-xl text-slate-900 dark:text-white tracking-widest uppercase transition-colors leading-tight truncate">
@@ -869,7 +869,7 @@ const Dashboard = () => {
                                     </div>
                                 ) : (
                                     <div className="bg-white dark:bg-[#111827] ring-1 ring-slate-200 dark:ring-slate-800 p-8 shadow-xl flex flex-col items-center justify-center h-[350px] lg:h-[400px] text-slate-400 dark:text-slate-600 font-mono text-xs lg:text-sm tracking-widest uppercase text-center">
-                                        <Crosshair size={40} className="mb-4 opacity-20 lg:w-12 lg:h-12" />
+                                        <img src={logoSrc} alt="CREOSim Logo" className="mb-4 opacity-20 w-10 h-10 lg:w-12 lg:h-12 object-contain" />
                                         Awaiting Target Selection
                                     </div>
                                 )}
