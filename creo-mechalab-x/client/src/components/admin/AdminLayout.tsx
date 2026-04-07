@@ -18,10 +18,10 @@ const AdminLayout = () => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const [isCollapsed, setIsCollapsed] = useState(false);
-  
+
   // FIX: Default to Light Mode
-  const [isDark, setIsDark] = useState(false); 
-  
+  const [isDark, setIsDark] = useState(false);
+
   const role = getAuthRole(); // <-- Get the current active role
 
   useEffect(() => {
@@ -132,26 +132,26 @@ const AdminLayout = () => {
           })}
         </nav>
 
-{/* BOTTOM SECTION - Mathematically Centered */}
+        {/* BOTTOM SECTION - Mathematically Centered */}
         <div className={`p-3 space-y-3 sm:space-y-4 flex flex-col ${role === 'developer' ? 'mb-24' : 'mb-2 sm:mb-4'}`}>
 
           {/* Sidebar Guide Feature */}
-          <TutorialGuide 
-             variant="admin" 
-             steps={tutorialSteps} 
-             storageKey="creosim_tutorial_admin_layout" 
-             renderTrigger={(onClick) => (
-                <div onClick={onClick} className="flex items-center h-10 sm:h-11 rounded-[14px] bg-white dark:bg-[#0F172A] shadow-sm hover:shadow-md cursor-pointer transition-all border border-slate-200 dark:border-slate-800 hover:border-blue-300 group">
-                   <div className="w-[44px] flex items-center justify-center shrink-0">
-                      <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-900/40 flex items-center justify-center text-blue-500 transition-transform group-hover:scale-110">
-                         <Info size={14} strokeWidth={3} />
-                      </div>
-                   </div>
-                   <div className={`text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-200 whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? "w-0 opacity-0" : "flex-1 opacity-100 pr-3"}`}>
-                      System Guide
-                   </div>
+          <TutorialGuide
+            variant="admin"
+            steps={tutorialSteps}
+            storageKey="creosim_tutorial_admin_layout"
+            renderTrigger={(onClick) => (
+              <div onClick={onClick} className="flex items-center h-10 sm:h-11 rounded-[14px] bg-white dark:bg-[#0F172A] shadow-sm hover:shadow-md cursor-pointer transition-all border border-slate-200 dark:border-slate-800 hover:border-blue-300 group">
+                <div className="w-[44px] flex items-center justify-center shrink-0">
+                  <div className="w-6 h-6 rounded-md bg-blue-50 dark:bg-blue-900/40 flex items-center justify-center text-blue-500 transition-transform group-hover:scale-110">
+                    <Info size={14} strokeWidth={3} />
+                  </div>
                 </div>
-             )}
+                <div className={`text-xs sm:text-sm font-bold text-slate-600 dark:text-slate-200 whitespace-nowrap overflow-hidden transition-all duration-300 ${isCollapsed ? "w-0 opacity-0" : "flex-1 opacity-100 pr-3"}`}>
+                  System Guide
+                </div>
+              </div>
+            )}
           />
 
           {/* Theme Toggle */}
@@ -208,12 +208,12 @@ const AdminLayout = () => {
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight dark:text-slate-100 transition-all truncate pr-2">
             {getHeaderTitle()}
           </h1>
-          <div className="flex items-center gap-2.5 shrink-0">
-            <img src={logoSrc} alt="CREOSim Logo" className="hidden sm:block h-8 w-8 lg:h-9 lg:w-9 object-contain drop-shadow-[0_0_6px_rgba(6,182,212,0.3)] dark:drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]" />
+          <div className="flex items-center gap-3 shrink-0">
             <div className="text-right">
-              <p className="text-sm sm:text-base lg:text-lg font-black tracking-tight dark:text-slate-100 leading-none">CREOSim <span className="text-slate-300 dark:text-slate-600 font-normal">·</span> <span className="text-cyan-600 dark:text-cyan-400">MECHA</span></p>
-              <p className="text-slate-400 dark:text-slate-500 text-[8px] sm:text-[9px] lg:text-[10px] font-bold tracking-[0.15em] uppercase mt-1">TESDA Mechatronics NC II</p>
+              <p className="text-sm sm:text-base lg:text-lg font-extrabold tracking-tight dark:text-slate-100 leading-none">CREOSim<span className="text-cyan-600 dark:text-cyan-400 ml-1 text-xs sm:text-sm lg:text-base font-black tracking-wide">MECHA</span></p>
+              <p className="text-slate-400 dark:text-slate-500 text-[9px] sm:text-[10px] lg:text-xs font-semibold tracking-wider uppercase mt-1">TESDA Mechatronics NC II</p>
             </div>
+            <img src={logoSrc} alt="CREOSim Logo" className="hidden sm:block h-9 w-9 lg:h-10 lg:w-10 object-contain drop-shadow-[0_0_6px_rgba(6,182,212,0.3)] dark:drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]" />
           </div>
         </header>
 
