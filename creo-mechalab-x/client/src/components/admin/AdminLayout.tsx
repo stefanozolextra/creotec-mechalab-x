@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, Folder, Home, Layers, LogOut as LogOutIcon, Moon, PieChart, Sun, Users, Info } from "lucide-react";
 import { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import logoSrc from '../../assets/logo.png';
 import { flushSync } from "react-dom";
 import { clearAuthRole, getAuthRole } from "../../utils/auth"; // <-- Imported getAuthRole
 import TutorialGuide, { type TutorialStep } from "../TutorialGuide";
@@ -95,13 +96,11 @@ const AdminLayout = () => {
         <div className="h-[90px] sm:h-[100px] flex items-center px-3 overflow-hidden shrink-0">
           <div className="flex items-center min-w-max">
             <div className="w-[56px] flex items-center justify-center shrink-0">
-              <div className="h-9 w-9 sm:h-10 sm:w-10 rounded-xl bg-[#0B1B3D] dark:bg-[#0F172A] shrink-0 grid place-items-center shadow-sm">
-                <div className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded bg-cyan-400 dark:bg-[#3B82F6]" />
-              </div>
+              <img src={logoSrc} alt="CREOSim Logo" className="h-9 w-9 sm:h-10 sm:w-10 object-contain drop-shadow-[0_0_6px_rgba(6,182,212,0.4)] dark:drop-shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
             </div>
             <div className={`flex flex-col justify-center overflow-hidden whitespace-nowrap transition-all duration-300 ${isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100 pl-2"}`}>
-              <p className="font-bold text-base sm:text-lg dark:text-slate-100 leading-none">CREOSim</p>
-              <p className="font-bold text-base sm:text-lg dark:text-slate-100 leading-none mt-1">MECHA</p>
+              <p className="font-extrabold text-base sm:text-lg tracking-tight dark:text-slate-100 leading-none">CREOSim</p>
+              <p className="font-extrabold text-[11px] sm:text-xs tracking-[0.2em] uppercase text-cyan-600 dark:text-cyan-400 leading-none mt-1">MECHA</p>
             </div>
           </div>
         </div>
@@ -209,9 +208,12 @@ const AdminLayout = () => {
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight dark:text-slate-100 transition-all truncate pr-2">
             {getHeaderTitle()}
           </h1>
-          <div className="text-left md:text-right mt-1 md:mt-0 shrink-0">
-            <p className="text-sm sm:text-lg lg:text-xl font-bold dark:text-slate-100 leading-none">CREOSim - MECHA</p>
-            <p className="text-slate-500 dark:text-slate-400 text-[10px] sm:text-xs lg:text-sm font-medium mt-1">TESDA Mechatronics NC II Trainer</p>
+          <div className="flex items-center gap-3 shrink-0">
+            <img src={logoSrc} alt="CREOSim Logo" className="hidden sm:block h-9 w-9 lg:h-10 lg:w-10 object-contain drop-shadow-[0_0_6px_rgba(6,182,212,0.3)] dark:drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]" />
+            <div className="text-right">
+              <p className="text-sm sm:text-base lg:text-lg font-extrabold tracking-tight dark:text-slate-100 leading-none">CREOSim<span className="text-cyan-600 dark:text-cyan-400 ml-1 text-xs sm:text-sm lg:text-base font-black tracking-wide">MECHA</span></p>
+              <p className="text-slate-400 dark:text-slate-500 text-[9px] sm:text-[10px] lg:text-xs font-semibold tracking-wider uppercase mt-1">TESDA Mechatronics NC II</p>
+            </div>
           </div>
         </header>
 
