@@ -1,8 +1,4 @@
-<<<<<<< Updated upstream
-import activity1Diagram from '../../../../assets/ladder-diagrams/M5/activity-5.1.png';
-=======
-import activity51Diagram from '../../../../assets/ladder-diagrams/M5activity-5.1.png';
->>>>>>> Stashed changes
+import activity51Diagram from '../../../../assets/ladder-diagrams/M5/activity-5.1.png';
 import type { ActivityAnswerDefinition, ActivityConnectionPair } from '../types';
 import { RELAY_PIN_IDS } from '../../pinConfiguration';
 
@@ -18,15 +14,9 @@ const VMINUS_PINS = Object.values(RELAY_PIN_IDS.vminus);
 const connectToAny = (sourcePin: string, targetPins: string[]): ActivityConnectionPair[] =>
   targetPins.map((targetPin) => [sourcePin, targetPin] as ActivityConnectionPair);
 
-<<<<<<< Updated upstream
-export const activity1Answer: ActivityAnswerDefinition = {
-  routeId: '1',
-  title: 'Start-Stop Control Unit',
-=======
 export const activityAnswer: ActivityAnswerDefinition = {
   routeId: '5.1',
   title: 'Start – Stop Electropneumatics Control',
->>>>>>> Stashed changes
   instruction: 'Follow the ladder diagram, place the required devices, and complete the wiring path for the start-stop control circuit. With the main switch on, pressing START-1 should turn the green light on and keep it on until STOP-1 is pressed.',
   diagram: activity51Diagram,
   rule: {
