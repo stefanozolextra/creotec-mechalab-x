@@ -65,8 +65,8 @@ The M5 labels combine two ideas:
 
 Your shorthand note also applies:
 
-- `A++` represents extend, so its counterpart is `A--` (retract)
-- same pattern for B side (`B++` and `B--`)
+- `A+` represents extend, so its counterpart is `A-` (retract)
+- same pattern for B side (`B+` and `B-`)
 
 ### A Cylinder
 
@@ -97,9 +97,16 @@ The simulation updates the component states from the current activity and wiring
 - If the wiring is correct in Activity 2, pressing `STOP-1` should light the red lamp.
 - If the wiring is correct in Activity 5, the green lamp comes on only after the delay finishes.
 
+## Technical Details
+
+For wire behavior, evaluation/scoring rules, persistence, and developer references, see:
+
+- [Simulation technical reference](SIMULATION_TECHNICAL_REFERENCE.md)
+
 ## Related Docs
 
 - [Activity answer guide](constants/activityAnswers/README.md)
 - [Non-developer activity guide](constants/activityAnswers/ACTIVITY_GUIDE_FOR_NON_DEVELOPERS.md)
 - [M1 comment guide](constants/activityAnswers/M1/COMMENT_DOCUMENTATION.md)
 - [M5 comment guide](constants/activityAnswers/M5/COMMENT_DOCUMENTATION.md)
+- [Simulation technical reference](SIMULATION_TECHNICAL_REFERENCE.md)
