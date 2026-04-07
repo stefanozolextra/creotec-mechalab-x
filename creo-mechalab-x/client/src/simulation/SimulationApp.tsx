@@ -69,7 +69,6 @@ const routeConnections = (connections: Connection[]) => {
 
 const DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS = 2;
 const TIMER_WIDGET_BOUNDS = { x: 675, y: 455, width: 85, height: 95 };
-// const WIRE_DRAG_THRESHOLD_PX = 8;
 
 const formatActivity5TimerDisplay = (seconds: number) => Math.max(0, seconds).toFixed(2).padStart(5, '0');
 
@@ -175,7 +174,6 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
   const tooltipTextRef = useRef<Konva.Text>(null);
 
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
-  const wireDragStartRef = useRef<{ x: number; y: number } | null>(null);
   const hasDraggedWireRef = useRef(false);
   const rafRef = useRef<number | null>(null);
   const activity5TimerTimeoutRef = useRef<number | null>(null);
@@ -447,7 +445,6 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
     if (selectedWireId) { setSelectedWireId(null); return; }
     if (isPinAtCapacity(portId)) return;
     setActivePin(portId);
-    wireDragStartRef.current = { x: RELAY_PORTS[portId].x, y: RELAY_PORTS[portId].y };
     hasDraggedWireRef.current = false;
     hideTooltip();
 
@@ -471,13 +468,7 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
     // 🔥 Scaling Adjustment: Divide mouse position by canvas scale to perfectly map coordinates
     mousePosRef.current = { x: pos.x / canvasScale, y: pos.y / canvasScale };
 
-    if (!hasDraggedWireRef.current && wireDragStartRef.current) {
-      const dx = mousePosRef.current.x - wireDragStartRef.current.x;
-      const dy = mousePosRef.current.y - wireDragStartRef.current.y;
-      if ((dx * dx) + (dy * dy) >= WIRE_DRAG_THRESHOLD_PX * WIRE_DRAG_THRESHOLD_PX) {
-        hasDraggedWireRef.current = true;
-      }
-    }
+    hasDraggedWireRef.current = true;
 
     if (rafRef.current === null) {
       rafRef.current = requestAnimationFrame(() => {
@@ -511,7 +502,6 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
         }
       }
       setActivePin(null);
-      wireDragStartRef.current = null;
       hasDraggedWireRef.current = false;
       if (ghostWireRef.current) {
         ghostWireRef.current.visible(false);
@@ -523,7 +513,6 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
   const handleStageMouseLeave = () => {
     if (activePin) {
       setActivePin(null);
-      wireDragStartRef.current = null;
       hasDraggedWireRef.current = false;
       if (ghostWireRef.current) {
         ghostWireRef.current.visible(false);
