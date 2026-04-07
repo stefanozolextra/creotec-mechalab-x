@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, User, Settings, Eye, EyeOff, AlertTriangle, Sun, Moon } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, AlertTriangle, Sun, Moon } from 'lucide-react';
+import logoSrc from '../assets/logo.png';
 // import PageTransition from '../components/PageTransition';
 import HangarDoors from '../components/HangarDoors'; // <-- RESTORED IMPORT
 import { requestJson } from '../api/http';
@@ -312,9 +313,9 @@ const Login = () => {
                     <div className="px-8 py-8 border-b border-slate-200 dark:border-slate-700/80 flex flex-col items-center text-center gap-3 relative overflow-hidden">
                         {/* Animated Background Line */}
                         <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-50" />
-                        <div className="w-16 h-16 bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-cyan-500/30 rounded-2xl flex items-center justify-center mb-2 shadow-[0_0_20px_rgba(6,182,212,0.15)] relative">
-                            <Settings size={32} className="text-cyan-600 dark:text-cyan-400 animate-[spin_6s_linear_infinite]" strokeWidth={1.5} />
-                            <div className="absolute inset-0 border border-cyan-500/50 rounded-2xl animate-[ping_3s_infinite]" />
+                        <div className="w-16 h-16 flex items-center justify-center mb-2 relative">
+                            <img src={logoSrc} alt="CREOSim Logo" className="w-14 h-14 object-contain animate-[spin_12s_linear_infinite] drop-shadow-[0_0_12px_rgba(6,182,212,0.6)]" />
+                            <div className="absolute inset-0 border border-cyan-500/30 rounded-full animate-[ping_3s_infinite] opacity-40" />
                         </div>
 
                         <div>
