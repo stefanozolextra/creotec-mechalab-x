@@ -2,10 +2,24 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { ChevronRight, X, HelpCircle, BookOpen, Info } from 'lucide-react';
+import spriteTalking from '../assets/max-guide/talking.png';
+import spritePointing from '../assets/max-guide/pointing.png';
+import spriteIntroduce from '../assets/max-guide/introduce.png';
+import spriteCheering from '../assets/max-guide/cheering.png';
+
+export type MaxSprite = 'talking' | 'pointing' | 'introduce' | 'cheering';
+
+const spriteMap: Record<MaxSprite, string> = {
+    talking: spriteTalking,
+    pointing: spritePointing,
+    introduce: spriteIntroduce,
+    cheering: spriteCheering,
+};
 
 export type TutorialStep = {
     targetId?: string;
     message: string;
+    sprite?: MaxSprite;
 };
 
 interface TutorialGuideProps {
@@ -236,21 +250,38 @@ export default function TutorialGuide({ steps, storageKey, variant = "trainee", 
                                 style={{ borderRadius: 9999 }}
                             >
                                 {variant === "admin" ? (
-                                    <BookOpen size={28} className="text-[#3B82F6]" />
+                                    currentStep?.sprite ? (
+                                        <AnimatePresence mode="wait">
+                                            <motion.img
+                                                key={currentStep.sprite}
+                                                src={spriteMap[currentStep.sprite]}
+                                                alt={`M.A.X. ${currentStep.sprite}`}
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 0.8 }}
+                                                transition={{ duration: 0.25 }}
+                                                className="w-12 h-12 sm:w-14 sm:h-14 object-contain drop-shadow-[0_2px_8px_rgba(59,130,246,0.3)]"
+                                            />
+                                        </AnimatePresence>
+                                    ) : (
+                                        <BookOpen size={28} className="text-[#3B82F6]" />
+                                    )
                                 ) : (
                                     <>
-                                        {/* M.A.X. Avatar Upgrade! */}
-                                        <motion.div
-                                            initial={{ scale: 0 }}
-                                            animate={{ scale: 1 }}
-                                            exit={{ scale: 0, opacity: 0 }}
-                                            transition={{ duration: 0.2 }}
-                                            className="w-10 h-10 rounded-full bg-cyan-950 border border-cyan-400 flex items-center justify-center shadow-[0_0_15px_rgba(34,211,238,0.8)] relative"
-                                        >
-                                            <span className="text-cyan-400 font-bold text-lg">M</span>
-                                            <span className="absolute top-0 right-0 w-2 h-2 bg-cyan-400 rounded-full animate-ping opacity-75"></span>
-                                        </motion.div>
-                                        
+                                        {/* M.A.X. Avatar with Sprite */}
+                                        <AnimatePresence mode="wait">
+                                            <motion.img
+                                                key={currentStep?.sprite ?? 'introduce'}
+                                                src={spriteMap[currentStep?.sprite ?? 'introduce']}
+                                                alt={`M.A.X. ${currentStep?.sprite ?? 'introduce'}`}
+                                                initial={{ opacity: 0, scale: 0.8 }}
+                                                animate={{ opacity: 1, scale: 1 }}
+                                                exit={{ opacity: 0, scale: 0.8 }}
+                                                transition={{ duration: 0.25 }}
+                                                className="w-16 h-16 sm:w-24 sm:h-24 object-contain drop-shadow-[0_0_15px_rgba(6,182,212,0.5)]"
+                                            />
+                                        </AnimatePresence>
+
                                         <motion.p
                                             initial={{ opacity: 0 }}
                                             animate={{ opacity: 1 }}

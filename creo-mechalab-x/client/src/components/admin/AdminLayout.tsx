@@ -70,11 +70,11 @@ const AdminLayout = () => {
   };
 
   const tutorialSteps: TutorialStep[] = [
-    { targetId: "admin-nav-dashboard", message: "Dashboard: Your home base. View high-level KPIs, activity feeds, and system health." },
-    { targetId: "admin-nav-trainees", message: "Trainees: Manage all your students, import lists, and reset credentials here." },
-    { targetId: "admin-nav-cohorts", message: "Cohorts: View all your organized batches of trainees to track group progress." },
-    { targetId: "admin-nav-lessons", message: "Lessons: Build your curriculum by creating Modules and assigning interactive Simulations to them." },
-    { targetId: "admin-nav-activity-logs", message: "Activity Logs: A complete timeline of everything trainees have done inside the platform." }
+    { targetId: "admin-nav-dashboard", message: "Dashboard: Your home base. View high-level KPIs, activity feeds, and system health.", sprite: "pointing" },
+    { targetId: "admin-nav-trainees", message: "Trainees: Manage all your students, import lists, and reset credentials here.", sprite: "pointing" },
+    { targetId: "admin-nav-cohorts", message: "Cohorts: View all your organized batches of trainees to track group progress.", sprite: "pointing" },
+    { targetId: "admin-nav-lessons", message: "Lessons: Build your curriculum by creating Modules and assigning interactive Simulations to them.", sprite: "pointing" },
+    { targetId: "admin-nav-activity-logs", message: "Activity Logs: A complete timeline of everything trainees have done inside the platform.", sprite: "pointing" }
   ];
 
   return (

@@ -211,30 +211,37 @@ const Dashboard = () => {
     // 4. DEFINE TUTORIAL STEPS
     const tutorialSteps: TutorialStep[] = [
         {
-            message: "System initialized. I am M.A.X, your Mechatronics Assistant eXaminer. I will guide you through the CREOSim environment."
+            message: "System initialized. I am M.A.X, your Mechatronics Assistant eXaminer. I will guide you through the CREOSim environment.",
+            sprite: "introduce"
         },
         {
             targetId: "tour-header-controls",
-            message: "Up here is your command ribbon. You can toggle your visual optics (Dark/Light mode), view your cadet details, or safely log out."
+            message: "Up here is your command ribbon. You can toggle your visual optics (Dark/Light mode), view your cadet details, or safely log out.",
+            sprite: "pointing"
         },
         {
             targetId: "tour-training-protocols",
-            message: "This is your Training Protocol timeline. It lists all the modules assigned to your cohort. Modules must be completed sequentially."
+            message: "This is your Training Protocol timeline. It lists all the modules assigned to your cohort. Modules must be completed sequentially.",
+            sprite: "pointing"
         },
         {
             targetId: "tour-briefing-panel",
-            message: "When you select a module, your briefing and technical specifications appear here in the side panel."
+            message: "When you select a module, your briefing and technical specifications appear here in the side panel.",
+            sprite: "introduce"
         },
         {
-            targetId: "tour-simulation-btn", // NEW TARGET
-            message: "When you are ready, click 'Initiate Simulation' to enter the hands-on electro-pneumatic routing environment."
+            targetId: "tour-simulation-btn",
+            message: "When you are ready, click 'Initiate Simulation' to enter the hands-on electro-pneumatic routing environment.",
+            sprite: "pointing"
         },
         {
-            targetId: "tour-lesson-btn", // NEW TARGET
-            message: "If you need to review the theory, diagrams, or video lectures, you can open the Lesson Content directly from here."
+            targetId: "tour-lesson-btn",
+            message: "If you need to review the theory, diagrams, or video lectures, you can open the Lesson Content directly from here.",
+            sprite: "talking"
         },
         {
-            message: "That covers the basics! Select your first unlocked protocol to begin your training sequence. Good luck, Cadet!"
+            message: "That covers the basics! Select your first unlocked protocol to begin your training sequence. Good luck, Cadet!",
+            sprite: "cheering"
         }
     ];
 
