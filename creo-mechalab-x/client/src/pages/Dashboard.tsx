@@ -16,8 +16,8 @@ import {
     X,
     Moon,
     Sun,
-    Crosshair
 } from 'lucide-react';
+import logoSrc from '../assets/logo.png';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Document, Page, pdfjs } from 'react-pdf';
 import { API_BASE_URL } from '../api/http';
@@ -516,10 +516,13 @@ const Dashboard = () => {
                         id="tour-header-controls"
                         className="border-b-2 border-slate-300 dark:border-cyan-900/50 bg-white/95 dark:bg-[#0B1120]/95 backdrop-blur-md sticky top-0 z-50 px-3 sm:px-6 py-3 flex justify-between items-center shadow-[0_4px_20px_rgba(0,0,0,0.05)] dark:shadow-[0_4px_20px_rgba(6,182,212,0.1)] transition-colors duration-300"
                     >
-                        {/* Logo & Trainee Info */}
+                        {/* Logo */}
                         <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-                            <div className="bg-cyan-500/10 p-1.5 sm:p-2 border-l-2 border-cyan-500 transition-colors shrink-0 flex items-center justify-center -skew-x-6">
-                                <Crosshair aria-hidden="true" className="text-cyan-600 dark:text-cyan-400 w-4 h-4 sm:w-6 sm:h-6 animate-[spin_10s_linear_infinite]" />
+                            <div className="relative w-8 h-8 sm:w-11 sm:h-11 shrink-0 flex items-center justify-center">
+                                <img src={logoSrc} alt="CREOSim Logo" className="w-6 h-6 sm:w-8 sm:h-8 object-contain drop-shadow-[0_0_8px_rgba(6,182,212,0.5)] relative z-10" />
+                                <div className="absolute inset-0 rounded-full border border-cyan-500/40 animate-[spin_4s_linear_infinite]">
+                                    <div className="absolute -top-[3px] left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_rgba(6,182,212,0.8)]" />
+                                </div>
                             </div>
                             <div className="flex flex-col min-w-0">
                                 <h1 className="font-black text-sm sm:text-xl text-slate-900 dark:text-white tracking-widest uppercase transition-colors leading-tight truncate">
@@ -869,7 +872,7 @@ const Dashboard = () => {
                                     </div>
                                 ) : (
                                     <div className="bg-white dark:bg-[#111827] ring-1 ring-slate-200 dark:ring-slate-800 p-8 shadow-xl flex flex-col items-center justify-center h-[350px] lg:h-[400px] text-slate-400 dark:text-slate-600 font-mono text-xs lg:text-sm tracking-widest uppercase text-center">
-                                        <Crosshair size={40} className="mb-4 opacity-20 lg:w-12 lg:h-12" />
+                                        <img src={logoSrc} alt="CREOSim Logo" className="mb-4 opacity-20 w-10 h-10 lg:w-12 lg:h-12 object-contain" />
                                         Awaiting Target Selection
                                     </div>
                                 )}
