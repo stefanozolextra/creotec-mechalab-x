@@ -1,6 +1,7 @@
 import { Group, Rect, Text, Circle } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
-import { HW_STYLES, type PlcPortConfig } from '../config/plcBoardLayout';
+import { HW_STYLES } from '../config/plcBoardLayout';
+import type { PlcPortConfig } from '../config/plcPinConfiguration';
 
 interface PlcPanelBgProps {
     id: string;

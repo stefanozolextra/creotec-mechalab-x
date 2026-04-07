@@ -8,7 +8,8 @@ import PortraitGuard from '../components/PortraitGuard';
 import CyberTransition from '../components/CyberTransition';
 
 import { computePLCWirePath } from './utils/plcWireRouting';
-import { HW_STYLES, GOTT_TRAINER_PORTS, PLC_SOLENOID_LABELS, REED_LIGHT_OFFSET_Y, type PlcPortConfig } from './config/plcBoardLayout';
+import { HW_STYLES, PLC_SOLENOID_LABELS, REED_LIGHT_OFFSET_Y } from './config/plcBoardLayout';
+import { GOTT_TRAINER_PORTS, type PlcPortConfig } from './config/plcPinConfiguration';
 import { PlcPanelBackground, PlcPanelText, PlcHardwareJack } from './components/plcBoardUI';
 
 // IMPORT THE GUIDE

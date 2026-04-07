@@ -393,7 +393,7 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
 
     if (buttonId !== 'start-1' || !isMainSwitchOn) return;
 
-    if (activityPreset.routeId === '1' && isCurrentSetupValid) {
+    if (activityPreset.routeId === '1') {
       setIsActivity1GreenLampLatched(true);
     }
   }, [activity5TimerDelaySeconds, activity5TimerStatus, activityPreset, assignedDevices.input, assignedDevices.output, clearActivity5TimerInterval, clearActivity5TimerTimeout, isLegacyM1Runtime, isMainSwitchOn, resetActivity5Runtime, wires]);
@@ -653,7 +653,7 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
   );
   const routedWires = useMemo(() => routeConnections(wires), [wires]);
 
-  const isActivity1GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '1' && isMainSwitchOn && activityEvaluationPreview.passed && isActivity1GreenLampLatched;
+  const isActivity1GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '1' && isMainSwitchOn && isActivity1GreenLampLatched;
   const isActivity2GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'green';
   const isActivity2RedLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'red';
   const isActivity3GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '3' && isMainSwitchOn && activityEvaluationPreview.passed && activity3LampMode === 'green';
