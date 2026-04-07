@@ -57,21 +57,30 @@ The manual buttons in the simulation use this naming:
 
 ## Solenoid Activation Logic
 
-The M5 activities use solenoid labels that describe movement direction.
+The M5 labels combine two ideas:
+
+- `A+` and `B+` are for extend
+- `A-` and `B-` are for retract
+- `positive` / `negative` describe polarity
+
+Your shorthand note also applies:
+
+- `A++` represents extend, so its counterpart is `A--` (retract)
+- same pattern for B side (`B++` and `B--`)
 
 ### A Cylinder
 
-- `aPlusPositive` = A+ extend
-- `aPlusNegative` = A+ retract
-- `aMinusPositive` = A- extend
-- `aMinusNegative` = A- retract
+- `aPlusPositive` = A+ direction, positive polarity
+- `aPlusNegative` = A+ direction, negative polarity
+- `aMinusPositive` = A- direction, positive polarity
+- `aMinusNegative` = A- direction, negative polarity
 
 ### B Cylinder
 
-- `bPlusPositive` = B+ extend
-- `bPlusNegative` = B+ retract
-- `bMinusPositive` = B- extend
-- `bMinusNegative` = B- retract
+- `bPlusPositive` = B+ direction, positive polarity
+- `bPlusNegative` = B+ direction, negative polarity
+- `bMinusPositive` = B- direction, positive polarity
+- `bMinusNegative` = B- direction, negative polarity
 
 ## What The Simulation Shows
 
