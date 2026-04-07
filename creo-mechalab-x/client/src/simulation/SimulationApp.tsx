@@ -644,26 +644,19 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
     () => new Set((answerFeedback?.wrongConnections ?? []).map(({ fromPin, toPin }) => toWireKey(fromPin, toPin))),
     [answerFeedback],
   );
-  const activityEvaluationPreview = useMemo(
-    () => evaluateActivityAnswer(activityPreset, {
-      inputDeviceIds: assignedDevices.input,
-      outputDeviceIds: assignedDevices.output,
-      wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
-    }),
-    [activityPreset, assignedDevices, wires],
-  );
   const routedWires = useMemo(() => routeConnections(wires), [wires]);
 
   const isM1Activity1Route = isLegacyM1Runtime && activityPreset.routeId === '1';
-  const isActivity1GreenLampOn = isM1Activity1Route && isMainSwitchOn && isActivity1GreenLampLatched;
-  const isActivity2GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'green';
-  const isActivity2RedLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'red';
-  const isActivity3GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '3' && isMainSwitchOn && activityEvaluationPreview.passed && activity3LampMode === 'green';
-  const isActivity3YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '3' && isMainSwitchOn && activityEvaluationPreview.passed && activity3LampMode === 'yellow';
-  const isActivity4GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '4' && isMainSwitchOn && activityEvaluationPreview.passed && activity4LampMode === 'green';
-  const isActivity4YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '4' && isMainSwitchOn && activityEvaluationPreview.passed && activity4LampMode === 'yellow';
-  const isActivity5GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '5' && isMainSwitchOn && activityEvaluationPreview.passed && activity5TimerStatus === 'done';
-  const isActivity5YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '5' && isMainSwitchOn && activityEvaluationPreview.passed && activity5TimerStatus !== 'done';
+  const isM1CheckCompleted = Boolean(isSessionCompleted || answerFeedback?.passed);
+  const isActivity1GreenLampOn = isM1Activity1Route && isMainSwitchOn && isM1CheckCompleted && isActivity1GreenLampLatched;
+  const isActivity2GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && isM1CheckCompleted && activity2LampMode === 'green';
+  const isActivity2RedLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && isM1CheckCompleted && activity2LampMode === 'red';
+  const isActivity3GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '3' && isMainSwitchOn && isM1CheckCompleted && activity3LampMode === 'green';
+  const isActivity3YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '3' && isMainSwitchOn && isM1CheckCompleted && activity3LampMode === 'yellow';
+  const isActivity4GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '4' && isMainSwitchOn && isM1CheckCompleted && activity4LampMode === 'green';
+  const isActivity4YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '4' && isMainSwitchOn && isM1CheckCompleted && activity4LampMode === 'yellow';
+  const isActivity5GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '5' && isMainSwitchOn && isM1CheckCompleted && activity5TimerStatus === 'done';
+  const isActivity5YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '5' && isMainSwitchOn && isM1CheckCompleted && activity5TimerStatus !== 'done';
   const activity5TimerDisplayText = !isLegacyM1Runtime || activityPreset.routeId !== '5'
     ? '00.00'
     : activity5TimerStatus === 'done'
