@@ -299,8 +299,9 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
       outputDeviceIds: assignedDevices.output,
       wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
     }).passed;
+    const isM1Activity1Route = isLegacyM1Runtime && activityPreset.routeId === '1';
 
-    if (activityPreset.routeId === '1' && (buttonId === 'stop-1' || buttonId === 'emergency-stop')) {
+    if (isM1Activity1Route && (buttonId === 'stop-1' || buttonId === 'emergency-stop')) {
       setIsActivity1GreenLampLatched(false);
       return;
     }
@@ -393,7 +394,7 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
 
     if (buttonId !== 'start-1' || !isMainSwitchOn) return;
 
-    if (activityPreset.routeId === '1') {
+    if (isM1Activity1Route) {
       setIsActivity1GreenLampLatched(true);
     }
   }, [activity5TimerDelaySeconds, activity5TimerStatus, activityPreset, assignedDevices.input, assignedDevices.output, clearActivity5TimerInterval, clearActivity5TimerTimeout, isLegacyM1Runtime, isMainSwitchOn, resetActivity5Runtime, wires]);
@@ -653,7 +654,8 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
   );
   const routedWires = useMemo(() => routeConnections(wires), [wires]);
 
-  const isActivity1GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '1' && isMainSwitchOn && isActivity1GreenLampLatched;
+  const isM1Activity1Route = isLegacyM1Runtime && activityPreset.routeId === '1';
+  const isActivity1GreenLampOn = isM1Activity1Route && isMainSwitchOn && isActivity1GreenLampLatched;
   const isActivity2GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'green';
   const isActivity2RedLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'red';
   const isActivity3GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '3' && isMainSwitchOn && activityEvaluationPreview.passed && activity3LampMode === 'green';
