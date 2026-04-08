@@ -1,8 +1,8 @@
-import { activity1Answer as m1Activity1Answer } from './M1/activity-1';
-import { activity2Answer as m1Activity2Answer } from './M1/activity-2';
-import { activity3Answer as m1Activity3Answer } from './M1/activity-3';
-import { activity4Answer as m1Activity4Answer } from './M1/activity-4';
-import { activity5Answer as m1Activity5Answer } from './M1/activity-5';
+import { activity1Answer as m1Activity1Answer } from './M2/activity-1';
+import { activity2Answer as m1Activity2Answer } from './M2/activity-2';
+import { activity3Answer as m1Activity3Answer } from './M2/activity-3';
+import { activity4Answer as m1Activity4Answer } from './M2/activity-4';
+import { activity5Answer as m1Activity5Answer } from './M2/activity-5';
 import { activityAnswer as m5Activity1Answer } from './M5/activity-1';
 import { activityAnswer as m5Activity2Answer } from './M5/activity-2';
 import { activityAnswer as m5Activity3Answer } from './M5/activity-3';

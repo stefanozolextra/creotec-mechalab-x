@@ -297,13 +297,13 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
     }).passed;
     const isActivity1Route = activityPreset.routeId === '1';
 
-    if (isActivity1Route && (buttonId === 'stop-1' || buttonId === 'emergency-stop')) {
+    if (isActivity1Route && buttonId === 'stop-1') {
       setIsActivity1GreenLampLatched(false);
       return;
     }
 
     if (activityPreset.routeId === '2') {
-      if (buttonId === 'stop-1' || buttonId === 'emergency-stop') {
+      if (buttonId === 'stop-1') {
         setActivity2LampMode(isMainSwitchOn && isCurrentSetupValid ? 'red' : 'off');
         return;
       }
@@ -314,7 +314,7 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
     }
 
     if (activityPreset.routeId === '3') {
-      if (buttonId === 'stop-1' || buttonId === 'stop-2' || buttonId === 'emergency-stop') {
+      if (buttonId === 'stop-1' || buttonId === 'stop-2') {
         setActivity3LampMode('off');
         return;
       }
@@ -333,7 +333,7 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
     }
 
     if (activityPreset.routeId === '4') {
-      if (buttonId === 'stop-1' || buttonId === 'emergency-stop') {
+      if (buttonId === 'stop-1') {
         setActivity4LampMode(isMainSwitchOn && isCurrentSetupValid ? 'yellow' : 'off');
         return;
       }
@@ -345,7 +345,7 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
     }
 
     if (activityPreset.routeId === '5') {
-      if (buttonId === 'stop-1' || buttonId === 'emergency-stop') {
+      if (buttonId === 'stop-1') {
         resetActivity5Runtime();
         return;
       }

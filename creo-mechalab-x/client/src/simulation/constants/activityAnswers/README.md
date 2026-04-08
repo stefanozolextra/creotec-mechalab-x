@@ -196,6 +196,8 @@ npm run build
 When authoring activities, remember that lights are not controlled only by wire rules.
 They are also controlled by runtime button logic in `SimulationApp.tsx`.
 
+Important: in the current runtime, pressing `emergency-stop` does not change lamp state for Activities 1-5.
+
 ### Shared Gate Conditions
 
 Most activity lamp outputs require all of these to be true:
@@ -203,32 +205,41 @@ Most activity lamp outputs require all of these to be true:
 - Module runtime is legacy M1 (`isLegacyM1Runtime`)
 - Current `routeId` matches the activity
 - Main switch is ON (`isMainSwitchOn`)
-- Current wiring/device setup passes validation (`activityEvaluationPreview.passed`)
+- M1 validation/completion gate is true (`isM1CheckCompleted = Boolean(isSessionCompleted || answerFeedback?.passed)`)
 
 Core lamp state computation:
 
 ```ts
-const isActivity1GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '1' && isMainSwitchOn && activityEvaluationPreview.passed && isActivity1GreenLampLatched;
-const isActivity2GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'green';
-const isActivity2RedLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && activityEvaluationPreview.passed && activity2LampMode === 'red';
-const isActivity3GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '3' && isMainSwitchOn && activityEvaluationPreview.passed && activity3LampMode === 'green';
-const isActivity3YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '3' && isMainSwitchOn && activityEvaluationPreview.passed && activity3LampMode === 'yellow';
-const isActivity4GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '4' && isMainSwitchOn && activityEvaluationPreview.passed && activity4LampMode === 'green';
-const isActivity4YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '4' && isMainSwitchOn && activityEvaluationPreview.passed && activity4LampMode === 'yellow';
-const isActivity5GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '5' && isMainSwitchOn && activityEvaluationPreview.passed && activity5TimerStatus === 'done';
-const isActivity5YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '5' && isMainSwitchOn && activityEvaluationPreview.passed && activity5TimerStatus !== 'done';
+const isM1Activity1Route = isLegacyM1Runtime && activityPreset.routeId === '1';
+const isM1CheckCompleted = Boolean(isSessionCompleted || answerFeedback?.passed);
+
+const isActivity1GreenLampOn = isM1Activity1Route && isMainSwitchOn && isM1CheckCompleted && isActivity1GreenLampLatched;
+const isActivity2GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && isM1CheckCompleted && activity2LampMode === 'green';
+const isActivity2RedLampOn = isLegacyM1Runtime && activityPreset.routeId === '2' && isMainSwitchOn && isM1CheckCompleted && activity2LampMode === 'red';
+const isActivity3GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '3' && isMainSwitchOn && isM1CheckCompleted && activity3LampMode === 'green';
+const isActivity3YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '3' && isMainSwitchOn && isM1CheckCompleted && activity3LampMode === 'yellow';
+const isActivity4GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '4' && isMainSwitchOn && isM1CheckCompleted && activity4LampMode === 'green';
+const isActivity4YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '4' && isMainSwitchOn && isM1CheckCompleted && activity4LampMode === 'yellow';
+const isActivity5GreenLampOn = isLegacyM1Runtime && activityPreset.routeId === '5' && isMainSwitchOn && isM1CheckCompleted && activity5TimerStatus === 'done';
+const isActivity5YellowLampOn = isLegacyM1Runtime && activityPreset.routeId === '5' && isMainSwitchOn && isM1CheckCompleted && activity5TimerStatus !== 'done';
 ```
+
+Main switch side-effects:
+
+- Turning main switch OFF resets Activity 1 latch, Activity 2/3/4 modes, and Activity 5 timer/relay runtime.
+- Turning main switch ON auto-initializes Activity 3 lamp mode to yellow.
 
 ### Activity 1 (Start/Stop)
 
 Current behavior in code:
 
 - Press `start-1` with valid setup and main switch ON: green lamp latches ON.
-- Press `stop-1` or `emergency-stop`: green lamp unlatches OFF.
+- Press `stop-1`: green lamp unlatches OFF.
+- Press `emergency-stop`: no lamp change.
 - Red lamp is not used in Activity 1 by default.
 
 ```ts
-if (activityPreset.routeId === '1' && (buttonId === 'stop-1' || buttonId === 'emergency-stop')) {
+if (activityPreset.routeId === '1' && buttonId === 'stop-1') {
   setIsActivity1GreenLampLatched(false);
   return;
 }
@@ -245,11 +256,12 @@ If you want Activity 1 to turn red ON when STOP is pressed, you must add a dedic
 ### Activity 2
 
 - `start-1` sets lamp mode to green.
-- `stop-1` or `emergency-stop` sets lamp mode to red (only when setup is valid and main switch is ON).
+- `stop-1` sets lamp mode to red (only when setup is valid and main switch is ON).
+- `emergency-stop` does nothing for Activity 2.
 
 ```ts
 if (activityPreset.routeId === '2') {
-  if (buttonId === 'stop-1' || buttonId === 'emergency-stop') {
+  if (buttonId === 'stop-1') {
     setActivity2LampMode(isMainSwitchOn && isCurrentSetupValid ? 'red' : 'off');
     return;
   }
@@ -262,21 +274,25 @@ if (activityPreset.routeId === '2') {
 
 ### Activity 3
 
+- Main switch ON initializes Activity 3 to yellow.
 - `start-1` -> green
 - `start-2` -> yellow
-- `stop-1`, `stop-2`, or `emergency-stop` -> off
+- `stop-1` or `stop-2` -> off
+- `emergency-stop` does nothing for Activity 3.
 
 ### Activity 4
 
 - `start-1` or `start-2` -> green
-- `stop-1` or `emergency-stop` -> yellow
+- `stop-1` -> yellow (or off if main switch is OFF / setup invalid)
+- `emergency-stop` does nothing for Activity 4.
 
 ### Activity 5 (Timer)
 
-- `start-1` energizes relay and starts timer.
-- While timing: yellow ON.
-- When timer completes: green ON.
-- `stop-1` or `emergency-stop` resets timer runtime.
+- `start-1` (with main switch ON and valid setup) energizes relay and starts timer only when status is `idle`.
+- Green lamp ON only when timer status is `done`.
+- Yellow lamp ON whenever timer status is not `done` (`idle` or `timing`), as long as shared gates are true.
+- `stop-1` resets timer runtime (relay off, status `idle`, remaining time cleared).
+- `emergency-stop` does nothing for Activity 5.
 
 ## Quick Review Checklist
 
