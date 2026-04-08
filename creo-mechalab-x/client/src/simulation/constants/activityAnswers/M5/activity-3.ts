@@ -39,8 +39,8 @@ export const activityAnswer: ActivityAnswerDefinition = {
 
       // Relay 1 terminal 5 can receive power from START-1 output (PB1-24) or STOP-1 input side (PB3-11).
       [
-        (RELAY_PIN_IDS.button.pb1Terminal24, RELAY_PIN_IDS.relay1.terminal5),
-        (RELAY_PIN_IDS.button.pb3Terminal11, RELAY_PIN_IDS.relay1.terminal5),
+        [RELAY_PIN_IDS.button.pb1Terminal24, RELAY_PIN_IDS.relay1.terminal5],
+        [RELAY_PIN_IDS.button.pb3Terminal11, RELAY_PIN_IDS.relay1.terminal5],
       ],
 
 
@@ -51,8 +51,8 @@ export const activityAnswer: ActivityAnswerDefinition = {
 
 
       [
-        (RELAY_PIN_IDS.relay2.terminal1, RELAY_PIN_IDS.solenoid1.aPlusPositive), // A+ extend point
-        (RELAY_PIN_IDS.relay2.terminal1, RELAY_PIN_IDS.solenoid1.ls2Com)
+        [RELAY_PIN_IDS.relay2.terminal1, RELAY_PIN_IDS.solenoid1.aPlusPositive], // A+ extend point
+        [RELAY_PIN_IDS.relay2.terminal1, RELAY_PIN_IDS.solenoid1.ls2Com]
       ],
 
 
@@ -67,14 +67,40 @@ export const activityAnswer: ActivityAnswerDefinition = {
       [RELAY_PIN_IDS.relay3.terminal1, RELAY_PIN_IDS.solenoid2.ls4Com],
       [RELAY_PIN_IDS.solenoid2.ls4No, RELAY_PIN_IDS.relay2.terminal14],
       connectToAny(RELAY_PIN_IDS.relay2.terminal13, VMINUS_PINS),
+
+
       [
         [RELAY_PIN_IDS.relay2.terminal10, RELAY_PIN_IDS.relay3.terminal1],
         [RELAY_PIN_IDS.relay2.terminal10, RELAY_PIN_IDS.solenoid2.ls4Com],
       ],
+
+
       [
-        ...connectToAny(RELAY_PIN_IDS.relay2.terminal10, VPLUS_PINS),
-        [RELAY_PIN_IDS.relay2.terminal10, RELAY_PIN_IDS.relay1.terminal11],
+        ...connectToAny(RELAY_PIN_IDS.relay2.terminal11, VPLUS_PINS),
+        [RELAY_PIN_IDS.relay2.terminal11, RELAY_PIN_IDS.relay1.terminal11],
       ],
+
+      [RELAY_PIN_IDS.relay2.terminal7, RELAY_PIN_IDS.solenoid1.aMinusPositive], // A- extend point
+      connectToAny(RELAY_PIN_IDS.solenoid1.aMinusNegative, VMINUS_PINS), // A- retract point
+
+      [
+        [RELAY_PIN_IDS.solenoid1.ls1Com, RELAY_PIN_IDS.relay2.terminal7],
+        [RELAY_PIN_IDS.solenoid1.ls1Com, RELAY_PIN_IDS.solenoid1.aMinusPositive],
+      ],
+
+      [RELAY_PIN_IDS.solenoid1.ls1No, RELAY_PIN_IDS.solenoid2.bMinusPositive], // B- extend point
+      connectToAny(RELAY_PIN_IDS.solenoid2.bMinusNegative, VMINUS_PINS), // B- retract point
+
+      [
+        ...connectToAny(RELAY_PIN_IDS.relay2.terminal12, VPLUS_PINS),
+        [RELAY_PIN_IDS.relay2.terminal12, RELAY_PIN_IDS.relay2.terminal11],
+        [RELAY_PIN_IDS.relay2.terminal12, RELAY_PIN_IDS.relay1.terminal11]
+
+      ],
+
+      [RELAY_PIN_IDS.relay2.terminal8, RELAY_PIN_IDS.solenoid2.ls3Com],
+      [RELAY_PIN_IDS.solenoid2.ls3No, RELAY_PIN_IDS.relay3.terminal14],
+      connectToAny(RELAY_PIN_IDS.relay3.terminal13, VMINUS_PINS),
 
     ],
   },
