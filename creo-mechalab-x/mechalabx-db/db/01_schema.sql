@@ -96,6 +96,9 @@ CREATE TABLE trainee_simulation_progress (
   PRIMARY KEY (trainee_id, simulation_id)
 );
 
+-- Quiz tables are defined in 06_quizzes.sql so fresh Docker init and manual
+-- incremental apply both use the same phase-specific DDL.
+
 -- Helpful indexes
 CREATE INDEX idx_trainees_batch_id ON trainees(batch_id);
 CREATE INDEX idx_resources_module_id ON module_resources(module_id);
@@ -104,7 +107,8 @@ CREATE INDEX idx_sims_module_id ON simulations(module_id);
 
 -- =========================
 -- OPTION A: COMPUTE MODULE COMPLETION (VIEW)
--- A module is completed when all required sims are COMPLETED.
+-- Bootstrap view: 06_quizzes.sql replaces this with the final quiz-aware
+-- module completion logic once quiz tables exist.
 -- =========================
 
 CREATE OR REPLACE VIEW v_trainee_module_status AS

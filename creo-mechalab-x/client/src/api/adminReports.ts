@@ -12,6 +12,8 @@ export type AdminTraineeModuleStatusItem = {
   required_sims: NumericLike;
   completed_required_sims: NumericLike;
   module_status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+  quiz_required: boolean;
+  quiz_passed: boolean;
   access_mode: TraineeAccessMode;
   reporting_status: AdminModuleReportingStatus;
 };

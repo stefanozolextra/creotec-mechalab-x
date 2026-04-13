@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, Folder, Home, Layers, LogOut as LogOutIcon, Moon, PieChart, Sun, Users, Info } from "lucide-react";
+import { ChevronLeft, ChevronRight, Folder, Home, Layers, LogOut as LogOutIcon, Moon, PieChart, Sun, Users, Info, CheckCircle2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import logoSrc from '../../assets/logo.png';
@@ -11,6 +11,7 @@ const navItems = [
   { to: "/admin/users", label: "Trainees", icon: Users },
   { to: "/admin/cohorts", label: "Cohorts", icon: Layers },
   { to: "/admin/lessons", label: "Lessons", icon: Folder },
+  { to: "/admin/quizzes", label: "Quizzes", icon: CheckCircle2 },
   { to: "/admin/activity-logs", label: "Activity Logs", icon: PieChart },
 ];
 
@@ -74,6 +75,7 @@ const AdminLayout = () => {
     { targetId: "admin-nav-trainees", message: "Trainees: Manage all your students, import lists, and reset credentials here.", sprite: "pointing" },
     { targetId: "admin-nav-cohorts", message: "Cohorts: View all your organized batches of trainees to track group progress.", sprite: "pointing" },
     { targetId: "admin-nav-lessons", message: "Lessons: Build your curriculum by creating Modules and assigning interactive Simulations to them.", sprite: "pointing" },
+    { targetId: "admin-nav-quizzes", message: "Quizzes: Create, publish, archive, and clone module-linked assessments from a separate admin workflow.", sprite: "pointing" },
     { targetId: "admin-nav-activity-logs", message: "Activity Logs: A complete timeline of everything trainees have done inside the platform.", sprite: "pointing" }
   ];
 

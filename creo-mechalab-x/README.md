@@ -53,6 +53,7 @@ creo-mechalab-x/
 - Batch listing/creation.
 - Trainee listing with search/filter and status toggling.
 - Trainee create/update endpoints.
+- Separate admin quiz management page at `/admin/quizzes`.
 - CSV trainee import and CSV export.
 - System reset flow with confirmation checks and audit logging.
 
@@ -137,6 +138,12 @@ Common optional values used by the API:
 
    This auto-runs SQL files in `mechalabx-db/db/` on first init.
 
+   For an existing local database that was initialized before quiz support was added, apply the quiz schema manually:
+
+   ```bash
+   psql "$DATABASE_URL" -f "mechalabx-db/db/06_quizzes.sql"
+   ```
+
 2. **Install backend dependencies and run API**
 
    From `server/`:
@@ -193,6 +200,15 @@ Production safety checklist:
 - `POST /api/me/simulations/:simulationId/complete`
 - `GET /api/admin/auth-check`
 - `GET/POST /api/admin/batches`
+- `GET/POST /api/admin/quizzes`
+- `GET/PATCH/DELETE /api/admin/quizzes/:quizId`
+- `POST /api/admin/quizzes/:quizId/publish`
+- `POST /api/admin/quizzes/:quizId/archive`
+- `POST /api/admin/quizzes/:quizId/clone`
+- `POST /api/admin/quizzes/:quizId/questions`
+- `PATCH/DELETE /api/admin/quizzes/:quizId/questions/:questionId`
+- `POST /api/admin/quizzes/:quizId/questions/:questionId/choices`
+- `PATCH/DELETE /api/admin/quizzes/:quizId/questions/:questionId/choices/:choiceId`
 - `GET /api/admin/trainees`
 - `POST /api/admin/trainees`
 - `PUT /api/admin/trainees/:id`

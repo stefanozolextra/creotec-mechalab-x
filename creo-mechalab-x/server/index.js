@@ -54,6 +54,17 @@ const ACTIVITYLOGS_CACHE_TTL_MS = parsePositiveIntEnv("ACTIVITYLOGS_CACHE_TTL_MS
 const MAX_CACHE_ENTRIES = parsePositiveIntEnv("MAX_CACHE_ENTRIES", 100);
 const MODULE_TITLE_MAX_LENGTH = 150;
 const LESSON_TITLE_MAX_LENGTH = 150;
+const QUIZ_TITLE_MAX_LENGTH = 150;
+const QUIZ_QUESTION_TEXT_MAX_LENGTH = 1500;
+const QUIZ_CHOICE_TEXT_MAX_LENGTH = 500;
+const QUIZ_PASSING_SCORE_PERCENT = 75;
+const QUIZ_MAX_CHOICES_PER_QUESTION = 4;
+const QUIZ_STATUS_DRAFT = "draft";
+const QUIZ_STATUS_PUBLISHED = "published";
+const QUIZ_STATUS_ARCHIVED = "archived";
+const QUIZ_ATTEMPT_STATUS_IN_PROGRESS = "in_progress";
+const QUIZ_ATTEMPT_STATUS_SUBMITTED = "submitted";
+const QUIZ_ATTEMPT_STATUS_EXPIRED = "expired";
 const LESSON_PDF_MAX_FILE_SIZE_BYTES = parsePositiveIntEnv("LESSON_PDF_MAX_FILE_SIZE_BYTES", 10 * 1024 * 1024);
 const LESSON_UPLOADS_DIR = path.resolve(
     __dirname,
@@ -906,31 +917,64 @@ function getAdminModuleReportingStatus(accessMode, moduleStatus) {
     return isLessonOnlyAccessMode(accessMode) ? "LESSON_ONLY" : String(moduleStatus || "NOT_STARTED");
 }
 
+const ADMIN_MODULE_STATUS_QUIZ_CTES = `
+    WITH module_quiz_requirements AS (
+      SELECT
+        q.module_id,
+        COUNT(*) FILTER (WHERE q.status = '${QUIZ_STATUS_PUBLISHED}') > 0 AS quiz_required
+      FROM quizzes q
+      GROUP BY q.module_id
+    ),
+    trainee_module_quiz_progress AS (
+      SELECT
+        qa.trainee_id,
+        q.module_id,
+        BOOL_OR(
+          qa.passed = TRUE
+          AND qa.status IN ('${QUIZ_ATTEMPT_STATUS_SUBMITTED}', '${QUIZ_ATTEMPT_STATUS_EXPIRED}')
+          AND q.status IN ('${QUIZ_STATUS_PUBLISHED}', '${QUIZ_STATUS_ARCHIVED}')
+        ) AS quiz_passed
+      FROM quiz_attempts qa
+      JOIN quizzes q ON q.quiz_id = qa.quiz_id
+      GROUP BY qa.trainee_id, q.module_id
+    )`;
+
+function mapAdminModuleStatusRow(row) {
+    const accessMode = normalizeAccountAccessMode(row.access_mode) || ACCOUNT_ACCESS_MODE_STANDARD;
+    return {
+        ...row,
+        access_mode: accessMode,
+        quiz_required: row.quiz_required === true,
+        quiz_passed: row.quiz_passed === true,
+        reporting_status: getAdminModuleReportingStatus(accessMode, row.module_status),
+    };
+}
+
 async function getAdminModuleStatusRowsForTrainee(traineeId) {
     const result = await pool.query(
-        `SELECT
+        `${ADMIN_MODULE_STATUS_QUIZ_CTES}
+         SELECT
            v.module_id,
            v.module_code,
            v.module_title,
            v.required_sims,
            v.completed_required_sims,
            v.module_status,
+           COALESCE(module_quiz.quiz_required, FALSE) AS quiz_required,
+           COALESCE(quiz_progress.quiz_passed, FALSE) AS quiz_passed,
            a.access_mode
          FROM v_trainee_module_status v
          JOIN accounts a ON a.trainee_id = v.trainee_id
+         LEFT JOIN module_quiz_requirements module_quiz ON module_quiz.module_id = v.module_id
+         LEFT JOIN trainee_module_quiz_progress quiz_progress
+           ON quiz_progress.trainee_id = v.trainee_id
+          AND quiz_progress.module_id = v.module_id
          WHERE v.trainee_id = $1
          ORDER BY v.module_id`,
         [traineeId]
     );
 
-    return result.rows.map((row) => {
-        const accessMode = normalizeAccountAccessMode(row.access_mode) || ACCOUNT_ACCESS_MODE_STANDARD;
-        return {
-            ...row,
-            access_mode: accessMode,
-            reporting_status: getAdminModuleReportingStatus(accessMode, row.module_status),
-        };
-    });
+    return result.rows.map(mapAdminModuleStatusRow);
 }
 
 function buildCsvRow(values) {
@@ -1770,6 +1814,1208 @@ async function getAdminLessonItems(moduleId = null) {
     });
 }
 
+function createHttpError(statusCode, message, details = null) {
+    const error = new Error(message);
+    error.statusCode = statusCode;
+    if (details !== null) {
+        error.details = details;
+    }
+    return error;
+}
+
+function isMissingQuizSchemaError(error) {
+    return (
+        isUndefinedTableError(error, "quizzes") ||
+        isUndefinedTableError(error, "quiz_questions") ||
+        isUndefinedTableError(error, "quiz_choices") ||
+        isUndefinedTableError(error, "quiz_attempts") ||
+        isUndefinedTableError(error, "quiz_attempt_answers")
+    );
+}
+
+function getQuizSchemaApplyMessage() {
+    return 'Quiz schema is not installed. Run: psql "$DATABASE_URL" -f "mechalabx-db/db/06_quizzes.sql"';
+}
+
+function normalizeQuizTextField(value, maxLength) {
+    if (typeof value !== "string") return null;
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    if (trimmed.length > maxLength) return null;
+    return trimmed;
+}
+
+function normalizeQuizTitle(value) {
+    return normalizeQuizTextField(value, QUIZ_TITLE_MAX_LENGTH);
+}
+
+function normalizeQuizQuestionText(value) {
+    return normalizeQuizTextField(value, QUIZ_QUESTION_TEXT_MAX_LENGTH);
+}
+
+function normalizeQuizChoiceText(value) {
+    return normalizeQuizTextField(value, QUIZ_CHOICE_TEXT_MAX_LENGTH);
+}
+
+function normalizeQuizPositiveInt(value) {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed < 1) return null;
+    return parsed;
+}
+
+function buildDraftCloneQuizTitle(title) {
+    const baseTitle = normalizeQuizTitle(title) || "Quiz";
+    const suffix = " (Draft Copy)";
+    if (baseTitle.length + suffix.length <= QUIZ_TITLE_MAX_LENGTH) {
+        return `${baseTitle}${suffix}`;
+    }
+
+    const sliceLength = Math.max(1, QUIZ_TITLE_MAX_LENGTH - suffix.length);
+    return `${baseTitle.slice(0, sliceLength).trim()}${suffix}`;
+}
+
+function toIsoTimestamp(value) {
+    return value ? new Date(value).toISOString() : null;
+}
+
+function getQuizChoiceLabel(choiceNo) {
+    const safeChoiceNo = Number(choiceNo);
+    if (!Number.isInteger(safeChoiceNo) || safeChoiceNo < 1) return "";
+    return String.fromCharCode(64 + safeChoiceNo);
+}
+
+function mapQuizAttemptRow(row) {
+    const status =
+        row?.status === QUIZ_ATTEMPT_STATUS_SUBMITTED || row?.status === QUIZ_ATTEMPT_STATUS_EXPIRED
+            ? row.status
+            : QUIZ_ATTEMPT_STATUS_IN_PROGRESS;
+
+    return {
+        attempt_id: Number(row?.attempt_id) || 0,
+        quiz_id: Number(row?.quiz_id) || 0,
+        trainee_id: Number(row?.trainee_id) || 0,
+        attempt_no: Number(row?.attempt_no) || 0,
+        status,
+        score_percent: row?.score_percent == null ? null : Number(row.score_percent),
+        passed: row?.passed == null ? null : row.passed === true,
+        time_limit_seconds: Number(row?.time_limit_seconds) || 0,
+        quiz_status:
+            row?.quiz_status === QUIZ_STATUS_PUBLISHED || row?.quiz_status === QUIZ_STATUS_ARCHIVED
+                ? row.quiz_status
+                : QUIZ_STATUS_DRAFT,
+        passing_score_percent: Number(row?.passing_score_percent) || QUIZ_PASSING_SCORE_PERCENT,
+        max_attempts: Number(row?.max_attempts) || 0,
+        time_limit_minutes: Number(row?.time_limit_minutes) || 0,
+        started_at: toIsoTimestamp(row?.started_at),
+        submitted_at: toIsoTimestamp(row?.submitted_at),
+        created_at: toIsoTimestamp(row?.created_at),
+        updated_at: toIsoTimestamp(row?.updated_at),
+    };
+}
+
+function mapQuizAttemptAnswerRow(row) {
+    return {
+        attempt_id: Number(row?.attempt_id) || 0,
+        question_id: Number(row?.question_id) || 0,
+        question_order_no: Number(row?.question_order_no) || 0,
+        selected_choice_id: Number(row?.selected_choice_id) || 0,
+        created_at: toIsoTimestamp(row?.created_at),
+        updated_at: toIsoTimestamp(row?.updated_at),
+    };
+}
+
+function mapAdminQuizModuleRow(row) {
+    return {
+        module_id: Number(row.module_id) || 0,
+        module_code: row.module_code || "",
+        module_title: row.module_title || "",
+        order_no: Number(row.order_no) || 0,
+        is_active: row.is_active === true,
+    };
+}
+
+function mapAdminQuizSummaryRow(row) {
+    const status =
+        row.status === QUIZ_STATUS_PUBLISHED || row.status === QUIZ_STATUS_ARCHIVED
+            ? row.status
+            : QUIZ_STATUS_DRAFT;
+    const attemptCount = Number(row.attempt_count) || 0;
+
+    return {
+        quiz_id: Number(row.quiz_id) || 0,
+        module_id: Number(row.module_id) || 0,
+        module_code: row.module_code || "",
+        module_title: row.module_title || "",
+        module_order_no: Number(row.module_order_no) || 0,
+        module_is_active: row.module_is_active === true,
+        cloned_from_quiz_id:
+            row.cloned_from_quiz_id == null ? null : Number(row.cloned_from_quiz_id) || null,
+        title: row.title || "",
+        status,
+        passing_score_percent: Number(row.passing_score_percent) || QUIZ_PASSING_SCORE_PERCENT,
+        max_attempts: Number(row.max_attempts) || 0,
+        time_limit_minutes: Number(row.time_limit_minutes) || 0,
+        question_count: Number(row.question_count) || 0,
+        attempt_count: attemptCount,
+        created_at: toIsoTimestamp(row.created_at),
+        updated_at: toIsoTimestamp(row.updated_at),
+        published_at: toIsoTimestamp(row.published_at),
+        archived_at: toIsoTimestamp(row.archived_at),
+        has_attempts: attemptCount > 0,
+        can_edit: status === QUIZ_STATUS_DRAFT,
+        can_publish: status === QUIZ_STATUS_DRAFT,
+        can_archive: status === QUIZ_STATUS_PUBLISHED,
+        can_clone: true,
+        can_delete: status === QUIZ_STATUS_DRAFT && attemptCount === 0,
+    };
+}
+
+async function getAdminQuizModuleOptions(queryable = pool) {
+    const result = await queryable.query(
+        `SELECT
+           module_id::INT AS module_id,
+           module_code,
+           title AS module_title,
+           order_no::INT AS order_no,
+           is_active
+         FROM modules
+         ORDER BY COALESCE(order_no, 2147483647), module_id`
+    );
+
+    return result.rows.map(mapAdminQuizModuleRow);
+}
+
+async function getAdminQuizSummaryItems(quizId = null, queryable = pool) {
+    const result = await queryable.query(
+        `SELECT
+           q.quiz_id::INT AS quiz_id,
+           q.module_id::INT AS module_id,
+           m.module_code,
+           m.title AS module_title,
+           m.order_no::INT AS module_order_no,
+           m.is_active AS module_is_active,
+           q.cloned_from_quiz_id::INT AS cloned_from_quiz_id,
+           q.title,
+           q.status,
+           q.passing_score_percent::INT AS passing_score_percent,
+           q.max_attempts::INT AS max_attempts,
+           q.time_limit_minutes::INT AS time_limit_minutes,
+           q.created_at,
+           q.updated_at,
+           q.published_at,
+           q.archived_at,
+           COALESCE(question_counts.question_count, 0)::INT AS question_count,
+           COALESCE(attempt_counts.attempt_count, 0)::INT AS attempt_count
+         FROM quizzes q
+         JOIN modules m ON m.module_id = q.module_id
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*)::INT AS question_count
+           FROM quiz_questions qq
+           WHERE qq.quiz_id = q.quiz_id
+         ) question_counts ON TRUE
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*)::INT AS attempt_count
+           FROM quiz_attempts qa
+           WHERE qa.quiz_id = q.quiz_id
+         ) attempt_counts ON TRUE
+         WHERE ($1::BIGINT IS NULL OR q.quiz_id = $1)
+         ORDER BY
+           COALESCE(m.order_no, 2147483647),
+           m.module_id,
+           CASE q.status
+             WHEN 'published' THEN 1
+             WHEN 'draft' THEN 2
+             ELSE 3
+           END,
+           COALESCE(q.published_at, q.created_at) DESC,
+           q.quiz_id DESC`,
+        [quizId]
+    );
+
+    return result.rows.map(mapAdminQuizSummaryRow);
+}
+
+function buildQuizPublishChecks(quiz) {
+    const errors = [];
+
+    if (!Number.isInteger(Number(quiz?.module_id)) || Number(quiz.module_id) < 1) {
+        errors.push("Quiz must be linked to a valid module.");
+    }
+    if (!normalizeQuizTitle(quiz?.title)) {
+        errors.push(`Quiz title is required and must be at most ${QUIZ_TITLE_MAX_LENGTH} characters.`);
+    }
+    if (!normalizeQuizPositiveInt(quiz?.time_limit_minutes)) {
+        errors.push("Timer is required and must be a positive number of minutes.");
+    }
+    if (!normalizeQuizPositiveInt(quiz?.max_attempts)) {
+        errors.push("Max attempts must be a positive integer.");
+    }
+
+    const questions = Array.isArray(quiz?.questions) ? quiz.questions : [];
+    if (questions.length === 0) {
+        errors.push("Quiz must contain at least 1 question before publishing.");
+    }
+
+    let questionOrderErrorAdded = false;
+    for (let questionIndex = 0; questionIndex < questions.length; questionIndex += 1) {
+        const question = questions[questionIndex];
+        const displayNumber = questionIndex + 1;
+
+        if (!normalizeQuizQuestionText(question?.question_text)) {
+            errors.push(`Question ${displayNumber} must have text.`);
+        }
+        if (Number(question?.order_no) !== displayNumber && !questionOrderErrorAdded) {
+            errors.push("Questions must use a continuous order starting at 1.");
+            questionOrderErrorAdded = true;
+        }
+
+        const choices = Array.isArray(question?.choices) ? question.choices : [];
+        if (choices.length !== QUIZ_MAX_CHOICES_PER_QUESTION) {
+            errors.push(`Question ${displayNumber} must have exactly ${QUIZ_MAX_CHOICES_PER_QUESTION} choices.`);
+        }
+
+        let correctChoiceCount = 0;
+        let choiceOrderErrorAdded = false;
+        for (let choiceIndex = 0; choiceIndex < choices.length; choiceIndex += 1) {
+            const choice = choices[choiceIndex];
+
+            if (!normalizeQuizChoiceText(choice?.choice_text)) {
+                errors.push(`Question ${displayNumber}, choice ${choiceIndex + 1} must have text.`);
+            }
+            if (Number(choice?.choice_no) !== choiceIndex + 1 && !choiceOrderErrorAdded) {
+                errors.push(`Question ${displayNumber} choices must stay in order.`);
+                choiceOrderErrorAdded = true;
+            }
+            if (choice?.is_correct === true) {
+                correctChoiceCount += 1;
+            }
+        }
+
+        if (correctChoiceCount !== 1) {
+            errors.push(`Question ${displayNumber} must have exactly 1 correct choice.`);
+        }
+    }
+
+    return {
+        ready: errors.length === 0,
+        errors: [...new Set(errors)],
+    };
+}
+
+function buildAdminQuizDetailFromRows(summary, rows) {
+    if (!summary) return null;
+
+    const questionsById = new Map();
+    const questions = [];
+
+    for (const row of rows) {
+        const questionId = Number(row.question_id);
+        if (!Number.isInteger(questionId) || questionId < 1) {
+            continue;
+        }
+
+        let question = questionsById.get(questionId);
+        if (!question) {
+            question = {
+                question_id: questionId,
+                quiz_id: summary.quiz_id,
+                question_text: row.question_text || "",
+                order_no: Number(row.order_no) || 0,
+                choices: [],
+                choice_count: 0,
+                correct_choice_count: 0,
+            };
+            questionsById.set(questionId, question);
+            questions.push(question);
+        }
+
+        const choiceId = row.choice_id == null ? null : Number(row.choice_id);
+        if (!Number.isInteger(choiceId) || choiceId < 1) {
+            continue;
+        }
+
+        const choice = {
+            choice_id: choiceId,
+            question_id: questionId,
+            choice_no: Number(row.choice_no) || 0,
+            label: getQuizChoiceLabel(row.choice_no),
+            choice_text: row.choice_text || "",
+            is_correct: row.is_correct === true,
+        };
+        question.choices.push(choice);
+        question.choice_count = question.choices.length;
+        if (choice.is_correct) {
+            question.correct_choice_count += 1;
+        }
+    }
+
+    questions.sort((a, b) => a.order_no - b.order_no || a.question_id - b.question_id);
+    for (const question of questions) {
+        question.choices.sort((a, b) => a.choice_no - b.choice_no || a.choice_id - b.choice_id);
+        question.choice_count = question.choices.length;
+        question.correct_choice_count = question.choices.filter((choice) => choice.is_correct).length;
+    }
+
+    const quiz = {
+        ...summary,
+        questions,
+        stats: {
+            question_count: questions.length,
+            attempt_count: summary.attempt_count,
+        },
+    };
+
+    quiz.publish_checks = buildQuizPublishChecks(quiz);
+    return quiz;
+}
+
+async function getAdminQuizDetail(quizId, queryable = pool) {
+    const safeQuizId = parsePositiveIntParam(quizId);
+    if (!safeQuizId) return null;
+
+    const [summary] = await getAdminQuizSummaryItems(safeQuizId, queryable);
+    if (!summary) return null;
+
+    const result = await queryable.query(
+        `SELECT
+           qq.question_id::INT AS question_id,
+           qq.question_text,
+           qq.order_no::INT AS order_no,
+           qc.choice_id::INT AS choice_id,
+           qc.choice_no::INT AS choice_no,
+           qc.choice_text,
+           qc.is_correct
+         FROM quiz_questions qq
+         LEFT JOIN quiz_choices qc ON qc.question_id = qq.question_id
+         WHERE qq.quiz_id = $1
+         ORDER BY qq.order_no, qq.question_id, qc.choice_no, qc.choice_id`,
+        [safeQuizId]
+    );
+
+    return buildAdminQuizDetailFromRows(summary, result.rows);
+}
+
+function mapTraineeQuizSummaryRow(row) {
+    return {
+        quiz_id: Number(row?.quiz_id) || 0,
+        module_id: Number(row?.module_id) || 0,
+        module_code: row?.module_code || "",
+        module_title: row?.module_title || "",
+        title: row?.title || "",
+        status: row?.status === QUIZ_STATUS_PUBLISHED ? QUIZ_STATUS_PUBLISHED : QUIZ_STATUS_DRAFT,
+        passing_score_percent: Number(row?.passing_score_percent) || QUIZ_PASSING_SCORE_PERCENT,
+        max_attempts: Number(row?.max_attempts) || 0,
+        time_limit_minutes: Number(row?.time_limit_minutes) || 0,
+        question_count: Number(row?.question_count) || 0,
+        created_at: toIsoTimestamp(row?.created_at),
+        updated_at: toIsoTimestamp(row?.updated_at),
+        published_at: toIsoTimestamp(row?.published_at),
+    };
+}
+
+async function getPublishedTraineeQuizSummaryForModule(moduleId, queryable = pool, { lock = false } = {}) {
+    let query = `SELECT
+           q.quiz_id::INT AS quiz_id,
+           q.module_id::INT AS module_id,
+           m.module_code,
+           m.title AS module_title,
+           q.title,
+           q.status,
+           q.passing_score_percent::INT AS passing_score_percent,
+           q.max_attempts::INT AS max_attempts,
+           q.time_limit_minutes::INT AS time_limit_minutes,
+           q.created_at,
+           q.updated_at,
+           q.published_at,
+           COALESCE(question_counts.question_count, 0)::INT AS question_count
+         FROM quizzes q
+         JOIN modules m ON m.module_id = q.module_id
+         LEFT JOIN LATERAL (
+           SELECT COUNT(*)::INT AS question_count
+           FROM quiz_questions qq
+           WHERE qq.quiz_id = q.quiz_id
+         ) question_counts ON TRUE
+         WHERE q.module_id = $1
+           AND q.status = $2
+         ORDER BY COALESCE(q.published_at, q.created_at) DESC, q.quiz_id DESC
+         LIMIT 1`;
+
+    if (lock) {
+        query += ` FOR UPDATE OF q`;
+    }
+
+    const result = await queryable.query(query, [moduleId, QUIZ_STATUS_PUBLISHED]);
+    if (result.rowCount === 0) {
+        return null;
+    }
+
+    return mapTraineeQuizSummaryRow(result.rows[0]);
+}
+
+function buildTraineeQuizQuestionsFromRows(rows) {
+    const questionsById = new Map();
+    const questions = [];
+
+    for (const row of rows) {
+        const questionId = Number(row?.question_id);
+        if (!Number.isInteger(questionId) || questionId < 1) {
+            continue;
+        }
+
+        let question = questionsById.get(questionId);
+        if (!question) {
+            question = {
+                question_id: questionId,
+                order_no: Number(row?.order_no) || 0,
+                question_text: row?.question_text || "",
+                choices: [],
+            };
+            questionsById.set(questionId, question);
+            questions.push(question);
+        }
+
+        const choiceId = Number(row?.choice_id);
+        if (!Number.isInteger(choiceId) || choiceId < 1) {
+            continue;
+        }
+
+        question.choices.push({
+            choice_id: choiceId,
+            choice_no: Number(row?.choice_no) || 0,
+            label: getQuizChoiceLabel(row?.choice_no),
+            choice_text: row?.choice_text || "",
+        });
+    }
+
+    questions.sort((a, b) => a.order_no - b.order_no || a.question_id - b.question_id);
+    for (const question of questions) {
+        question.choices.sort((a, b) => a.choice_no - b.choice_no || a.choice_id - b.choice_id);
+    }
+
+    return questions;
+}
+
+async function getTraineeQuizQuestions(quizId, queryable = pool) {
+    const result = await queryable.query(
+        `SELECT
+           qq.question_id::INT AS question_id,
+           qq.order_no::INT AS order_no,
+           qq.question_text,
+           qc.choice_id::INT AS choice_id,
+           qc.choice_no::INT AS choice_no,
+           qc.choice_text
+         FROM quiz_questions qq
+         JOIN quiz_choices qc ON qc.question_id = qq.question_id
+         WHERE qq.quiz_id = $1
+         ORDER BY qq.order_no, qq.question_id, qc.choice_no, qc.choice_id`,
+        [quizId]
+    );
+
+    return buildTraineeQuizQuestionsFromRows(result.rows);
+}
+
+async function getQuizAttemptCountByQuizAndTrainee(client, quizId, traineeId) {
+    const result = await client.query(
+        `SELECT COUNT(*)::INT AS attempt_count
+         FROM quiz_attempts
+         WHERE quiz_id = $1
+           AND trainee_id = $2`,
+        [quizId, traineeId]
+    );
+
+    return Number(result.rows[0]?.attempt_count) || 0;
+}
+
+async function getLatestFinalQuizAttemptByQuizAndTrainee(
+    client,
+    quizId,
+    traineeId,
+    { lock = false } = {}
+) {
+    let query = `SELECT
+           qa.attempt_id::INT AS attempt_id,
+           qa.quiz_id::INT AS quiz_id,
+           qa.trainee_id::INT AS trainee_id,
+           qa.attempt_no::INT AS attempt_no,
+           qa.status,
+           qa.score_percent,
+           qa.passed,
+           qa.time_limit_seconds::INT AS time_limit_seconds,
+           qa.started_at,
+           qa.submitted_at,
+           qa.created_at,
+           qa.updated_at,
+           q.status AS quiz_status,
+           q.passing_score_percent::INT AS passing_score_percent,
+           q.max_attempts::INT AS max_attempts,
+           q.time_limit_minutes::INT AS time_limit_minutes
+         FROM quiz_attempts qa
+         JOIN quizzes q ON q.quiz_id = qa.quiz_id
+         WHERE qa.quiz_id = $1
+           AND qa.trainee_id = $2
+           AND qa.status IN ($3, $4)
+         ORDER BY COALESCE(qa.submitted_at, qa.started_at) DESC, qa.attempt_id DESC
+         LIMIT 1`;
+
+    if (lock) {
+        query += ` FOR UPDATE OF qa`;
+    }
+
+    const result = await client.query(query, [
+        quizId,
+        traineeId,
+        QUIZ_ATTEMPT_STATUS_SUBMITTED,
+        QUIZ_ATTEMPT_STATUS_EXPIRED,
+    ]);
+
+    if (result.rowCount === 0) {
+        return null;
+    }
+
+    return mapQuizAttemptRow(result.rows[0]);
+}
+
+function getQuizAttemptDeadlineState(attempt, now = Date.now()) {
+    const startedAtMs = attempt?.started_at ? Date.parse(attempt.started_at) : NaN;
+    const timeLimitSeconds = Number(attempt?.time_limit_seconds) || 0;
+
+    if (!Number.isFinite(startedAtMs) || timeLimitSeconds < 1) {
+        return {
+            expires_at: attempt?.started_at || null,
+            remaining_seconds: 0,
+            is_expired: true,
+        };
+    }
+
+    const expiresAtMs = startedAtMs + timeLimitSeconds * 1000;
+    return {
+        expires_at: new Date(expiresAtMs).toISOString(),
+        remaining_seconds: Math.max(0, Math.ceil((expiresAtMs - now) / 1000)),
+        is_expired: expiresAtMs <= now,
+    };
+}
+
+function buildTraineeQuizAttemptPayload(attempt) {
+    if (!attempt) return null;
+
+    const deadline = getQuizAttemptDeadlineState(attempt);
+    return {
+        attempt_id: attempt.attempt_id,
+        quiz_id: attempt.quiz_id,
+        attempt_no: attempt.attempt_no,
+        status: attempt.status,
+        time_limit_seconds: attempt.time_limit_seconds,
+        started_at: attempt.started_at,
+        submitted_at: attempt.submitted_at,
+        expires_at: deadline.expires_at,
+        remaining_seconds: deadline.remaining_seconds,
+    };
+}
+
+function buildTraineeQuizResultPayload(attempt) {
+    if (!attempt) return null;
+    if (
+        attempt.status !== QUIZ_ATTEMPT_STATUS_SUBMITTED &&
+        attempt.status !== QUIZ_ATTEMPT_STATUS_EXPIRED
+    ) {
+        return null;
+    }
+    if (attempt.passed == null) {
+        return null;
+    }
+
+    return {
+        attempt_id: attempt.attempt_id,
+        quiz_id: attempt.quiz_id,
+        attempt_no: attempt.attempt_no,
+        status: attempt.status,
+        passed: attempt.passed === true,
+        submitted_at: attempt.submitted_at,
+    };
+}
+
+function buildTraineeQuizSummaryPayload(
+    quiz,
+    { currentAttempt = null, latestResult = null, attemptsUsed = 0 } = {}
+) {
+    if (!quiz) return null;
+
+    const safeAttemptsUsed = Math.max(0, Number(attemptsUsed) || 0);
+    const attemptsRemaining = Math.max(0, (Number(quiz.max_attempts) || 0) - safeAttemptsUsed);
+
+    return {
+        ...quiz,
+        attempts_used: safeAttemptsUsed,
+        attempts_remaining: attemptsRemaining,
+        current_attempt: buildTraineeQuizAttemptPayload(currentAttempt),
+        latest_result: buildTraineeQuizResultPayload(latestResult),
+        can_start: currentAttempt == null && attemptsRemaining > 0,
+        can_resume: currentAttempt != null,
+    };
+}
+
+async function finalizeExpiredQuizAttemptIfNeeded(client, attempt, { traineeId = null } = {}) {
+    if (!attempt) {
+        return {
+            attempt: null,
+            finalized: null,
+            expired: false,
+        };
+    }
+
+    const deadline = getQuizAttemptDeadlineState(attempt);
+    if (!deadline.is_expired) {
+        return {
+            attempt,
+            finalized: null,
+            expired: false,
+        };
+    }
+
+    const finalized = await finalizeQuizAttempt(client, attempt.attempt_id, {
+        traineeId,
+        status: QUIZ_ATTEMPT_STATUS_EXPIRED,
+    });
+
+    return {
+        attempt: null,
+        finalized,
+        expired: true,
+    };
+}
+
+async function requireModuleExists(client, moduleId) {
+    const result = await client.query(
+        `SELECT module_id::INT AS module_id
+         FROM modules
+         WHERE module_id = $1
+         LIMIT 1`,
+        [moduleId]
+    );
+
+    if (result.rowCount === 0) {
+        throw createHttpError(404, "Module not found");
+    }
+
+    return result.rows[0];
+}
+
+async function requireQuizRow(client, quizId) {
+    const result = await client.query(
+        `SELECT
+           quiz_id::INT AS quiz_id,
+           module_id::INT AS module_id,
+           cloned_from_quiz_id::INT AS cloned_from_quiz_id,
+           title,
+           status,
+           passing_score_percent::INT AS passing_score_percent,
+           max_attempts::INT AS max_attempts,
+           time_limit_minutes::INT AS time_limit_minutes
+         FROM quizzes
+         WHERE quiz_id = $1
+         FOR UPDATE`,
+        [quizId]
+    );
+
+    if (result.rowCount === 0) {
+        throw createHttpError(404, "Quiz not found");
+    }
+
+    return result.rows[0];
+}
+
+async function requireDraftQuizRow(client, quizId) {
+    const quiz = await requireQuizRow(client, quizId);
+    if (quiz.status !== QUIZ_STATUS_DRAFT) {
+        throw createHttpError(409, "Only draft quizzes can be edited");
+    }
+    return quiz;
+}
+
+async function requireQuestionRow(client, quizId, questionId, { draftOnly = true } = {}) {
+    const result = await client.query(
+        `SELECT
+           q.quiz_id::INT AS quiz_id,
+           q.status,
+           qq.question_id::INT AS question_id,
+           qq.order_no::INT AS order_no
+         FROM quizzes q
+         JOIN quiz_questions qq ON qq.quiz_id = q.quiz_id
+         WHERE q.quiz_id = $1
+           AND qq.question_id = $2
+         FOR UPDATE OF q, qq`,
+        [quizId, questionId]
+    );
+
+    if (result.rowCount === 0) {
+        throw createHttpError(404, "Question not found");
+    }
+
+    const row = result.rows[0];
+    if (draftOnly && row.status !== QUIZ_STATUS_DRAFT) {
+        throw createHttpError(409, "Only draft quizzes can be edited");
+    }
+
+    return row;
+}
+
+async function requireChoiceRow(client, quizId, questionId, choiceId, { draftOnly = true } = {}) {
+    const result = await client.query(
+        `SELECT
+           q.quiz_id::INT AS quiz_id,
+           q.status,
+           qq.question_id::INT AS question_id,
+           qc.choice_id::INT AS choice_id,
+           qc.choice_no::INT AS choice_no
+         FROM quizzes q
+         JOIN quiz_questions qq ON qq.quiz_id = q.quiz_id
+         JOIN quiz_choices qc ON qc.question_id = qq.question_id
+         WHERE q.quiz_id = $1
+           AND qq.question_id = $2
+           AND qc.choice_id = $3
+         FOR UPDATE OF q, qq, qc`,
+        [quizId, questionId, choiceId]
+    );
+
+    if (result.rowCount === 0) {
+        throw createHttpError(404, "Choice not found");
+    }
+
+    const row = result.rows[0];
+    if (draftOnly && row.status !== QUIZ_STATUS_DRAFT) {
+        throw createHttpError(409, "Only draft quizzes can be edited");
+    }
+
+    return row;
+}
+
+async function loadOrderedQuizQuestionIds(client, quizId) {
+    const result = await client.query(
+        `SELECT question_id::INT AS question_id
+         FROM quiz_questions
+         WHERE quiz_id = $1
+         ORDER BY order_no, question_id
+         FOR UPDATE`,
+        [quizId]
+    );
+
+    return result.rows
+        .map((row) => Number(row.question_id))
+        .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+async function renumberQuizQuestions(client, quizId, orderedQuestionIds = null) {
+    const questionIds = Array.isArray(orderedQuestionIds)
+        ? orderedQuestionIds
+        : await loadOrderedQuizQuestionIds(client, quizId);
+
+    for (let index = 0; index < questionIds.length; index += 1) {
+        await client.query(
+            `UPDATE quiz_questions
+             SET order_no = $2,
+                 updated_at = NOW()
+             WHERE question_id = $1`,
+            [questionIds[index], index + 1]
+        );
+    }
+}
+
+async function loadOrderedQuizChoiceIds(client, questionId) {
+    const result = await client.query(
+        `SELECT choice_id::INT AS choice_id
+         FROM quiz_choices
+         WHERE question_id = $1
+         ORDER BY choice_no, choice_id
+         FOR UPDATE`,
+        [questionId]
+    );
+
+    return result.rows
+        .map((row) => Number(row.choice_id))
+        .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+async function renumberQuizChoices(client, questionId, orderedChoiceIds = null) {
+    const choiceIds = Array.isArray(orderedChoiceIds)
+        ? orderedChoiceIds
+        : await loadOrderedQuizChoiceIds(client, questionId);
+
+    for (let index = 0; index < choiceIds.length; index += 1) {
+        await client.query(
+            `UPDATE quiz_choices
+             SET choice_no = $2,
+                 updated_at = NOW()
+             WHERE choice_id = $1`,
+            [choiceIds[index], index + 1]
+        );
+    }
+}
+
+async function getQuizAttemptByQuizAndTrainee(
+    client,
+    quizId,
+    traineeId,
+    { status = null, lock = false } = {}
+) {
+    const params = [quizId, traineeId];
+    let query = `SELECT
+           qa.attempt_id::INT AS attempt_id,
+           qa.quiz_id::INT AS quiz_id,
+           qa.trainee_id::INT AS trainee_id,
+           qa.attempt_no::INT AS attempt_no,
+           qa.status,
+           qa.score_percent,
+           qa.passed,
+           qa.time_limit_seconds::INT AS time_limit_seconds,
+           qa.started_at,
+           qa.submitted_at,
+           qa.created_at,
+           qa.updated_at,
+           q.status AS quiz_status,
+           q.passing_score_percent::INT AS passing_score_percent,
+           q.max_attempts::INT AS max_attempts,
+           q.time_limit_minutes::INT AS time_limit_minutes
+         FROM quiz_attempts qa
+         JOIN quizzes q ON q.quiz_id = qa.quiz_id
+         WHERE qa.quiz_id = $1
+           AND qa.trainee_id = $2`;
+
+    if (status) {
+        params.push(status);
+        query += ` AND qa.status = $${params.length}`;
+    }
+
+    query += ` ORDER BY qa.started_at DESC, qa.attempt_id DESC
+         LIMIT 1`;
+
+    if (lock) {
+        query += ` FOR UPDATE OF qa`;
+    }
+
+    const result = await client.query(query, params);
+    if (result.rowCount === 0) {
+        return null;
+    }
+
+    return mapQuizAttemptRow(result.rows[0]);
+}
+
+async function requireQuizAttemptRow(client, attemptId, { traineeId = null, lock = false } = {}) {
+    const params = [attemptId];
+    let query = `SELECT
+           qa.attempt_id::INT AS attempt_id,
+           qa.quiz_id::INT AS quiz_id,
+           qa.trainee_id::INT AS trainee_id,
+           qa.attempt_no::INT AS attempt_no,
+           qa.status,
+           qa.score_percent,
+           qa.passed,
+           qa.time_limit_seconds::INT AS time_limit_seconds,
+           qa.started_at,
+           qa.submitted_at,
+           qa.created_at,
+           qa.updated_at,
+           q.status AS quiz_status,
+           q.passing_score_percent::INT AS passing_score_percent,
+           q.max_attempts::INT AS max_attempts,
+           q.time_limit_minutes::INT AS time_limit_minutes
+         FROM quiz_attempts qa
+         JOIN quizzes q ON q.quiz_id = qa.quiz_id
+         WHERE qa.attempt_id = $1`;
+
+    if (traineeId !== null) {
+        params.push(traineeId);
+        query += ` AND qa.trainee_id = $${params.length}`;
+    }
+
+    if (lock) {
+        query += ` FOR UPDATE OF qa`;
+    }
+
+    const result = await client.query(query, params);
+    if (result.rowCount === 0) {
+        throw createHttpError(404, "Quiz attempt not found");
+    }
+
+    return mapQuizAttemptRow(result.rows[0]);
+}
+
+async function requireInProgressQuizAttemptRow(client, attemptId, options = {}) {
+    const attempt = await requireQuizAttemptRow(client, attemptId, { ...options, lock: true });
+    if (attempt.status !== QUIZ_ATTEMPT_STATUS_IN_PROGRESS) {
+        throw createHttpError(409, "Only in-progress quiz attempts can be changed");
+    }
+    return attempt;
+}
+
+async function getQuizAttemptSavedAnswers(client, attemptId) {
+    const result = await client.query(
+        `SELECT
+           qaa.attempt_id::INT AS attempt_id,
+           qaa.question_id::INT AS question_id,
+           qq.order_no::INT AS question_order_no,
+           qaa.selected_choice_id::INT AS selected_choice_id,
+           qaa.created_at,
+           qaa.updated_at
+         FROM quiz_attempt_answers qaa
+         JOIN quiz_questions qq ON qq.question_id = qaa.question_id
+         WHERE qaa.attempt_id = $1
+         ORDER BY qq.order_no, qaa.question_id`,
+        [attemptId]
+    );
+
+    return result.rows.map(mapQuizAttemptAnswerRow);
+}
+
+async function getOrCreateInProgressQuizAttempt(client, quizId, traineeId) {
+    const existingAttempt = await getQuizAttemptByQuizAndTrainee(client, quizId, traineeId, {
+        status: QUIZ_ATTEMPT_STATUS_IN_PROGRESS,
+        lock: true,
+    });
+    if (existingAttempt) {
+        return {
+            attempt: existingAttempt,
+            created: false,
+        };
+    }
+
+    const quiz = await requireQuizRow(client, quizId);
+    if (quiz.status !== QUIZ_STATUS_PUBLISHED) {
+        throw createHttpError(409, "Only published quizzes can be attempted");
+    }
+
+    const attemptCountResult = await client.query(
+        `SELECT COALESCE(MAX(attempt_no), 0)::INT + 1 AS next_attempt_no
+         FROM quiz_attempts
+         WHERE quiz_id = $1
+           AND trainee_id = $2`,
+        [quizId, traineeId]
+    );
+    const nextAttemptNo = Number(attemptCountResult.rows[0]?.next_attempt_no) || 1;
+    if (nextAttemptNo > quiz.max_attempts) {
+        throw createHttpError(409, "Maximum quiz attempts reached");
+    }
+
+    try {
+        const insertResult = await client.query(
+            `INSERT INTO quiz_attempts (
+               quiz_id,
+               trainee_id,
+               attempt_no,
+               status,
+               time_limit_seconds
+             )
+             VALUES ($1, $2, $3, $4, $5)
+             RETURNING
+               attempt_id::INT AS attempt_id,
+               quiz_id::INT AS quiz_id,
+               trainee_id::INT AS trainee_id,
+               attempt_no::INT AS attempt_no,
+               status,
+               score_percent,
+               passed,
+               time_limit_seconds::INT AS time_limit_seconds,
+               started_at,
+               submitted_at,
+               created_at,
+               updated_at`,
+            [
+                quizId,
+                traineeId,
+                nextAttemptNo,
+                QUIZ_ATTEMPT_STATUS_IN_PROGRESS,
+                quiz.time_limit_minutes * 60,
+            ]
+        );
+
+        return {
+            attempt: mapQuizAttemptRow({
+                ...insertResult.rows[0],
+                quiz_status: quiz.status,
+                passing_score_percent: quiz.passing_score_percent,
+                max_attempts: quiz.max_attempts,
+                time_limit_minutes: quiz.time_limit_minutes,
+            }),
+            created: true,
+        };
+    } catch (error) {
+        if (error?.code === "23505") {
+            const conflictedAttempt = await getQuizAttemptByQuizAndTrainee(client, quizId, traineeId, {
+                status: QUIZ_ATTEMPT_STATUS_IN_PROGRESS,
+                lock: true,
+            });
+            if (conflictedAttempt) {
+                return {
+                    attempt: conflictedAttempt,
+                    created: false,
+                };
+            }
+        }
+
+        throw error;
+    }
+}
+
+async function saveQuizAttemptAnswer(client, attemptId, questionId, selectedChoiceId, { traineeId = null } = {}) {
+    const safeQuestionId = parsePositiveIntParam(questionId);
+    const safeSelectedChoiceId = parsePositiveIntParam(selectedChoiceId);
+    if (!safeQuestionId) {
+        throw createHttpError(400, "Invalid question id");
+    }
+    if (!safeSelectedChoiceId) {
+        throw createHttpError(400, "Invalid selected choice id");
+    }
+
+    const attempt = await requireInProgressQuizAttemptRow(client, attemptId, { traineeId });
+    const targetResult = await client.query(
+        `SELECT
+           qq.question_id::INT AS question_id,
+           qq.order_no::INT AS question_order_no
+         FROM quiz_questions qq
+         JOIN quiz_choices qc ON qc.question_id = qq.question_id
+         WHERE qq.quiz_id = $1
+           AND qq.question_id = $2
+           AND qc.choice_id = $3
+         LIMIT 1`,
+        [attempt.quiz_id, safeQuestionId, safeSelectedChoiceId]
+    );
+    if (targetResult.rowCount === 0) {
+        throw createHttpError(404, "Quiz question or choice not found");
+    }
+
+    const answerResult = await client.query(
+        `INSERT INTO quiz_attempt_answers (
+           attempt_id,
+           question_id,
+           selected_choice_id
+         )
+         VALUES ($1, $2, $3)
+         ON CONFLICT (attempt_id, question_id)
+         DO UPDATE SET
+           selected_choice_id = EXCLUDED.selected_choice_id,
+           updated_at = NOW()
+         RETURNING
+           attempt_id::INT AS attempt_id,
+           question_id::INT AS question_id,
+           selected_choice_id::INT AS selected_choice_id,
+           created_at,
+           updated_at`,
+        [attempt.attempt_id, safeQuestionId, safeSelectedChoiceId]
+    );
+
+    await client.query(
+        `UPDATE quiz_attempts
+         SET updated_at = NOW()
+         WHERE attempt_id = $1`,
+        [attempt.attempt_id]
+    );
+
+    return mapQuizAttemptAnswerRow({
+        ...answerResult.rows[0],
+        question_order_no: Number(targetResult.rows[0]?.question_order_no) || 0,
+    });
+}
+
+function calculateQuizScorePercent(correctAnswers, totalQuestions) {
+    const safeCorrectAnswers = Number(correctAnswers);
+    const safeTotalQuestions = Number(totalQuestions);
+
+    if (!Number.isInteger(safeTotalQuestions) || safeTotalQuestions < 1) {
+        return 0;
+    }
+
+    if (!Number.isInteger(safeCorrectAnswers) || safeCorrectAnswers < 0) {
+        return 0;
+    }
+
+    return Math.round((safeCorrectAnswers / safeTotalQuestions) * 10000) / 100;
+}
+
+async function calculateQuizAttemptOutcome(client, attemptId) {
+    const result = await client.query(
+        `SELECT
+           COUNT(qq.question_id)::INT AS total_questions,
+           COUNT(qaa.question_id)::INT AS answered_questions,
+           COALESCE(SUM(CASE WHEN qaa.selected_choice_id = qc.choice_id THEN 1 ELSE 0 END), 0)::INT AS correct_answers
+         FROM quiz_attempts qa
+         LEFT JOIN quiz_questions qq ON qq.quiz_id = qa.quiz_id
+         LEFT JOIN quiz_choices qc
+           ON qc.question_id = qq.question_id
+          AND qc.is_correct = TRUE
+         LEFT JOIN quiz_attempt_answers qaa
+           ON qaa.attempt_id = qa.attempt_id
+          AND qaa.question_id = qq.question_id
+         WHERE qa.attempt_id = $1
+         GROUP BY qa.attempt_id`,
+        [attemptId]
+    );
+
+    if (result.rowCount === 0) {
+        throw createHttpError(404, "Quiz attempt not found");
+    }
+
+    const row = result.rows[0];
+    const totalQuestions = Number(row.total_questions) || 0;
+    const answeredQuestions = Number(row.answered_questions) || 0;
+    const correctAnswers = Number(row.correct_answers) || 0;
+    const scorePercent = calculateQuizScorePercent(correctAnswers, totalQuestions);
+
+    return {
+        total_questions: totalQuestions,
+        answered_questions: answeredQuestions,
+        correct_answers: correctAnswers,
+        score_percent: scorePercent,
+        passed: totalQuestions > 0 && scorePercent >= QUIZ_PASSING_SCORE_PERCENT,
+    };
+}
+
+async function finalizeQuizAttempt(
+    client,
+    attemptId,
+    { traineeId = null, status = QUIZ_ATTEMPT_STATUS_SUBMITTED } = {}
+) {
+    if (status !== QUIZ_ATTEMPT_STATUS_SUBMITTED && status !== QUIZ_ATTEMPT_STATUS_EXPIRED) {
+        throw createHttpError(400, "Invalid final quiz attempt status");
+    }
+
+    const attempt = await requireInProgressQuizAttemptRow(client, attemptId, { traineeId });
+    const outcome = await calculateQuizAttemptOutcome(client, attempt.attempt_id);
+    const updateResult = await client.query(
+        `UPDATE quiz_attempts
+         SET status = $2,
+             score_percent = $3,
+             passed = $4,
+             submitted_at = NOW(),
+             updated_at = NOW()
+         WHERE attempt_id = $1
+         RETURNING
+           attempt_id::INT AS attempt_id,
+           quiz_id::INT AS quiz_id,
+           trainee_id::INT AS trainee_id,
+           attempt_no::INT AS attempt_no,
+           status,
+           score_percent,
+           passed,
+           time_limit_seconds::INT AS time_limit_seconds,
+           started_at,
+           submitted_at,
+           created_at,
+           updated_at`,
+        [attempt.attempt_id, status, outcome.score_percent, outcome.passed]
+    );
+
+    return {
+        attempt: mapQuizAttemptRow({
+            ...updateResult.rows[0],
+            quiz_status: attempt.quiz_status,
+            passing_score_percent: attempt.passing_score_percent,
+            max_attempts: attempt.max_attempts,
+            time_limit_minutes: attempt.time_limit_minutes,
+        }),
+        outcome,
+    };
+}
+
 app.get("/api/admin/simulations", requireAuth, requireAdmin, async (req, res) => {
     try {
         const result = await pool.query(
@@ -2068,6 +3314,968 @@ app.get("/api/admin/auth-check", (req, res) => {
         account_id: req.auth.account_id,
         trainee_id: req.auth.trainee_id ?? null,
     });
+});
+
+app.get("/api/admin/quizzes", async (req, res) => {
+    try {
+        const [items, modules] = await Promise.all([
+            getAdminQuizSummaryItems(),
+            getAdminQuizModuleOptions(),
+        ]);
+        return res.json({ items, modules });
+    } catch (error) {
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+        console.error("Admin quizzes listing endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+app.post("/api/admin/quizzes", async (req, res) => {
+    const quizBody = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+
+    const moduleId = normalizeQuizPositiveInt(quizBody.module_id);
+    const title = normalizeQuizTitle(quizBody.title);
+    const maxAttempts = normalizeQuizPositiveInt(quizBody.max_attempts);
+    const timeLimitMinutes = normalizeQuizPositiveInt(quizBody.time_limit_minutes);
+
+    if (!moduleId) return res.status(400).json({ error: "A valid module_id is required" });
+    if (!title) {
+        return res.status(400).json({ error: `Quiz title is required and must be at most ${QUIZ_TITLE_MAX_LENGTH} characters` });
+    }
+    if (!maxAttempts) return res.status(400).json({ error: "max_attempts must be a positive integer" });
+    if (!timeLimitMinutes) return res.status(400).json({ error: "time_limit_minutes must be a positive integer" });
+
+    const client = await pool.connect();
+    let createdQuizId = null;
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireModuleExists(client, moduleId);
+
+        const insertResult = await client.query(
+            `INSERT INTO quizzes (
+               module_id,
+               title,
+               passing_score_percent,
+               max_attempts,
+               time_limit_minutes,
+               status
+             )
+             VALUES ($1, $2, $3, $4, $5, $6)
+             RETURNING quiz_id::INT AS quiz_id`,
+            [
+                moduleId,
+                title,
+                QUIZ_PASSING_SCORE_PERCENT,
+                maxAttempts,
+                timeLimitMinutes,
+                QUIZ_STATUS_DRAFT,
+            ]
+        );
+
+        createdQuizId = Number(insertResult.rows[0]?.quiz_id) || null;
+        if (!createdQuizId) {
+            throw createHttpError(500, "Failed to create quiz");
+        }
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz create:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz create endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to create quiz" });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const quiz = await getAdminQuizDetail(createdQuizId);
+        return res.status(201).json({ quiz });
+    } catch (error) {
+        console.error("Admin quiz create follow-up load failed:", error);
+        return res.status(201).json({ quiz: null });
+    }
+});
+
+app.get("/api/admin/quizzes/:quizId", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+
+    try {
+        const quiz = await getAdminQuizDetail(quizId);
+        if (!quiz) return res.status(404).json({ error: "Quiz not found" });
+        return res.json({ quiz });
+    } catch (error) {
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+        console.error("Admin quiz detail endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+app.patch("/api/admin/quizzes/:quizId", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+
+    const quizBody = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const hasTitle = Object.prototype.hasOwnProperty.call(quizBody, "title");
+    const hasModuleId = Object.prototype.hasOwnProperty.call(quizBody, "module_id");
+    const hasMaxAttempts = Object.prototype.hasOwnProperty.call(quizBody, "max_attempts");
+    const hasTimeLimit = Object.prototype.hasOwnProperty.call(quizBody, "time_limit_minutes");
+
+    if (!hasTitle && !hasModuleId && !hasMaxAttempts && !hasTimeLimit) {
+        return res.status(400).json({ error: "At least one draft quiz field must be provided" });
+    }
+
+    const title = hasTitle ? normalizeQuizTitle(quizBody.title) : null;
+    const moduleId = hasModuleId ? normalizeQuizPositiveInt(quizBody.module_id) : null;
+    const maxAttempts = hasMaxAttempts ? normalizeQuizPositiveInt(quizBody.max_attempts) : null;
+    const timeLimitMinutes = hasTimeLimit ? normalizeQuizPositiveInt(quizBody.time_limit_minutes) : null;
+
+    if (hasTitle && !title) {
+        return res.status(400).json({ error: `Quiz title must be at most ${QUIZ_TITLE_MAX_LENGTH} characters` });
+    }
+    if (hasModuleId && !moduleId) return res.status(400).json({ error: "module_id must be a positive integer" });
+    if (hasMaxAttempts && !maxAttempts) return res.status(400).json({ error: "max_attempts must be a positive integer" });
+    if (hasTimeLimit && !timeLimitMinutes) {
+        return res.status(400).json({ error: "time_limit_minutes must be a positive integer" });
+    }
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+
+        const quiz = await requireDraftQuizRow(client, quizId);
+        if (moduleId) {
+            await requireModuleExists(client, moduleId);
+        }
+
+        await client.query(
+            `UPDATE quizzes
+             SET module_id = $2,
+                 title = $3,
+                 max_attempts = $4,
+                 time_limit_minutes = $5,
+                 updated_at = NOW()
+             WHERE quiz_id = $1`,
+            [
+                quizId,
+                moduleId || quiz.module_id,
+                title || quiz.title,
+                maxAttempts || quiz.max_attempts,
+                timeLimitMinutes || quiz.time_limit_minutes,
+            ]
+        );
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz update:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz update endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to update quiz" });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const quiz = await getAdminQuizDetail(quizId);
+        return res.json({ quiz });
+    } catch (error) {
+        console.error("Admin quiz update follow-up load failed:", error);
+        return res.json({ quiz: null });
+    }
+});
+
+app.post("/api/admin/quizzes/:quizId/questions", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+
+    const questionBody = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const questionText = normalizeQuizQuestionText(questionBody.question_text ?? questionBody.text);
+    if (!questionText) {
+        return res.status(400).json({
+            error: `question_text is required and must be at most ${QUIZ_QUESTION_TEXT_MAX_LENGTH} characters`,
+        });
+    }
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireDraftQuizRow(client, quizId);
+
+        const nextOrderResult = await client.query(
+            `SELECT COALESCE(MAX(order_no), 0)::INT + 1 AS next_order
+             FROM quiz_questions
+             WHERE quiz_id = $1`,
+            [quizId]
+        );
+        const nextOrder = Number(nextOrderResult.rows[0]?.next_order) || 1;
+
+        await client.query(
+            `INSERT INTO quiz_questions (quiz_id, question_text, order_no)
+             VALUES ($1, $2, $3)`,
+            [quizId, questionText, nextOrder]
+        );
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz question create:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz question create endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to add question" });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const quiz = await getAdminQuizDetail(quizId);
+        return res.status(201).json({ quiz });
+    } catch (error) {
+        console.error("Admin quiz question create follow-up load failed:", error);
+        return res.status(201).json({ quiz: null });
+    }
+});
+
+app.patch("/api/admin/quizzes/:quizId/questions/:questionId", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    const questionId = parsePositiveIntParam(req.params.questionId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+    if (!questionId) return res.status(400).json({ error: "Invalid question id" });
+
+    const questionBody = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const hasQuestionText =
+        Object.prototype.hasOwnProperty.call(questionBody, "question_text") ||
+        Object.prototype.hasOwnProperty.call(questionBody, "text");
+    const hasOrderNo = Object.prototype.hasOwnProperty.call(questionBody, "order_no");
+    if (!hasQuestionText && !hasOrderNo) {
+        return res.status(400).json({ error: "At least one of question_text or order_no is required" });
+    }
+
+    const questionText = hasQuestionText
+        ? normalizeQuizQuestionText(questionBody.question_text ?? questionBody.text)
+        : null;
+    const orderNo = hasOrderNo ? normalizeQuizPositiveInt(questionBody.order_no) : null;
+
+    if (hasQuestionText && !questionText) {
+        return res.status(400).json({
+            error: `question_text must be at most ${QUIZ_QUESTION_TEXT_MAX_LENGTH} characters`,
+        });
+    }
+    if (hasOrderNo && !orderNo) return res.status(400).json({ error: "order_no must be a positive integer" });
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+
+        await requireQuestionRow(client, quizId, questionId, { draftOnly: true });
+
+        if (questionText) {
+            await client.query(
+                `UPDATE quiz_questions
+                 SET question_text = $2,
+                     updated_at = NOW()
+                 WHERE question_id = $1`,
+                [questionId, questionText]
+            );
+        }
+
+        if (orderNo) {
+            const orderedQuestionIds = await loadOrderedQuizQuestionIds(client, quizId);
+            const currentIndex = orderedQuestionIds.indexOf(questionId);
+            if (currentIndex >= 0) {
+                orderedQuestionIds.splice(currentIndex, 1);
+                const targetIndex = Math.max(0, Math.min(orderNo - 1, orderedQuestionIds.length));
+                orderedQuestionIds.splice(targetIndex, 0, questionId);
+                await renumberQuizQuestions(client, quizId, orderedQuestionIds);
+            }
+        }
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz question update:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz question update endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to update question" });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const quiz = await getAdminQuizDetail(quizId);
+        return res.json({ quiz });
+    } catch (error) {
+        console.error("Admin quiz question update follow-up load failed:", error);
+        return res.json({ quiz: null });
+    }
+});
+
+app.delete("/api/admin/quizzes/:quizId/questions/:questionId", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    const questionId = parsePositiveIntParam(req.params.questionId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+    if (!questionId) return res.status(400).json({ error: "Invalid question id" });
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireQuestionRow(client, quizId, questionId, { draftOnly: true });
+
+        await client.query(`DELETE FROM quiz_questions WHERE question_id = $1`, [questionId]);
+        await renumberQuizQuestions(client, quizId);
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz question delete:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz question delete endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to delete question" });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const quiz = await getAdminQuizDetail(quizId);
+        return res.json({ quiz, removed: true });
+    } catch (error) {
+        console.error("Admin quiz question delete follow-up load failed:", error);
+        return res.json({ quiz: null, removed: true });
+    }
+});
+
+app.post("/api/admin/quizzes/:quizId/questions/:questionId/choices", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    const questionId = parsePositiveIntParam(req.params.questionId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+    if (!questionId) return res.status(400).json({ error: "Invalid question id" });
+
+    const choiceBody = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const choiceText = normalizeQuizChoiceText(choiceBody.choice_text ?? choiceBody.text);
+    const isCorrect = choiceBody.is_correct === true;
+
+    if (!choiceText) {
+        return res.status(400).json({
+            error: `choice_text is required and must be at most ${QUIZ_CHOICE_TEXT_MAX_LENGTH} characters`,
+        });
+    }
+
+    const client = await pool.connect();
+    let committed = false;
+    let createdChoiceId = null;
+
+    try {
+        await client.query("BEGIN");
+        await requireQuestionRow(client, quizId, questionId, { draftOnly: true });
+
+        const orderedChoiceIds = await loadOrderedQuizChoiceIds(client, questionId);
+        if (orderedChoiceIds.length >= QUIZ_MAX_CHOICES_PER_QUESTION) {
+            throw createHttpError(409, `Each question may have at most ${QUIZ_MAX_CHOICES_PER_QUESTION} choices`);
+        }
+
+        const insertResult = await client.query(
+            `INSERT INTO quiz_choices (question_id, choice_no, choice_text, is_correct)
+             VALUES ($1, $2, $3, FALSE)
+             RETURNING choice_id::INT AS choice_id`,
+            [questionId, orderedChoiceIds.length + 1, choiceText]
+        );
+        createdChoiceId = Number(insertResult.rows[0]?.choice_id) || null;
+
+        if (isCorrect && createdChoiceId) {
+            await client.query(
+                `UPDATE quiz_choices
+                 SET is_correct = FALSE,
+                     updated_at = NOW()
+                 WHERE question_id = $1
+                   AND choice_id <> $2
+                   AND is_correct = TRUE`,
+                [questionId, createdChoiceId]
+            );
+            await client.query(
+                `UPDATE quiz_choices
+                 SET is_correct = TRUE,
+                     updated_at = NOW()
+                 WHERE choice_id = $1`,
+                [createdChoiceId]
+            );
+        }
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz choice create:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz choice create endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to add choice" });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const quiz = await getAdminQuizDetail(quizId);
+        return res.status(201).json({ quiz });
+    } catch (error) {
+        console.error("Admin quiz choice create follow-up load failed:", error);
+        return res.status(201).json({ quiz: null });
+    }
+});
+
+app.patch("/api/admin/quizzes/:quizId/questions/:questionId/choices/:choiceId", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    const questionId = parsePositiveIntParam(req.params.questionId);
+    const choiceId = parsePositiveIntParam(req.params.choiceId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+    if (!questionId) return res.status(400).json({ error: "Invalid question id" });
+    if (!choiceId) return res.status(400).json({ error: "Invalid choice id" });
+
+    const choiceBody = req.body && typeof req.body === "object" && !Array.isArray(req.body) ? req.body : {};
+    const hasChoiceText =
+        Object.prototype.hasOwnProperty.call(choiceBody, "choice_text") ||
+        Object.prototype.hasOwnProperty.call(choiceBody, "text");
+    const hasIsCorrect = Object.prototype.hasOwnProperty.call(choiceBody, "is_correct");
+    if (!hasChoiceText && !hasIsCorrect) {
+        return res.status(400).json({ error: "At least one of choice_text or is_correct is required" });
+    }
+
+    const choiceText = hasChoiceText
+        ? normalizeQuizChoiceText(choiceBody.choice_text ?? choiceBody.text)
+        : null;
+    if (hasChoiceText && !choiceText) {
+        return res.status(400).json({
+            error: `choice_text must be at most ${QUIZ_CHOICE_TEXT_MAX_LENGTH} characters`,
+        });
+    }
+    if (hasIsCorrect && typeof choiceBody.is_correct !== "boolean") {
+        return res.status(400).json({ error: "is_correct must be a boolean" });
+    }
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireChoiceRow(client, quizId, questionId, choiceId, { draftOnly: true });
+
+        if (choiceText) {
+            await client.query(
+                `UPDATE quiz_choices
+                 SET choice_text = $2,
+                     updated_at = NOW()
+                 WHERE choice_id = $1`,
+                [choiceId, choiceText]
+            );
+        }
+
+        if (hasIsCorrect) {
+            if (choiceBody.is_correct === true) {
+                await client.query(
+                    `UPDATE quiz_choices
+                     SET is_correct = FALSE,
+                         updated_at = NOW()
+                     WHERE question_id = $1
+                       AND choice_id <> $2
+                       AND is_correct = TRUE`,
+                    [questionId, choiceId]
+                );
+                await client.query(
+                    `UPDATE quiz_choices
+                     SET is_correct = TRUE,
+                         updated_at = NOW()
+                     WHERE choice_id = $1`,
+                    [choiceId]
+                );
+            } else {
+                await client.query(
+                    `UPDATE quiz_choices
+                     SET is_correct = FALSE,
+                         updated_at = NOW()
+                     WHERE choice_id = $1`,
+                    [choiceId]
+                );
+            }
+        }
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz choice update:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz choice update endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to update choice" });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const quiz = await getAdminQuizDetail(quizId);
+        return res.json({ quiz });
+    } catch (error) {
+        console.error("Admin quiz choice update follow-up load failed:", error);
+        return res.json({ quiz: null });
+    }
+});
+
+app.delete("/api/admin/quizzes/:quizId/questions/:questionId/choices/:choiceId", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    const questionId = parsePositiveIntParam(req.params.questionId);
+    const choiceId = parsePositiveIntParam(req.params.choiceId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+    if (!questionId) return res.status(400).json({ error: "Invalid question id" });
+    if (!choiceId) return res.status(400).json({ error: "Invalid choice id" });
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireChoiceRow(client, quizId, questionId, choiceId, { draftOnly: true });
+
+        await client.query(`DELETE FROM quiz_choices WHERE choice_id = $1`, [choiceId]);
+        await renumberQuizChoices(client, questionId);
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz choice delete:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz choice delete endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to delete choice" });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const quiz = await getAdminQuizDetail(quizId);
+        return res.json({ quiz, removed: true });
+    } catch (error) {
+        console.error("Admin quiz choice delete follow-up load failed:", error);
+        return res.json({ quiz: null, removed: true });
+    }
+});
+
+app.post("/api/admin/quizzes/:quizId/publish", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        const quiz = await requireDraftQuizRow(client, quizId);
+        const detail = await getAdminQuizDetail(quizId, client);
+        const publishChecks = buildQuizPublishChecks(detail);
+        if (!publishChecks.ready) {
+            throw createHttpError(400, "Quiz is not ready to publish", publishChecks.errors);
+        }
+
+        const publishedForModuleResult = await client.query(
+            `SELECT quiz_id::INT AS quiz_id
+             FROM quizzes
+             WHERE module_id = $1
+               AND status = $2
+               AND quiz_id <> $3
+             FOR UPDATE`,
+            [quiz.module_id, QUIZ_STATUS_PUBLISHED, quizId]
+        );
+        if (publishedForModuleResult.rowCount > 0) {
+            throw createHttpError(
+                409,
+                "This module already has a published quiz. Archive it before publishing another one."
+            );
+        }
+
+        await client.query(
+            `UPDATE quizzes
+             SET status = $2,
+                 published_at = NOW(),
+                 archived_at = NULL,
+                 updated_at = NOW()
+             WHERE quiz_id = $1`,
+            [quizId, QUIZ_STATUS_PUBLISHED]
+        );
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz publish:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            const payload = { error: error.message };
+            if (Array.isArray(error.details) && error.details.length > 0) {
+                payload.details = error.details;
+            }
+            return res.status(error.statusCode).json(payload);
+        }
+        if (error?.code === "23505") {
+            return res.status(409).json({
+                error: "This module already has a published quiz. Archive it before publishing another one.",
+            });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz publish endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to publish quiz" });
+    } finally {
+        client.release();
+    }
+
+    invalidateAdminCaches();
+    try {
+        const quiz = await getAdminQuizDetail(quizId);
+        return res.json({ quiz });
+    } catch (error) {
+        console.error("Admin quiz publish follow-up load failed:", error);
+        return res.json({ quiz: null });
+    }
+});
+
+app.post("/api/admin/quizzes/:quizId/archive", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        const quiz = await requireQuizRow(client, quizId);
+        if (quiz.status !== QUIZ_STATUS_PUBLISHED) {
+            throw createHttpError(409, "Only published quizzes can be archived");
+        }
+
+        await client.query(
+            `UPDATE quizzes
+             SET status = $2,
+                 archived_at = NOW(),
+                 updated_at = NOW()
+             WHERE quiz_id = $1`,
+            [quizId, QUIZ_STATUS_ARCHIVED]
+        );
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz archive:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz archive endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to archive quiz" });
+    } finally {
+        client.release();
+    }
+
+    invalidateAdminCaches();
+    try {
+        const quiz = await getAdminQuizDetail(quizId);
+        return res.json({ quiz });
+    } catch (error) {
+        console.error("Admin quiz archive follow-up load failed:", error);
+        return res.json({ quiz: null });
+    }
+});
+
+app.post("/api/admin/quizzes/:quizId/clone", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+
+    const client = await pool.connect();
+    let committed = false;
+    let createdQuizId = null;
+
+    try {
+        await client.query("BEGIN");
+        const sourceQuiz = await requireQuizRow(client, quizId);
+
+        const insertQuizResult = await client.query(
+            `INSERT INTO quizzes (
+               module_id,
+               cloned_from_quiz_id,
+               title,
+               passing_score_percent,
+               max_attempts,
+               time_limit_minutes,
+               status
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING quiz_id::INT AS quiz_id`,
+            [
+                sourceQuiz.module_id,
+                sourceQuiz.quiz_id,
+                buildDraftCloneQuizTitle(sourceQuiz.title),
+                QUIZ_PASSING_SCORE_PERCENT,
+                sourceQuiz.max_attempts,
+                sourceQuiz.time_limit_minutes,
+                QUIZ_STATUS_DRAFT,
+            ]
+        );
+
+        createdQuizId = Number(insertQuizResult.rows[0]?.quiz_id) || null;
+        if (!createdQuizId) {
+            throw createHttpError(500, "Failed to clone quiz");
+        }
+
+        const questionRowsResult = await client.query(
+            `SELECT question_id::INT AS question_id, question_text, order_no::INT AS order_no
+             FROM quiz_questions
+             WHERE quiz_id = $1
+             ORDER BY order_no, question_id`,
+            [quizId]
+        );
+
+        for (const questionRow of questionRowsResult.rows) {
+            const insertedQuestionResult = await client.query(
+                `INSERT INTO quiz_questions (quiz_id, question_text, order_no)
+                 VALUES ($1, $2, $3)
+                 RETURNING question_id::INT AS question_id`,
+                [createdQuizId, questionRow.question_text, questionRow.order_no]
+            );
+            const createdQuestionId = Number(insertedQuestionResult.rows[0]?.question_id) || null;
+            if (!createdQuestionId) {
+                throw createHttpError(500, "Failed to clone quiz question");
+            }
+
+            const choiceRowsResult = await client.query(
+                `SELECT choice_no::INT AS choice_no, choice_text, is_correct
+                 FROM quiz_choices
+                 WHERE question_id = $1
+                 ORDER BY choice_no, choice_id`,
+                [questionRow.question_id]
+            );
+
+            for (const choiceRow of choiceRowsResult.rows) {
+                await client.query(
+                    `INSERT INTO quiz_choices (question_id, choice_no, choice_text, is_correct)
+                     VALUES ($1, $2, $3, $4)`,
+                    [createdQuestionId, choiceRow.choice_no, choiceRow.choice_text, choiceRow.is_correct === true]
+                );
+            }
+        }
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz clone:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz clone endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to clone quiz" });
+    } finally {
+        client.release();
+    }
+
+    try {
+        const quiz = await getAdminQuizDetail(createdQuizId);
+        return res.status(201).json({ quiz });
+    } catch (error) {
+        console.error("Admin quiz clone follow-up load failed:", error);
+        return res.status(201).json({ quiz: null });
+    }
+});
+
+app.delete("/api/admin/quizzes/:quizId", async (req, res) => {
+    const quizId = parsePositiveIntParam(req.params.quizId);
+    if (!quizId) return res.status(400).json({ error: "Invalid quiz id" });
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        const quiz = await requireQuizRow(client, quizId);
+        if (quiz.status !== QUIZ_STATUS_DRAFT) {
+            throw createHttpError(409, "Only unused draft quizzes can be deleted. Archive published quizzes instead.");
+        }
+
+        const attemptResult = await client.query(
+            `SELECT COUNT(*)::INT AS attempt_count
+             FROM quiz_attempts
+             WHERE quiz_id = $1`,
+            [quizId]
+        );
+        const attemptCount = Number(attemptResult.rows[0]?.attempt_count) || 0;
+        if (attemptCount > 0) {
+            throw createHttpError(409, "Used quizzes cannot be deleted. Archive the quiz instead.");
+        }
+
+        await client.query(`DELETE FROM quizzes WHERE quiz_id = $1`, [quizId]);
+
+        await client.query("COMMIT");
+        committed = true;
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during admin quiz delete:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Admin quiz delete endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to delete quiz" });
+    } finally {
+        client.release();
+    }
+
+    return res.json({ removed: true });
 });
 
 app.get("/api/admin/lessons", async (req, res) => {
@@ -3137,8 +5345,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
                  ),
                  scoped_module_rows AS (
                    SELECT
-                     COALESCE(v.required_sims, 0)::INT AS required_sims,
-                     COALESCE(v.completed_required_sims, 0)::INT AS completed_required_sims
+                     v.module_status
                    FROM v_trainee_module_status v
                    JOIN scoped_standard_trainees st ON st.trainee_id = v.trainee_id
                  ),
@@ -3163,10 +5370,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
                      COALESCE(
                        (
                          SELECT COUNT(*) FILTER (
-                           -- Completion rule: a module row is complete when all required sims are complete.
-                           -- This matches the v_trainee_module_status view semantics and stays resilient
-                           -- even if module_status label strings change in the future.
-                           WHERE completed_required_sims >= required_sims
+                           WHERE module_status = 'COMPLETED'
                          )::INT
                          FROM scoped_module_rows
                        ),
@@ -3211,8 +5415,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
                      v.module_id,
                      COUNT(*)::INT AS total_trainees,
                      COUNT(*) FILTER (
-                       -- Completion rule mirrors summary above: required sims fully completed.
-                       WHERE COALESCE(v.completed_required_sims, 0) >= COALESCE(v.required_sims, 0)
+                       WHERE v.module_status = 'COMPLETED'
                      )::INT AS completed_trainees
                    FROM v_trainee_module_status v
                    JOIN scoped_standard_trainees st ON st.trainee_id = v.trainee_id
@@ -3574,7 +5777,8 @@ app.get("/api/admin/reports/module-status.csv", async (req, res) => {
 
     try {
         const result = await pool.query(
-            `SELECT
+            `${ADMIN_MODULE_STATUS_QUIZ_CTES}
+             SELECT
                b.batch_code,
                t.trainee_code,
                t.first_name,
@@ -3585,11 +5789,18 @@ app.get("/api/admin/reports/module-status.csv", async (req, res) => {
                module_status.module_title,
                module_status.module_status,
                module_status.required_sims,
-               module_status.completed_required_sims
+               module_status.completed_required_sims,
+               COALESCE(module_quiz.quiz_required, FALSE) AS quiz_required,
+               COALESCE(quiz_progress.quiz_passed, FALSE) AS quiz_passed
              FROM trainees t
              JOIN batches b ON b.batch_id = t.batch_id
              JOIN accounts a ON a.trainee_id = t.trainee_id
              JOIN v_trainee_module_status module_status ON module_status.trainee_id = t.trainee_id
+             LEFT JOIN module_quiz_requirements module_quiz
+               ON module_quiz.module_id = module_status.module_id
+             LEFT JOIN trainee_module_quiz_progress quiz_progress
+               ON quiz_progress.trainee_id = module_status.trainee_id
+              AND quiz_progress.module_id = module_status.module_id
              LEFT JOIN modules m ON m.module_id = module_status.module_id
              WHERE b.batch_code = $1
              ORDER BY t.trainee_code ASC, COALESCE(m.order_no, 2147483647) ASC, module_status.module_code ASC`,
@@ -3607,6 +5818,8 @@ app.get("/api/admin/reports/module-status.csv", async (req, res) => {
                 "module_status",
                 "required_sims",
                 "completed_required_sims",
+                "quiz_required",
+                "quiz_passed",
             ]),
         ];
 
@@ -3622,6 +5835,8 @@ app.get("/api/admin/reports/module-status.csv", async (req, res) => {
                     getAdminModuleReportingStatus(row.access_mode, row.module_status),
                     row.required_sims,
                     row.completed_required_sims,
+                    row.quiz_required === true ? "true" : "false",
+                    row.quiz_passed === true ? "true" : "false",
                 ])
             );
         }
@@ -4783,6 +6998,518 @@ app.get("/api/resources/:resourceId/pdf", requireAuth, async (req, res) => {
     } catch (error) {
         console.error("PDF read endpoint failed:", error);
         return res.status(500).json({ error: "Internal server error" });
+    }
+});
+
+app.get("/api/me/modules/:moduleId/quiz", requireAuth, async (req, res) => {
+    const moduleId = parsePositiveIntParam(req.params.moduleId);
+    if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
+
+    const account = await requireLiveTraineeAccess(req, res);
+    if (!account) return;
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireModuleExists(client, moduleId);
+
+        const quiz = await getPublishedTraineeQuizSummaryForModule(moduleId, client);
+        if (!quiz) {
+            await client.query("COMMIT");
+            committed = true;
+            return res.json({ quiz: null });
+        }
+
+        let currentAttempt = await getQuizAttemptByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id, {
+            status: QUIZ_ATTEMPT_STATUS_IN_PROGRESS,
+            lock: true,
+        });
+
+        const expiration = await finalizeExpiredQuizAttemptIfNeeded(client, currentAttempt, {
+            traineeId: account.trainee_id,
+        });
+        currentAttempt = expiration.attempt;
+
+        if (currentAttempt) {
+            throw createHttpError(409, "Quiz attempt is still in progress");
+        }
+
+        const latestResult =
+            expiration.finalized?.attempt ||
+            (await getLatestFinalQuizAttemptByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id));
+        const attemptsUsed = await getQuizAttemptCountByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id);
+
+        await client.query("COMMIT");
+        committed = true;
+        if (expiration.finalized) {
+            invalidateAdminCaches();
+        }
+
+        return res.json({
+            quiz: buildTraineeQuizSummaryPayload(quiz, {
+                currentAttempt,
+                latestResult,
+                attemptsUsed,
+            }),
+        });
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during trainee quiz summary:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Trainee quiz summary endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to load quiz summary" });
+    } finally {
+        client.release();
+    }
+});
+
+app.post("/api/me/modules/:moduleId/quiz/attempt", requireAuth, async (req, res) => {
+    const moduleId = parsePositiveIntParam(req.params.moduleId);
+    if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
+
+    const account = await requireLiveTraineeAccess(req, res);
+    if (!account) return;
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireModuleExists(client, moduleId);
+
+        const quiz = await getPublishedTraineeQuizSummaryForModule(moduleId, client, { lock: true });
+        if (!quiz) {
+            throw createHttpError(404, "No published quiz available for this module");
+        }
+
+        const currentAttempt = await getQuizAttemptByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id, {
+            status: QUIZ_ATTEMPT_STATUS_IN_PROGRESS,
+            lock: true,
+        });
+        const expiration = await finalizeExpiredQuizAttemptIfNeeded(client, currentAttempt, {
+            traineeId: account.trainee_id,
+        });
+
+        const { attempt, created } = await getOrCreateInProgressQuizAttempt(client, quiz.quiz_id, account.trainee_id);
+        const [questions, savedAnswers, attemptsUsed] = await Promise.all([
+            getTraineeQuizQuestions(quiz.quiz_id, client),
+            getQuizAttemptSavedAnswers(client, attempt.attempt_id),
+            getQuizAttemptCountByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id),
+        ]);
+
+        await client.query("COMMIT");
+        committed = true;
+        if (expiration.finalized) {
+            invalidateAdminCaches();
+        }
+
+        return res.json({
+            quiz: buildTraineeQuizSummaryPayload(quiz, {
+                currentAttempt: attempt,
+                attemptsUsed,
+            }),
+            attempt: buildTraineeQuizAttemptPayload(attempt),
+            questions,
+            saved_answers: savedAnswers,
+            created,
+            resumed: created !== true,
+            expired: false,
+            result: null,
+        });
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during trainee quiz start/resume:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Trainee quiz start/resume endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to start quiz attempt" });
+    } finally {
+        client.release();
+    }
+});
+
+app.get("/api/me/modules/:moduleId/quiz/attempt", requireAuth, async (req, res) => {
+    const moduleId = parsePositiveIntParam(req.params.moduleId);
+    if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
+
+    const account = await requireLiveTraineeAccess(req, res);
+    if (!account) return;
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireModuleExists(client, moduleId);
+
+        const quiz = await getPublishedTraineeQuizSummaryForModule(moduleId, client, { lock: true });
+        if (!quiz) {
+            throw createHttpError(404, "No published quiz available for this module");
+        }
+
+        const currentAttempt = await getQuizAttemptByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id, {
+            status: QUIZ_ATTEMPT_STATUS_IN_PROGRESS,
+            lock: true,
+        });
+        if (!currentAttempt) {
+            throw createHttpError(404, "No in-progress quiz attempt");
+        }
+
+        const expiration = await finalizeExpiredQuizAttemptIfNeeded(client, currentAttempt, {
+            traineeId: account.trainee_id,
+        });
+        if (expiration.finalized) {
+            const attemptsUsed = await getQuizAttemptCountByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id);
+
+            await client.query("COMMIT");
+            committed = true;
+            invalidateAdminCaches();
+
+            return res.json({
+                quiz: buildTraineeQuizSummaryPayload(quiz, {
+                    latestResult: expiration.finalized.attempt,
+                    attemptsUsed,
+                }),
+                attempt: null,
+                questions: [],
+                saved_answers: [],
+                expired: true,
+                result: buildTraineeQuizResultPayload(expiration.finalized.attempt),
+            });
+        }
+
+        const [questions, savedAnswers, attemptsUsed] = await Promise.all([
+            getTraineeQuizQuestions(quiz.quiz_id, client),
+            getQuizAttemptSavedAnswers(client, currentAttempt.attempt_id),
+            getQuizAttemptCountByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id),
+        ]);
+
+        await client.query("COMMIT");
+        committed = true;
+
+        return res.json({
+            quiz: buildTraineeQuizSummaryPayload(quiz, {
+                currentAttempt,
+                attemptsUsed,
+            }),
+            attempt: buildTraineeQuizAttemptPayload(currentAttempt),
+            questions,
+            saved_answers: savedAnswers,
+            expired: false,
+            result: null,
+        });
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during trainee quiz attempt fetch:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Trainee quiz attempt fetch endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to load quiz attempt" });
+    } finally {
+        client.release();
+    }
+});
+
+app.put("/api/me/modules/:moduleId/quiz/answers/:questionId", requireAuth, async (req, res) => {
+    const moduleId = parsePositiveIntParam(req.params.moduleId);
+    const questionId = parsePositiveIntParam(req.params.questionId);
+    if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
+    if (!questionId) return res.status(400).json({ error: "Invalid question id" });
+
+    const selectedChoiceId = parsePositiveIntParam(req.body?.selected_choice_id);
+    if (!selectedChoiceId) {
+        return res.status(400).json({ error: "A valid selected_choice_id is required" });
+    }
+
+    const account = await requireLiveTraineeAccess(req, res);
+    if (!account) return;
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireModuleExists(client, moduleId);
+
+        const quiz = await getPublishedTraineeQuizSummaryForModule(moduleId, client, { lock: true });
+        if (!quiz) {
+            throw createHttpError(404, "No published quiz available for this module");
+        }
+
+        const currentAttempt = await getQuizAttemptByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id, {
+            status: QUIZ_ATTEMPT_STATUS_IN_PROGRESS,
+            lock: true,
+        });
+        if (!currentAttempt) {
+            throw createHttpError(409, "No in-progress quiz attempt");
+        }
+
+        const expiration = await finalizeExpiredQuizAttemptIfNeeded(client, currentAttempt, {
+            traineeId: account.trainee_id,
+        });
+        if (expiration.finalized) {
+            const attemptsUsed = await getQuizAttemptCountByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id);
+
+            await client.query("COMMIT");
+            committed = true;
+            invalidateAdminCaches();
+
+            return res.json({
+                quiz: buildTraineeQuizSummaryPayload(quiz, {
+                    latestResult: expiration.finalized.attempt,
+                    attemptsUsed,
+                }),
+                attempt: null,
+                saved_answer: null,
+                expired: true,
+                result: buildTraineeQuizResultPayload(expiration.finalized.attempt),
+            });
+        }
+
+        const savedAnswer = await saveQuizAttemptAnswer(
+            client,
+            currentAttempt.attempt_id,
+            questionId,
+            selectedChoiceId,
+            { traineeId: account.trainee_id }
+        );
+        const attemptsUsed = await getQuizAttemptCountByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id);
+
+        await client.query("COMMIT");
+        committed = true;
+
+        return res.json({
+            quiz: buildTraineeQuizSummaryPayload(quiz, {
+                currentAttempt,
+                attemptsUsed,
+            }),
+            attempt: buildTraineeQuizAttemptPayload(currentAttempt),
+            saved_answer: savedAnswer,
+            expired: false,
+            result: null,
+        });
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during trainee quiz answer save:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Trainee quiz answer save endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to save quiz answer" });
+    } finally {
+        client.release();
+    }
+});
+
+app.post("/api/me/modules/:moduleId/quiz/submit", requireAuth, async (req, res) => {
+    const moduleId = parsePositiveIntParam(req.params.moduleId);
+    if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
+
+    const account = await requireLiveTraineeAccess(req, res);
+    if (!account) return;
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireModuleExists(client, moduleId);
+
+        const quiz = await getPublishedTraineeQuizSummaryForModule(moduleId, client, { lock: true });
+        if (!quiz) {
+            throw createHttpError(404, "No published quiz available for this module");
+        }
+
+        const currentAttempt = await getQuizAttemptByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id, {
+            status: QUIZ_ATTEMPT_STATUS_IN_PROGRESS,
+            lock: true,
+        });
+
+        let finalizedAttempt = null;
+        let expired = false;
+        let didFinalizeAttempt = false;
+
+        if (currentAttempt) {
+            const expiration = await finalizeExpiredQuizAttemptIfNeeded(client, currentAttempt, {
+                traineeId: account.trainee_id,
+            });
+
+            if (expiration.finalized) {
+                finalizedAttempt = expiration.finalized.attempt;
+                expired = true;
+                didFinalizeAttempt = true;
+            } else {
+                const submission = await finalizeQuizAttempt(client, currentAttempt.attempt_id, {
+                    traineeId: account.trainee_id,
+                    status: QUIZ_ATTEMPT_STATUS_SUBMITTED,
+                });
+                finalizedAttempt = submission.attempt;
+                didFinalizeAttempt = true;
+            }
+        } else {
+            finalizedAttempt = await getLatestFinalQuizAttemptByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id);
+        }
+
+        if (!finalizedAttempt) {
+            throw createHttpError(409, "No in-progress quiz attempt");
+        }
+
+        const attemptsUsed = await getQuizAttemptCountByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id);
+
+        await client.query("COMMIT");
+        committed = true;
+        if (didFinalizeAttempt) {
+            invalidateAdminCaches();
+        }
+
+        return res.json({
+            quiz: buildTraineeQuizSummaryPayload(quiz, {
+                latestResult: finalizedAttempt,
+                attemptsUsed,
+            }),
+            result: buildTraineeQuizResultPayload(finalizedAttempt),
+            expired,
+        });
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during trainee quiz submit:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Trainee quiz submit endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to submit quiz attempt" });
+    } finally {
+        client.release();
+    }
+});
+
+app.get("/api/me/modules/:moduleId/quiz/result", requireAuth, async (req, res) => {
+    const moduleId = parsePositiveIntParam(req.params.moduleId);
+    if (!moduleId) return res.status(400).json({ error: "Invalid module id" });
+
+    const account = await requireLiveTraineeAccess(req, res);
+    if (!account) return;
+
+    const client = await pool.connect();
+    let committed = false;
+
+    try {
+        await client.query("BEGIN");
+        await requireModuleExists(client, moduleId);
+
+        const quiz = await getPublishedTraineeQuizSummaryForModule(moduleId, client, { lock: true });
+        if (!quiz) {
+            throw createHttpError(404, "No published quiz available for this module");
+        }
+
+        let currentAttempt = await getQuizAttemptByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id, {
+            status: QUIZ_ATTEMPT_STATUS_IN_PROGRESS,
+            lock: true,
+        });
+        const expiration = await finalizeExpiredQuizAttemptIfNeeded(client, currentAttempt, {
+            traineeId: account.trainee_id,
+        });
+        currentAttempt = expiration.attempt;
+
+        const latestResult =
+            expiration.finalized?.attempt ||
+            (await getLatestFinalQuizAttemptByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id));
+        if (!latestResult) {
+            throw createHttpError(404, "No quiz result available");
+        }
+
+        const attemptsUsed = await getQuizAttemptCountByQuizAndTrainee(client, quiz.quiz_id, account.trainee_id);
+
+        await client.query("COMMIT");
+        committed = true;
+        if (expiration.finalized) {
+            invalidateAdminCaches();
+        }
+
+        return res.json({
+            quiz: buildTraineeQuizSummaryPayload(quiz, {
+                currentAttempt,
+                latestResult,
+                attemptsUsed,
+            }),
+            result: buildTraineeQuizResultPayload(latestResult),
+        });
+    } catch (error) {
+        if (!committed) {
+            try {
+                await client.query("ROLLBACK");
+            } catch (rollbackError) {
+                console.error("Rollback failed during trainee quiz result fetch:", rollbackError);
+            }
+        }
+
+        if (error?.statusCode) {
+            return res.status(error.statusCode).json({ error: error.message });
+        }
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
+
+        console.error("Trainee quiz result endpoint failed:", error);
+        return res.status(500).json({ error: "Failed to load quiz result" });
+    } finally {
+        client.release();
     }
 });
 

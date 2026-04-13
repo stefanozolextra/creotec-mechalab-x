@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { AlertTriangle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, FileText, Loader2, Moon, Sun, Target, CheckCircle2, Lock, } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, BookOpen, ChevronLeft, ChevronRight, Clock3, FileQuestion, FileText, Loader2, Moon, Sun, Target, CheckCircle2, Lock, } from 'lucide-react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import CyberTransition from '../components/CyberTransition';
 import { API_BASE_URL } from '../api/http';
 import { getTraineeDashboard } from '../api/trainees';
+import { getModuleQuizSummary } from '../api/traineeQuizzes';
 import { getAuthRole, getAuthToken } from '../utils/auth';
 import { setNativeSecureScreen } from '../utils/nativeSecureScreen';
 import { resolveSupportedVideoLesson } from '../utils/videoLessons';
@@ -14,6 +15,7 @@ import {
     hasStoredActivityState,
 } from '../simulation/utils/activityState';
 import type { ResourceType } from '../types/traineeDashboard';
+import type { TraineeQuizSummary } from '../types/traineeQuiz';
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
 
 pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
@@ -111,6 +113,9 @@ const ModuleView = () => {
     const [selectedLessonResourceId, setSelectedLessonResourceId] = useState<number | null>(hintedLessonResourceId);
     const [moduleSimulationLaunch, setModuleSimulationLaunch] = useState<ModuleSimulationLaunch | null>(null);
     const [isSimulationRestricted, setIsSimulationRestricted] = useState(false);
+    const [quizSummary, setQuizSummary] = useState<TraineeQuizSummary | null>(null);
+    const [isResolvingQuiz, setIsResolvingQuiz] = useState(true);
+    const [quizResolveError, setQuizResolveError] = useState<string | null>(null);
 
     const [highestUnlockedIndex, setHighestUnlockedIndex] = useState<number>(0);
 
@@ -495,6 +500,44 @@ const ModuleView = () => {
         return () => window.removeEventListener('message', handleVideoMessage);
     }, [resolvedLessonType, currentVideoLesson, handleMarkVideoComplete]);
 
+    useEffect(() => {
+        let active = true;
+        const controller = new AbortController();
+
+        setIsResolvingQuiz(true);
+        setQuizResolveError(null);
+        setQuizSummary(null);
+
+        if (!hasValidModuleId) {
+            setQuizResolveError('Invalid module id.');
+            setIsResolvingQuiz(false);
+            return () => controller.abort();
+        }
+
+        const loadQuizSummary = async () => {
+            try {
+                const response = await getModuleQuizSummary(moduleId, { signal: controller.signal });
+                if (!active || controller.signal.aborted) return;
+                setQuizSummary(response.quiz);
+            } catch (error) {
+                if (!active || controller.signal.aborted) return;
+                setQuizSummary(null);
+                setQuizResolveError(getErrorMessage(error, 'Failed to load module quiz.'));
+            } finally {
+                if (active && !controller.signal.aborted) {
+                    setIsResolvingQuiz(false);
+                }
+            }
+        };
+
+        void loadQuizSummary();
+
+        return () => {
+            active = false;
+            controller.abort();
+        };
+    }, [hasValidModuleId, moduleId]);
+
     return (
         <CyberTransition>
             <div className="min-h-screen flex flex-col bg-slate-50 dark:bg-[#050810] font-sans select-none transition-colors duration-300 relative z-0">
@@ -619,6 +662,84 @@ const ModuleView = () => {
                                             <p className="text-xs font-semibold uppercase tracking-widest">No lessons found</p>
                                         </div>
                                     )}
+                                </div>
+
+                                <div className="border-t border-slate-100 px-6 py-5 dark:border-slate-800/80">
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-[#0B0F19]">
+                                        <div className="mb-3 flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-600 dark:text-cyan-400">
+                                                    Module Quiz
+                                                </p>
+                                                <h3 className="mt-2 text-sm font-black uppercase tracking-wide text-slate-900 dark:text-white">
+                                                    {quizSummary?.title ?? 'Timed Assessment'}
+                                                </h3>
+                                            </div>
+                                            <FileQuestion size={18} className="shrink-0 text-cyan-500" />
+                                        </div>
+
+                                        {isResolvingQuiz ? (
+                                            <div className="flex items-center gap-2 text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                                <Loader2 size={14} className="animate-spin text-cyan-500" />
+                                                Syncing quiz status...
+                                            </div>
+                                        ) : quizResolveError ? (
+                                            <p className="text-xs font-semibold text-red-600 dark:text-red-300">
+                                                {quizResolveError}
+                                            </p>
+                                        ) : quizSummary ? (
+                                            <>
+                                                <div className="grid grid-cols-3 gap-2 text-center">
+                                                    <div className="rounded-xl border border-slate-200 bg-white px-2 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                                                        <p className="text-[9px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">Questions</p>
+                                                        <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">{quizSummary.question_count}</p>
+                                                    </div>
+                                                    <div className="rounded-xl border border-slate-200 bg-white px-2 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                                                        <p className="text-[9px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">Timer</p>
+                                                        <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">{quizSummary.time_limit_minutes}m</p>
+                                                    </div>
+                                                    <div className="rounded-xl border border-slate-200 bg-white px-2 py-2 dark:border-slate-700 dark:bg-slate-900/70">
+                                                        <p className="text-[9px] font-mono uppercase tracking-widest text-slate-500 dark:text-slate-400">Left</p>
+                                                        <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">{quizSummary.attempts_remaining}</p>
+                                                    </div>
+                                                </div>
+
+                                                <div className="mt-3 space-y-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                                                    {quizSummary.current_attempt ? (
+                                                        <p className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
+                                                            <Clock3 size={14} className="shrink-0" />
+                                                            Attempt {quizSummary.current_attempt.attempt_no} is in progress. Resume will keep the original timer.
+                                                        </p>
+                                                    ) : quizSummary.latest_result ? (
+                                                        <p className={quizSummary.latest_result.passed ? 'text-emerald-600 dark:text-emerald-300' : 'text-red-600 dark:text-red-300'}>
+                                                            Last result: {quizSummary.latest_result.passed ? 'Passed' : 'Not Passed'}
+                                                        </p>
+                                                    ) : (
+                                                        <p>Quiz is ready when you are.</p>
+                                                    )}
+
+                                                    {!quizSummary.current_attempt && quizSummary.attempts_remaining === 0 ? (
+                                                        <p className="text-amber-700 dark:text-amber-300">
+                                                            Maximum attempts reached.
+                                                        </p>
+                                                    ) : null}
+                                                </div>
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => navigate(`/module/${moduleId}/quiz`)}
+                                                    className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-500/40 bg-cyan-500/10 px-4 py-3 text-[11px] font-black uppercase tracking-[0.2em] text-cyan-700 transition-colors hover:bg-cyan-500/20 dark:text-cyan-300"
+                                                >
+                                                    <FileQuestion size={14} />
+                                                    {quizSummary.current_attempt ? 'Resume Quiz' : 'Open Quiz'}
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">
+                                                No published quiz assigned to this module yet.
+                                            </p>
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </aside>

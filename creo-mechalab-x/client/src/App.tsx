@@ -10,6 +10,7 @@ import { AnimatePresence } from 'framer-motion';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import ModuleView from './pages/ModuleView';
+import ModuleQuizPage from './pages/ModuleQuizPage';
 import SimulationView from './pages/SimulationView';
 import NotFound from './pages/NotFound';
 
@@ -21,6 +22,7 @@ import CohortsPage from './pages/admin/CohortsPage';
 import ReportsPage from './pages/admin/ReportsPage';
 import LessonsPage from './pages/admin/LessonsPage';
 import ActivityLogsPage from './pages/admin/ActivityLogsPage';
+import QuizzesPage from './pages/admin/QuizzesPage';
 
 // Security Utilities
 import { getAuthRole, type AuthRole } from './utils/auth';
@@ -112,6 +114,14 @@ const AnimatedRoutes = () => {
           }
         />
         <Route
+          path="/module/:id/quiz"
+          element={
+            <RequireAuth role="trainee">
+              <ModuleQuizPage />
+            </RequireAuth>
+          }
+        />
+        <Route
           path="/simulation/:id"
           element={
             <RequireAuth role="trainee">
@@ -135,6 +145,7 @@ const AnimatedRoutes = () => {
           <Route path="cohorts" element={<CohortsPage />} />
           <Route path="reports" element={<ReportsPage />} />
           <Route path="lessons" element={<LessonsPage />} />
+          <Route path="quizzes" element={<QuizzesPage />} />
           <Route path="activity-logs" element={<ActivityLogsPage />} />
           <Route path="*" element={<Navigate to="/admin/dashboard" replace />} />
         </Route>

@@ -485,16 +485,29 @@ export default function TraineeReportsPanel() {
                             </span>
                           </div>
                           <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300 mt-3 pt-3 border-t border-slate-200 dark:border-slate-800/50">
-                            {mod.access_mode === "lesson_only" ? (
-                              <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
-                                Simulation completion is excluded for lesson-only trainees.
-                              </span>
-                            ) : (
-                              <>
-                                <span className="uppercase tracking-wider text-[10px]">Simulations</span>
-                                <span><span className="text-[#3B82F6]">{mod.completed_required_sims}</span> / {mod.required_sims} Completed</span>
-                              </>
-                            )}
+                            <div className="flex w-full flex-col gap-2">
+                              {mod.access_mode === "lesson_only" ? (
+                                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                                  Simulation completion is excluded for lesson-only trainees.
+                                </span>
+                              ) : (
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="uppercase tracking-wider text-[10px]">Simulations</span>
+                                  <span><span className="text-[#3B82F6]">{mod.completed_required_sims}</span> / {mod.required_sims} Completed</span>
+                                </div>
+                              )}
+
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="uppercase tracking-wider text-[10px]">Quiz</span>
+                                {mod.quiz_required ? (
+                                  <span className={mod.quiz_passed ? "text-emerald-600 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300"}>
+                                    {mod.quiz_passed ? "Passed" : "Not Passed"}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-500 dark:text-slate-400">Not Assigned</span>
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
                       );
