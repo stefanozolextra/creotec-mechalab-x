@@ -1,5 +1,7 @@
 export type AdminDashboardSummary = {
   total_trainees: number;
+  standard_trainees: number;
+  lesson_only_trainees: number;
   total_modules: number;
   progress_percent: number;
   completed_module_rows: number;

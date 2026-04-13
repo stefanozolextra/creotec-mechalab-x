@@ -27,6 +27,8 @@ type RawAdminDashboardResponse = {
   };
   summary?: {
     total_trainees?: NumericLike;
+    standard_trainees?: NumericLike;
+    lesson_only_trainees?: NumericLike;
     total_modules?: NumericLike;
     progress_percent?: NumericLike;
     completed_module_rows?: NumericLike;
@@ -78,6 +80,8 @@ export const getAdminDashboard = async (
     },
     summary: {
       total_trainees: toNumber(response.summary?.total_trainees),
+      standard_trainees: toNumber(response.summary?.standard_trainees),
+      lesson_only_trainees: toNumber(response.summary?.lesson_only_trainees),
       total_modules: toNumber(response.summary?.total_modules),
       progress_percent: toNumber(response.summary?.progress_percent),
       completed_module_rows: toNumber(response.summary?.completed_module_rows),

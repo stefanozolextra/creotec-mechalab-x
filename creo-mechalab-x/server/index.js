@@ -63,6 +63,9 @@ const LESSON_RESOURCE_TYPE_PDF = "PDF";
 const LESSON_RESOURCE_TYPE_VIDEO = "VIDEO";
 const DIRECT_VIDEO_ALLOWED_EXTENSIONS = new Set([".mp4", ".webm"]);
 const PDF_ALLOWED_MIME_TYPES = new Set(["application/pdf", "application/x-pdf"]);
+const ACCOUNT_ACCESS_MODE_STANDARD = "standard";
+const ACCOUNT_ACCESS_MODE_LESSON_ONLY = "lesson_only";
+const ACCOUNT_ACCESS_MODES = new Set([ACCOUNT_ACCESS_MODE_STANDARD, ACCOUNT_ACCESS_MODE_LESSON_ONLY]);
 
 const adminDashboardCache = new Map();
 const adminActivityLogsCache = new Map();
@@ -306,6 +309,93 @@ async function requireAdmin(req, res, next) {
     }
 }
 
+function isLessonOnlyAccessMode(accessMode) {
+    return normalizeAccountAccessMode(accessMode) === ACCOUNT_ACCESS_MODE_LESSON_ONLY;
+}
+
+function canAccessSimulationFeatures(accessMode) {
+    return !isLessonOnlyAccessMode(accessMode);
+}
+
+async function getLiveAuthAccountOrRespond(req, res) {
+    const accountId = Number(req.auth?.account_id);
+    if (!Number.isInteger(accountId) || accountId < 1) {
+        res.status(401).json({ error: "Unauthorized" });
+        return null;
+    }
+
+    try {
+        const result = await pool.query(
+            `SELECT account_id, trainee_id, role, is_active, is_system_protected, access_mode
+             FROM accounts
+             WHERE account_id = $1
+             LIMIT 1`,
+            [accountId]
+        );
+
+        if (result.rowCount === 0) {
+            res.status(401).json({ error: "Unauthorized" });
+            return null;
+        }
+
+        const account = result.rows[0];
+        if (!account.is_active) {
+            res.status(403).json({ error: "Account is inactive" });
+            return null;
+        }
+
+        const liveRole = roleFromAccountRow(account);
+        const liveTraineeId = account.trainee_id == null ? null : Number(account.trainee_id);
+        const accessMode = normalizeAccountAccessMode(account.access_mode) || ACCOUNT_ACCESS_MODE_STANDARD;
+
+        req.auth = {
+            ...req.auth,
+            role: liveRole,
+            trainee_id: liveTraineeId,
+            access_mode: accessMode,
+        };
+
+        return {
+            account_id: Number(account.account_id),
+            trainee_id: liveTraineeId,
+            role: liveRole,
+            access_mode: accessMode,
+        };
+    } catch (error) {
+        console.error("Live auth account lookup failed:", error);
+        res.status(500).json({ error: "Internal server error" });
+        return null;
+    }
+}
+
+async function requireLiveTraineeAccess(req, res, requestedTraineeId = null) {
+    const account = await getLiveAuthAccountOrRespond(req, res);
+    if (!account) return null;
+
+    if (account.role !== "trainee") {
+        res.status(403).json({ error: "Forbidden" });
+        return null;
+    }
+
+    if (!Number.isInteger(account.trainee_id) || Number(account.trainee_id) < 1) {
+        res.status(403).json({ error: "Forbidden" });
+        return null;
+    }
+
+    if (requestedTraineeId !== null && requestedTraineeId !== account.trainee_id) {
+        res.status(403).json({ error: "Forbidden" });
+        return null;
+    }
+
+    return account;
+}
+
+function respondLessonOnlySimulationDenied(res) {
+    return res.status(403).json({
+        error: "Simulation access is disabled for lesson-only trainees.",
+    });
+}
+
 function parsePositiveIntParam(value) {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < 1) return null;
@@ -360,6 +450,16 @@ function validateBatchCodeFormat(value) {
 
 function validateDateYYYYMMDD(value) {
     return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function normalizeAccountAccessMode(value, fallback = ACCOUNT_ACCESS_MODE_STANDARD) {
+    if (value == null) return fallback;
+    if (typeof value !== "string") return null;
+
+    const normalized = value.trim().toLowerCase();
+    if (!normalized) return fallback;
+    if (!ACCOUNT_ACCESS_MODES.has(normalized)) return null;
+    return normalized;
 }
 
 function normalizeAdminActivityLogsLimit(limitInput, defaultLimit = 50) {
@@ -758,11 +858,18 @@ async function fetchAdminActivityLogs({ mode = "system", batchCode = null, limit
 }
 
 function mapAdminTraineeRowToItem(row) {
+    const accessMode = normalizeAccountAccessMode(row.access_mode) || ACCOUNT_ACCESS_MODE_STANDARD;
     const totalModules = Number(row.total_modules) || 0;
     const completedModules = Number(row.completed_modules) || 0;
     const percent = totalModules === 0 ? 0 : Math.round((completedModules / totalModules) * 100);
     const label =
-        totalModules === 0 ? "0/0 Modules" : percent === 100 ? "Done" : `${completedModules}/${totalModules} Modules`;
+        accessMode === ACCOUNT_ACCESS_MODE_LESSON_ONLY
+            ? "Lesson Only"
+            : totalModules === 0
+              ? "0/0 Modules"
+              : percent === 100
+                ? "Done"
+                : `${completedModules}/${totalModules} Modules`;
 
     return {
         trainee_id: row.trainee_id,
@@ -772,6 +879,7 @@ function mapAdminTraineeRowToItem(row) {
         last_name: row.last_name,
         email: row.email,
         contact_number: row.contact_number,
+        access_mode: accessMode,
         batch: {
             batch_id: row.batch_id,
             batch_code: row.batch_code,
@@ -794,6 +902,37 @@ function escapeCsvValue(value) {
     return asString;
 }
 
+function getAdminModuleReportingStatus(accessMode, moduleStatus) {
+    return isLessonOnlyAccessMode(accessMode) ? "LESSON_ONLY" : String(moduleStatus || "NOT_STARTED");
+}
+
+async function getAdminModuleStatusRowsForTrainee(traineeId) {
+    const result = await pool.query(
+        `SELECT
+           v.module_id,
+           v.module_code,
+           v.module_title,
+           v.required_sims,
+           v.completed_required_sims,
+           v.module_status,
+           a.access_mode
+         FROM v_trainee_module_status v
+         JOIN accounts a ON a.trainee_id = v.trainee_id
+         WHERE v.trainee_id = $1
+         ORDER BY v.module_id`,
+        [traineeId]
+    );
+
+    return result.rows.map((row) => {
+        const accessMode = normalizeAccountAccessMode(row.access_mode) || ACCOUNT_ACCESS_MODE_STANDARD;
+        return {
+            ...row,
+            access_mode: accessMode,
+            reporting_status: getAdminModuleReportingStatus(accessMode, row.module_status),
+        };
+    });
+}
+
 function buildCsvRow(values) {
     return values.map((value) => escapeCsvValue(value)).join(",");
 }
@@ -808,6 +947,7 @@ async function fetchAdminTraineeById(clientOrPool, traineeId) {
            t.last_name,
            t.email,
            t.contact_number,
+           a.access_mode,
            b.batch_id,
            b.batch_code,
            a.is_active,
@@ -869,6 +1009,9 @@ function parseAdminTraineePayload(body) {
     const batchId = parsePositiveIntParam(body.batch_id);
     if (!batchCode && !batchId) return { error: "batch_code or batch_id is required" };
 
+    const accessMode = normalizeAccountAccessMode(body.access_mode);
+    if (accessMode === null) return { error: "Invalid access_mode" };
+
     const birthDateValue = sanitizeOptionalString(body.birth_date);
     if (birthDateValue && !validateDateYYYYMMDD(birthDateValue)) {
         return { error: "Invalid birth_date format" };
@@ -883,6 +1026,7 @@ function parseAdminTraineePayload(body) {
             contact_number: sanitizeOptionalString(body.contact_number),
             address: sanitizeOptionalString(body.address),
             birth_date: birthDateValue,
+            access_mode: accessMode,
             batch_code: batchCode,
             batch_id: batchId,
         },
@@ -937,6 +1081,7 @@ const CSV_LAST_NAME_HEADERS = new Set(["last name", "lastname"]);
 const CSV_EMAIL_HEADERS = new Set(["email", "student email"]);
 const CSV_MIDDLE_NAME_HEADERS = new Set(["middle name", "middlename"]);
 const CSV_CONTACT_NUMBER_HEADERS = new Set(["contact number", "contactno"]);
+const CSV_ACCESS_MODE_HEADERS = new Set(["access mode", "accessmode"]);
 
 function normalizeCsvHeader(value) {
     return String(value || "")
@@ -953,6 +1098,7 @@ function parseCsvRecordsFromBuffer(buffer) {
         last_name: false,
         email: false,
     };
+    let hasAccessModeColumn = false;
 
     const records = parse(csvText, {
         bom: true,
@@ -973,6 +1119,10 @@ function parseCsvRecordsFromBuffer(buffer) {
                 }
                 if (CSV_MIDDLE_NAME_HEADERS.has(normalizedHeader)) return "middle_name";
                 if (CSV_CONTACT_NUMBER_HEADERS.has(normalizedHeader)) return "contact_number";
+                if (CSV_ACCESS_MODE_HEADERS.has(normalizedHeader)) {
+                    hasAccessModeColumn = true;
+                    return "access_mode";
+                }
                 return null;
             }),
         relax_column_count: true,
@@ -993,8 +1143,9 @@ function parseCsvRecordsFromBuffer(buffer) {
         const last_name = sanitizeOptionalString(record.last_name);
         const email = sanitizeOptionalString(record.email);
         const contact_number = sanitizeOptionalString(record.contact_number);
+        const access_mode = sanitizeOptionalString(record.access_mode);
 
-        if (!first_name && !middle_name && !last_name && !email && !contact_number) continue;
+        if (!first_name && !middle_name && !last_name && !email && !contact_number && !access_mode) continue;
 
         rows.push({
             row: index + 2,
@@ -1003,10 +1154,35 @@ function parseCsvRecordsFromBuffer(buffer) {
             last_name,
             email: email ? normalizeEmail(email) : null,
             contact_number,
+            access_mode,
         });
     }
 
-    return { rows };
+    return {
+        rows,
+        has_access_mode_column: hasAccessModeColumn,
+    };
+}
+
+function parseCsvImportAccessMode(rawAccessMode, hasAccessModeColumn) {
+    if (!hasAccessModeColumn) {
+        return {
+            access_mode: ACCOUNT_ACCESS_MODE_STANDARD,
+            should_update_existing: false,
+        };
+    }
+
+    const accessMode = normalizeAccountAccessMode(rawAccessMode);
+    if (accessMode === null) {
+        return {
+            error: `Invalid access_mode "${rawAccessMode}". Expected standard or lesson_only`,
+        };
+    }
+
+    return {
+        access_mode: accessMode || ACCOUNT_ACCESS_MODE_STANDARD,
+        should_update_existing: true,
+    };
 }
 
 async function ensureBatchByCode(client, batchCode) {
@@ -1054,6 +1230,8 @@ async function lockBatchAndGetNextSequence(client, batchCode) {
 }
 
 async function createTraineeAndAccount(client, payload) {
+    const accessMode = normalizeAccountAccessMode(payload.access_mode) || ACCOUNT_ACCESS_MODE_STANDARD;
+
     const traineeInsert = await client.query(
         `INSERT INTO trainees
           (batch_id, trainee_code, first_name, middle_name, last_name, email, contact_number, address, birth_date)
@@ -1075,10 +1253,10 @@ async function createTraineeAndAccount(client, payload) {
 
     await client.query(
         `INSERT INTO accounts
-          (trainee_id, login_email, password_hash, is_active, role, is_system_protected)
+          (trainee_id, login_email, password_hash, is_active, role, is_system_protected, access_mode)
          VALUES
-          ($1, $2, $3, TRUE, 'trainee', FALSE)`,
-        [traineeInsert.rows[0].trainee_id, payload.email, payload.password_hash]
+          ($1, $2, $3, TRUE, 'trainee', FALSE, $4)`,
+        [traineeInsert.rows[0].trainee_id, payload.email, payload.password_hash, accessMode]
     );
 
     return traineeInsert.rows[0].trainee_id;
@@ -1134,32 +1312,6 @@ async function deleteTraineesWithSafety(client, whereSql, values) {
     }
 
     return { deleted: count };
-}
-
-function getAuthTraineeId(req) {
-    const traineeId = Number(req.auth?.trainee_id);
-    if (!Number.isInteger(traineeId) || traineeId < 1) return null;
-    return traineeId;
-}
-
-function ensureTraineeOwnership(req, res, requestedTraineeId = null) {
-    if (req.auth?.role !== "trainee") {
-        res.status(403).json({ error: "Forbidden" });
-        return null;
-    }
-
-    const authTraineeId = getAuthTraineeId(req);
-    if (!authTraineeId) {
-        res.status(403).json({ error: "Forbidden" });
-        return null;
-    }
-
-    if (requestedTraineeId !== null && requestedTraineeId !== authTraineeId) {
-        res.status(403).json({ error: "Forbidden" });
-        return null;
-    }
-
-    return authTraineeId;
 }
 
 function formatTimestampForFileName(value = new Date()) {
@@ -1345,6 +1497,32 @@ async function getModuleResourcesRowsSafe() {
         const legacyResult = await pool.query(getModuleResourcesLegacySql());
         return legacyResult.rows;
     }
+}
+
+async function getCurriculumContent({ includeSimulations = true } = {}) {
+    const [modulesResult, resources, simulationsResult] = await Promise.all([
+        pool.query("SELECT * FROM modules ORDER BY order_no"),
+        getModuleResourcesRowsSafe(),
+        includeSimulations
+            ? pool.query("SELECT * FROM simulations ORDER BY module_id, order_no")
+            : Promise.resolve({ rows: [] }),
+    ]);
+
+    return {
+        modules: modulesResult.rows,
+        resources,
+        simulations: simulationsResult.rows,
+    };
+}
+
+function shouldIncludeDeveloperCurriculumSimulations(req) {
+    if (process.env.NODE_ENV === "production") return false;
+
+    const rawIncludeSimulations = Array.isArray(req.query?.include_simulations)
+        ? req.query.include_simulations[0]
+        : req.query?.include_simulations;
+
+    return typeof rawIncludeSimulations === "string" && rawIncludeSimulations.trim().toLowerCase() === "developer";
 }
 
 function normalizeLessonTitle(value) {
@@ -1668,16 +1846,24 @@ async function getModuleStatusRowsForTrainee(traineeId) {
 async function getDashboardPayloadForTrainee(traineeId) {
     const profile = await pool.query(
         `SELECT t.trainee_id, t.trainee_code, t.first_name, t.middle_name, t.last_name,
-                t.email, t.contact_number, t.address, t.birth_date, b.batch_code
+                t.email, t.contact_number, t.address, t.birth_date, b.batch_code,
+                a.access_mode
          FROM trainees t
          JOIN batches b ON b.batch_id = t.batch_id
+         JOIN accounts a ON a.trainee_id = t.trainee_id
          WHERE t.trainee_id = $1`,
         [traineeId]
     );
 
     if (profile.rows.length === 0) return null;
 
-    const [moduleStatus, modules, resources, simulations, simulationProgress] = await Promise.all([
+    const traineeProfile = {
+        ...profile.rows[0],
+        access_mode: normalizeAccountAccessMode(profile.rows[0]?.access_mode) || ACCOUNT_ACCESS_MODE_STANDARD,
+    };
+    const canAccessSimulationsForTrainee = canAccessSimulationFeatures(traineeProfile.access_mode);
+
+    const [moduleStatus, moduleContent, simulationProgress] = await Promise.all([
         pool.query(
             `SELECT module_id, module_code, module_title, required_sims, completed_required_sims, module_status
              FROM v_trainee_module_status
@@ -1685,32 +1871,28 @@ async function getDashboardPayloadForTrainee(traineeId) {
              ORDER BY module_id`,
             [traineeId]
         ),
-        pool.query("SELECT * FROM modules ORDER BY order_no"),
-        getModuleResourcesRowsSafe(),
-        pool.query("SELECT * FROM simulations ORDER BY module_id, order_no"),
-        pool.query(
-            `SELECT
-               tsp.simulation_id,
-               (tsp.status = 'COMPLETED') AS is_completed,
-               tsp.best_score,
-               tsp.completed_at,
-               COALESCE(tsp.last_accessed_at, tsp.completed_at, tsp.started_at) AS updated_at
-             FROM trainee_simulation_progress tsp
-             JOIN simulations s ON s.simulation_id = tsp.simulation_id
-             WHERE tsp.trainee_id = $1
-             ORDER BY s.module_id, s.order_no, tsp.simulation_id`,
-            [traineeId]
-        ),
+        getCurriculumContent({ includeSimulations: canAccessSimulationsForTrainee }),
+        canAccessSimulationsForTrainee
+            ? pool.query(
+                `SELECT
+                   tsp.simulation_id,
+                   (tsp.status = 'COMPLETED') AS is_completed,
+                   tsp.best_score,
+                   tsp.completed_at,
+                   COALESCE(tsp.last_accessed_at, tsp.completed_at, tsp.started_at) AS updated_at
+                 FROM trainee_simulation_progress tsp
+                 JOIN simulations s ON s.simulation_id = tsp.simulation_id
+                 WHERE tsp.trainee_id = $1
+                 ORDER BY s.module_id, s.order_no, tsp.simulation_id`,
+                [traineeId]
+            )
+            : Promise.resolve({ rows: [] }),
     ]);
 
     return {
-        trainee: profile.rows[0],
+        trainee: traineeProfile,
         moduleStatus: moduleStatus.rows,
-        moduleContent: {
-            modules: modules.rows,
-            resources,
-            simulations: simulations.rows,
-        },
+        moduleContent,
         simulationProgress: simulationProgress.rows,
     };
 }
@@ -2940,21 +3122,43 @@ app.get("/api/admin/dashboard", async (req, res) => {
         const payload = await getOrCreateInflight(adminDashboardInflight, cacheKey, async () => {
             const summaryResult = await pool.query(
                 `WITH scoped_trainees AS (
-                   SELECT t.trainee_id
+                   SELECT
+                     t.trainee_id,
+                     COALESCE(a.access_mode, '${ACCOUNT_ACCESS_MODE_STANDARD}') AS access_mode
                    FROM trainees t
+                   JOIN accounts a ON a.trainee_id = t.trainee_id
                    JOIN batches b ON b.batch_id = t.batch_id
                    WHERE ($1::TEXT IS NULL OR b.batch_code = $1)
+                 ),
+                 scoped_standard_trainees AS (
+                   SELECT trainee_id
+                   FROM scoped_trainees
+                   WHERE access_mode <> '${ACCOUNT_ACCESS_MODE_LESSON_ONLY}'
                  ),
                  scoped_module_rows AS (
                    SELECT
                      COALESCE(v.required_sims, 0)::INT AS required_sims,
                      COALESCE(v.completed_required_sims, 0)::INT AS completed_required_sims
                    FROM v_trainee_module_status v
-                   JOIN scoped_trainees st ON st.trainee_id = v.trainee_id
+                   JOIN scoped_standard_trainees st ON st.trainee_id = v.trainee_id
                  ),
                  summary_stats AS (
                    SELECT
                      COALESCE((SELECT COUNT(*)::INT FROM scoped_trainees), 0)::INT AS total_trainees,
+                     COALESCE(
+                       (
+                         SELECT COUNT(*) FILTER (WHERE access_mode <> '${ACCOUNT_ACCESS_MODE_LESSON_ONLY}')::INT
+                         FROM scoped_trainees
+                       ),
+                       0
+                     )::INT AS standard_trainees,
+                     COALESCE(
+                       (
+                         SELECT COUNT(*) FILTER (WHERE access_mode = '${ACCOUNT_ACCESS_MODE_LESSON_ONLY}')::INT
+                         FROM scoped_trainees
+                       ),
+                       0
+                     )::INT AS lesson_only_trainees,
                      COALESCE((SELECT COUNT(*)::INT FROM modules), 0)::INT AS total_modules,
                      COALESCE(
                        (
@@ -2972,6 +3176,8 @@ app.get("/api/admin/dashboard", async (req, res) => {
                  )
                  SELECT
                    summary_stats.total_trainees,
+                   summary_stats.standard_trainees,
+                   summary_stats.lesson_only_trainees,
                    summary_stats.total_modules,
                    summary_stats.completed_module_rows,
                    summary_stats.total_module_rows,
@@ -2987,10 +3193,18 @@ app.get("/api/admin/dashboard", async (req, res) => {
 
             const chartResult = await pool.query(
                 `WITH scoped_trainees AS (
-                   SELECT t.trainee_id
+                   SELECT
+                     t.trainee_id,
+                     COALESCE(a.access_mode, '${ACCOUNT_ACCESS_MODE_STANDARD}') AS access_mode
                    FROM trainees t
+                   JOIN accounts a ON a.trainee_id = t.trainee_id
                    JOIN batches b ON b.batch_id = t.batch_id
                    WHERE ($1::TEXT IS NULL OR b.batch_code = $1)
+                 ),
+                 scoped_standard_trainees AS (
+                   SELECT trainee_id
+                   FROM scoped_trainees
+                   WHERE access_mode <> '${ACCOUNT_ACCESS_MODE_LESSON_ONLY}'
                  ),
                  module_completion AS (
                    SELECT
@@ -3001,7 +3215,7 @@ app.get("/api/admin/dashboard", async (req, res) => {
                        WHERE COALESCE(v.completed_required_sims, 0) >= COALESCE(v.required_sims, 0)
                      )::INT AS completed_trainees
                    FROM v_trainee_module_status v
-                   JOIN scoped_trainees st ON st.trainee_id = v.trainee_id
+                   JOIN scoped_standard_trainees st ON st.trainee_id = v.trainee_id
                    GROUP BY v.module_id
                  )
                  SELECT
@@ -3056,6 +3270,8 @@ app.get("/api/admin/dashboard", async (req, res) => {
                 scope: { batch_code: scopedBatchCode },
                 summary: {
                     total_trainees: Number(summaryRow.total_trainees) || 0,
+                    standard_trainees: Number(summaryRow.standard_trainees) || 0,
+                    lesson_only_trainees: Number(summaryRow.lesson_only_trainees) || 0,
                     total_modules: Number(summaryRow.total_modules) || 0,
                     progress_percent: progressPercent,
                     completed_module_rows: completedModuleRows,
@@ -3267,6 +3483,7 @@ app.get("/api/admin/trainees/export-csv", async (req, res) => {
                t.last_name,
                t.email,
                t.contact_number,
+               a.access_mode,
                b.batch_id,
                b.batch_code,
                a.is_active,
@@ -3297,6 +3514,7 @@ app.get("/api/admin/trainees/export-csv", async (req, res) => {
                 "last_name",
                 "email",
                 "contact_number",
+                "access_mode",
                 "status",
                 "progress_percent",
                 "progress_label",
@@ -3314,8 +3532,9 @@ app.get("/api/admin/trainees/export-csv", async (req, res) => {
                     item.last_name,
                     item.email,
                     item.contact_number,
+                    item.access_mode,
                     item.status,
-                    item.progress.percent,
+                    item.access_mode === ACCOUNT_ACCESS_MODE_LESSON_ONLY ? "" : item.progress.percent,
                     item.progress.label,
                 ])
             );
@@ -3361,6 +3580,7 @@ app.get("/api/admin/reports/module-status.csv", async (req, res) => {
                t.first_name,
                t.middle_name,
                t.last_name,
+               a.access_mode,
                module_status.module_code,
                module_status.module_title,
                module_status.module_status,
@@ -3368,6 +3588,7 @@ app.get("/api/admin/reports/module-status.csv", async (req, res) => {
                module_status.completed_required_sims
              FROM trainees t
              JOIN batches b ON b.batch_id = t.batch_id
+             JOIN accounts a ON a.trainee_id = t.trainee_id
              JOIN v_trainee_module_status module_status ON module_status.trainee_id = t.trainee_id
              LEFT JOIN modules m ON m.module_id = module_status.module_id
              WHERE b.batch_code = $1
@@ -3380,6 +3601,7 @@ app.get("/api/admin/reports/module-status.csv", async (req, res) => {
                 "batch_code",
                 "trainee_code",
                 "trainee_name",
+                "access_mode",
                 "module_code",
                 "module_title",
                 "module_status",
@@ -3394,9 +3616,10 @@ app.get("/api/admin/reports/module-status.csv", async (req, res) => {
                     row.batch_code,
                     row.trainee_code,
                     buildTraineeFullName(row),
+                    normalizeAccountAccessMode(row.access_mode) || ACCOUNT_ACCESS_MODE_STANDARD,
                     row.module_code,
                     row.module_title,
-                    row.module_status,
+                    getAdminModuleReportingStatus(row.access_mode, row.module_status),
                     row.required_sims,
                     row.completed_required_sims,
                 ])
@@ -3649,6 +3872,7 @@ app.post("/api/admin/trainees/import-csv", (req, res) => {
         }
 
         const rows = parsedCsv.rows;
+        const hasAccessModeColumn = parsedCsv.has_access_mode_column === true;
         const summary = {
             processed: 0,
             created: 0,
@@ -3693,6 +3917,18 @@ app.post("/api/admin/trainees/import-csv", (req, res) => {
                 }
 
                 const normalizedEmail = normalizeEmail(row.email);
+                const accessModeResult = parseCsvImportAccessMode(row.access_mode, hasAccessModeColumn);
+                if (accessModeResult.error) {
+                    summary.skipped += 1;
+                    summary.errors += 1;
+                    row_errors.push({
+                        row: row.row,
+                        email: normalizedEmail,
+                        error: accessModeResult.error,
+                    });
+                    continue;
+                }
+
                 const existing = await findTraineeByEmail(client, normalizedEmail);
 
                 if (existing) {
@@ -3727,13 +3963,22 @@ app.post("/api/admin/trainees/import-csv", (req, res) => {
                         ]
                     );
 
-                    const accountUpdate = await client.query(
-                        `UPDATE accounts
-                         SET login_email = $2
-                         WHERE trainee_id = $1
-                         RETURNING trainee_id`,
-                        [existing.trainee_id, normalizedEmail]
-                    );
+                    const accountUpdate = accessModeResult.should_update_existing
+                        ? await client.query(
+                              `UPDATE accounts
+                               SET login_email = $2,
+                                   access_mode = $3
+                               WHERE trainee_id = $1
+                               RETURNING trainee_id`,
+                              [existing.trainee_id, normalizedEmail, accessModeResult.access_mode]
+                          )
+                        : await client.query(
+                              `UPDATE accounts
+                               SET login_email = $2
+                               WHERE trainee_id = $1
+                               RETURNING trainee_id`,
+                              [existing.trainee_id, normalizedEmail]
+                          );
 
                     if (accountUpdate.rowCount === 0) {
                         summary.skipped += 1;
@@ -3765,6 +4010,7 @@ app.post("/api/admin/trainees/import-csv", (req, res) => {
                         address: null,
                         birth_date: null,
                         password_hash: defaultPasswordHash,
+                        access_mode: accessModeResult.access_mode,
                     });
                     summary.created += 1;
                 } catch (rowError) {
@@ -3945,6 +4191,7 @@ app.get("/api/admin/trainees", async (req, res) => {
            t.last_name,
            t.email,
            t.contact_number,
+           a.access_mode,
            b.batch_id,
            b.batch_code,
            a.is_active,
@@ -4005,7 +4252,7 @@ app.get("/api/admin/trainees/:id/module-status", async (req, res) => {
             return res.status(404).json({ error: "Trainee not found" });
         }
 
-        const rows = await getModuleStatusRowsForTrainee(traineeId);
+        const rows = await getAdminModuleStatusRowsForTrainee(traineeId);
         return res.json(rows);
     } catch (error) {
         console.error("Admin trainee module status endpoint failed:", error);
@@ -4182,10 +4429,11 @@ app.put("/api/admin/trainees/:id", async (req, res) => {
 
         const accountUpdate = await client.query(
             `UPDATE accounts
-         SET login_email = $2
+         SET login_email = $2,
+             access_mode = $3
          WHERE trainee_id = $1
          RETURNING trainee_id`,
-            [traineeId, payload.email]
+            [traineeId, payload.email, payload.access_mode]
         );
 
         if (accountUpdate.rowCount === 0) {
@@ -4457,6 +4705,9 @@ app.get("/api/resources/:resourceId/pdf", requireAuth, async (req, res) => {
     if (!resourceId) return res.status(400).json({ error: "Invalid resource id" });
 
     try {
+        const account = await getLiveAuthAccountOrRespond(req, res);
+        if (!account) return;
+
         const result = await pool.query(
             `SELECT
                mr.resource_id::INT AS resource_id,
@@ -4538,10 +4789,13 @@ app.get("/api/resources/:resourceId/pdf", requireAuth, async (req, res) => {
 // Modules + resources + simulations
 app.get("/api/modules", requireAuth, async (req, res) => {
     try {
-        const modules = await pool.query("SELECT * FROM modules ORDER BY order_no;");
-        const resources = await pool.query(getModuleResourcesWithFilesSql());
-        const sims = await pool.query("SELECT * FROM simulations ORDER BY module_id, order_no;");
-        res.json({ modules: modules.rows, resources: resources.rows, simulations: sims.rows });
+        const account = await getLiveAuthAccountOrRespond(req, res);
+        if (!account) return;
+
+        const curriculum = await getCurriculumContent({
+            includeSimulations: canAccessSimulationFeatures(account.access_mode),
+        });
+        res.json(curriculum);
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
@@ -4552,7 +4806,8 @@ app.get("/api/trainees/:traineeId/module-status", requireAuth, async (req, res) 
     try {
         const traineeId = parsePositiveIntParam(req.params.traineeId);
         if (!traineeId) return res.status(400).json({ error: "Invalid traineeId" });
-        if (!ensureTraineeOwnership(req, res, traineeId)) return;
+        const account = await requireLiveTraineeAccess(req, res, traineeId);
+        if (!account) return;
 
         const rows = await getModuleStatusRowsForTrainee(traineeId);
         res.json(rows);
@@ -4563,10 +4818,10 @@ app.get("/api/trainees/:traineeId/module-status", requireAuth, async (req, res) 
 
 app.get("/api/me/module-status", requireAuth, async (req, res) => {
     try {
-        const traineeId = ensureTraineeOwnership(req, res);
-        if (!traineeId) return;
+        const account = await requireLiveTraineeAccess(req, res);
+        if (!account) return;
 
-        const rows = await getModuleStatusRowsForTrainee(traineeId);
+        const rows = await getModuleStatusRowsForTrainee(account.trainee_id);
         res.json(rows);
     } catch (e) {
         res.status(500).json({ error: e.message });
@@ -4599,7 +4854,8 @@ app.get("/api/trainees/:traineeId/dashboard", requireAuth, async (req, res) => {
     try {
         const traineeId = parsePositiveIntParam(req.params.traineeId);
         if (!traineeId) return res.status(400).json({ error: "Invalid traineeId" });
-        if (!ensureTraineeOwnership(req, res, traineeId)) return;
+        const account = await requireLiveTraineeAccess(req, res, traineeId);
+        if (!account) return;
 
         const payload = await getDashboardPayloadForTrainee(traineeId);
         if (!payload) return res.status(404).json({ error: "Trainee not found" });
@@ -4613,15 +4869,10 @@ app.get("/api/trainees/:traineeId/dashboard", requireAuth, async (req, res) => {
 
 app.get("/api/curriculum/public", async (req, res) => {
     try {
-        const modules = await pool.query("SELECT * FROM modules ORDER BY order_no");
-        const resources = await getModuleResourcesRowsSafe();
-        const simulations = await pool.query("SELECT * FROM simulations ORDER BY module_id, order_no");
-        
-        res.json({
-            modules: modules.rows,
-            resources: resources,
-            simulations: simulations.rows
+        const curriculum = await getCurriculumContent({
+            includeSimulations: shouldIncludeDeveloperCurriculumSimulations(req),
         });
+        res.json(curriculum);
     } catch (e) {
         console.error("Public curriculum endpoint failed:", e);
         res.status(500).json({ error: "Internal server error" });
@@ -4630,10 +4881,10 @@ app.get("/api/curriculum/public", async (req, res) => {
 
 app.get("/api/me/dashboard", requireAuth, async (req, res) => {
     try {
-        const traineeId = ensureTraineeOwnership(req, res);
-        if (!traineeId) return;
+        const account = await requireLiveTraineeAccess(req, res);
+        if (!account) return;
 
-        const payload = await getDashboardPayloadForTrainee(traineeId);
+        const payload = await getDashboardPayloadForTrainee(account.trainee_id);
         if (!payload) return res.status(404).json({ error: "Trainee not found" });
 
         res.json(payload);
@@ -4647,7 +4898,11 @@ app.post("/api/trainees/:traineeId/simulations/:simulationId/complete", requireA
     try {
         const traineeId = parsePositiveIntParam(req.params.traineeId);
         if (!traineeId) return res.status(400).json({ error: "Invalid traineeId" });
-        if (!ensureTraineeOwnership(req, res, traineeId)) return;
+        const account = await requireLiveTraineeAccess(req, res, traineeId);
+        if (!account) return;
+        if (!canAccessSimulationFeatures(account.access_mode)) {
+            return respondLessonOnlySimulationDenied(res);
+        }
 
         const simulationId = parsePositiveIntParam(req.params.simulationId);
         if (!simulationId) return res.status(400).json({ error: "Invalid simulationId" });
@@ -4675,8 +4930,11 @@ app.post("/api/trainees/:traineeId/simulations/:simulationId/complete", requireA
 
 app.post("/api/me/simulations/:simulationId/complete", requireAuth, async (req, res) => {
     try {
-        const traineeId = ensureTraineeOwnership(req, res);
-        if (!traineeId) return;
+        const account = await requireLiveTraineeAccess(req, res);
+        if (!account) return;
+        if (!canAccessSimulationFeatures(account.access_mode)) {
+            return respondLessonOnlySimulationDenied(res);
+        }
 
         const simulationId = parsePositiveIntParam(req.params.simulationId);
         if (!simulationId) return res.status(400).json({ error: "Invalid simulationId" });
@@ -4690,7 +4948,7 @@ app.post("/api/me/simulations/:simulationId/complete", requireAuth, async (req, 
             bestScore = rawBestScore;
         }
 
-        const completionResult = await completeSimulationForTrainee(traineeId, simulationId, bestScore);
+        const completionResult = await completeSimulationForTrainee(account.trainee_id, simulationId, bestScore);
         if (completionResult.error) return res.status(completionResult.status).json({ error: completionResult.error });
 
         res.json({ ok: true });

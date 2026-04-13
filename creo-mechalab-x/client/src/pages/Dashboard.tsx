@@ -108,6 +108,8 @@ const isCompletedValue = (value: boolean | string | number | null | undefined): 
     return false;
 };
 
+const LESSON_ONLY_SIMULATION_MESSAGE = 'Simulation access is disabled for lesson-only trainees.';
+
 // --- FIX: Now checks both DB and LocalStorage to find the true next activity ---
 const getNextSimulationByModuleId = (
     simulations: SimulationApi[],
@@ -305,6 +307,9 @@ const Dashboard = () => {
         return map;
     }, [dashboardState.data]);
 
+    const traineeAccessMode = dashboardState.data?.trainee?.access_mode ?? 'standard';
+    const isLessonOnlyTrainee = traineeAccessMode === 'lesson_only';
+
     const simulationProgressById = useMemo(() => {
         const map = new Map<number, boolean>();
         const data = dashboardState.data;
@@ -330,7 +335,9 @@ const Dashboard = () => {
             const moduleStatus = moduleStatusByModuleId.get(moduleId);
             let status = getLevelStatus(moduleStatus?.module_status);
 
-            if (status === 'locked') {
+            if (isLessonOnlyTrainee && status === 'locked') {
+                status = 'unlocked';
+            } else if (status === 'locked') {
                 if (index === 0) {
                     status = 'unlocked';
                 } else {
@@ -352,7 +359,7 @@ const Dashboard = () => {
                 score: getScorePercent(moduleStatus),
             };
         });
-    }, [dashboardState.data, moduleStatusByModuleId]);
+    }, [dashboardState.data, isLessonOnlyTrainee, moduleStatusByModuleId]);
 
     const nextSimulationByModuleId = useMemo(() => {
         const simulations = dashboardState.data?.moduleContent.simulations ?? [];
@@ -496,7 +503,7 @@ const Dashboard = () => {
     };
 
     const handleStartSimulation = () => {
-        if (!selectedSimulation || !selectedLevelData) return;
+        if (!selectedSimulation || !selectedLevelData || isLessonOnlyTrainee) return;
         const targetRoute = selectedSimulation.order_no ?? 1;
         navigate(`/simulation/${targetRoute}`, {
             state: {
@@ -714,12 +721,12 @@ const Dashboard = () => {
                                                                 <button
                                                                     type="button"
                                                                     onClick={handleStartSimulation}
-                                                                    disabled={!selectedSimulationId}
+                                                                    disabled={!selectedSimulationId || isLessonOnlyTrainee}
                                                                     className="group relative overflow-hidden w-full bg-cyan-600 dark:bg-cyan-500 disabled:opacity-60 disabled:cursor-not-allowed text-white dark:text-slate-900 py-2.5 text-[10px] sm:text-xs uppercase tracking-widest font-black flex items-center justify-center gap-2 transition-all shadow-[0_0_10px_rgba(6,182,212,0.2)]"
                                                                 >
                                                                     <span className="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-500 ease-out" />
                                                                     <Play size={12} fill="currentColor" />
-                                                                    {selectedSimulationId ? 'Initiate Simulation' : 'Offline'}
+                                                                    {isLessonOnlyTrainee ? 'Lesson-Only Access' : selectedSimulationId ? 'Initiate Simulation' : 'Offline'}
                                                                 </button>
                                                                 <button
                                                                     type="button"
@@ -731,6 +738,11 @@ const Dashboard = () => {
                                                                     {selectedModuleHasLessonContent ? 'Open Lesson Content' : 'No Lesson Content'}
                                                                 </button>
                                                             </div>
+                                                            {isLessonOnlyTrainee ? (
+                                                                <p className="mt-3 text-[10px] sm:text-xs font-mono text-amber-600 dark:text-amber-300">
+                                                                    {LESSON_ONLY_SIMULATION_MESSAGE}
+                                                                </p>
+                                                            ) : null}
                                                         </div>
                                                     </div>
                                                 )}
@@ -850,18 +862,23 @@ const Dashboard = () => {
                                             {!selectedModuleHasLessonContent ? (
                                                 <p className="mb-6 lg:mb-8 text-[10px] lg:text-xs font-mono text-slate-500">No lesson content available yet.</p>
                                             ) : null}
+                                            {isLessonOnlyTrainee ? (
+                                                <p className="mb-6 lg:mb-8 text-[10px] lg:text-xs font-mono text-amber-600 dark:text-amber-300">
+                                                    {LESSON_ONLY_SIMULATION_MESSAGE}
+                                                </p>
+                                            ) : null}
 
                                             <div className="space-y-3 lg:space-y-4">
                                                 <button
                                                     id="tour-simulation-btn"
                                                     type="button"
                                                     onClick={handleStartSimulation}
-                                                    disabled={!selectedSimulationId}
+                                                    disabled={!selectedSimulationId || isLessonOnlyTrainee}
                                                     className="group/btn relative overflow-hidden w-full bg-cyan-600 dark:bg-cyan-500 disabled:opacity-50 disabled:grayscale text-white dark:text-slate-900 py-3 lg:py-4 text-[10px] lg:text-xs uppercase tracking-widest font-black flex items-center justify-center gap-2 lg:gap-3 transition-all shadow-[0_0_15px_rgba(6,182,212,0.3)] hover:shadow-[0_0_25px_rgba(6,182,212,0.6)]"
                                                 >
                                                     <span className="absolute inset-0 bg-white/30 translate-x-[-100%] group-hover/btn:translate-x-[100%] transition-transform duration-500 ease-out" />
                                                     <Play size={16} fill="currentColor" className="lg:w-[18px] lg:h-[18px]" />
-                                                    {selectedSimulationId ? 'Initiate Simulation' : 'System Offline'}
+                                                    {isLessonOnlyTrainee ? 'Lesson-Only Access' : selectedSimulationId ? 'Initiate Simulation' : 'System Offline'}
                                                 </button>
 
                                                 <button
@@ -936,6 +953,12 @@ const Dashboard = () => {
                                                 <span className="text-slate-500 shrink-0">Designation</span>
                                                 <span className="text-slate-900 dark:text-white font-bold text-right truncate ml-2">
                                                     {trainee ? `${trainee.first_name} ${trainee.last_name}` : 'AWAITING_DATA'}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between items-center bg-slate-50 dark:bg-[#0B1120] p-4 border border-slate-200 dark:border-slate-800">
+                                                <span className="text-slate-500 shrink-0">Access Mode</span>
+                                                <span className="text-slate-900 dark:text-white font-bold text-right truncate ml-2">
+                                                    {isLessonOnlyTrainee ? 'Lesson Only' : 'Standard'}
                                                 </span>
                                             </div>
                                         </div>

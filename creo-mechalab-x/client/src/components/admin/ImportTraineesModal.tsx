@@ -156,6 +156,17 @@ export default function ImportTraineesModal({
           />
         </label>
 
+        <div className="rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/20 p-3 space-y-1">
+          <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">CSV format</p>
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            Required columns: <code>first_name</code>, <code>last_name</code>, <code>email</code>.
+            Optional columns: <code>middle_name</code>, <code>contact_number</code>, <code>access_mode</code>.
+          </p>
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            If <code>access_mode</code> is omitted, imports default to <code>standard</code>. Accepted values are <code>standard</code> and <code>lesson_only</code>.
+          </p>
+        </div>
+
         <label className="flex items-start gap-3 cursor-pointer select-none">
           <input
             type="checkbox"

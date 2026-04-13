@@ -20,11 +20,14 @@ import { getAuthToken } from "../../utils/auth";
 import TutorialGuide, { type TutorialStep } from "../../components/TutorialGuide";
 
 type StatusFilter = "all" | "active" | "inactive";
-type PillStatus = "Passed" | "Active" | "Inactive";
+type PillStatus = "Passed" | "Active" | "Inactive" | "Lesson Only";
 type ActiveView = "trainees" | "reports";
 
 const statusPillClass = (status: PillStatus): string => {
   if (status === "Passed") return "bg-[#22C55E] text-white";
+  if (status === "Lesson Only") {
+    return "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30";
+  }
   if (status === "Active") return "bg-[#3B82F6] text-white";
   return "bg-[#64748B] text-white";
 };
@@ -32,6 +35,18 @@ const statusPillClass = (status: PillStatus): string => {
 const toDisplayName = (item: AdminTraineeItem): string => {
   const middle = item.middle_name ? ` ${item.middle_name}` : "";
   return `${item.first_name}${middle} ${item.last_name}`.replace(/\s+/g, " ").trim();
+};
+
+const formatAccessMode = (mode: AdminTraineeItem["access_mode"]): string => {
+  if (mode === "lesson_only") return "Lesson Only";
+  return "Standard";
+};
+
+const accessModePillClass = (mode: AdminTraineeItem["access_mode"]): string => {
+  if (mode === "lesson_only") {
+    return "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30";
+  }
+  return "bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700";
 };
 
 const toInitials = (name: string): string => {
@@ -202,7 +217,13 @@ export default function UsersPage() {
 
   const rows = useMemo(() => {
     return items.map((item) => {
-      const displayStatus: PillStatus = item.progress.percent === 100 ? "Passed" : item.status === "active" ? "Active" : "Inactive";
+      const displayStatus: PillStatus = item.status !== "active"
+        ? "Inactive"
+        : item.access_mode === "lesson_only"
+          ? "Lesson Only"
+          : item.progress.percent === 100
+            ? "Passed"
+            : "Active";
       const fullName = toDisplayName(item);
       return {
         id: String(item.trainee_id),
@@ -639,26 +660,41 @@ export default function UsersPage() {
                         <div className="leading-tight">
                           {/* OPTIMIZED: Dynamic truncation ensures names shrink aggressively on small screens */}
                           <div className="font-extrabold text-[#0B1B3D] dark:text-slate-200 truncate max-w-[100px] sm:max-w-[140px] xl:max-w-[200px]">{row.fullName}</div>
-                          <div className="text-[10px] text-slate-400 font-medium mt-0.5 truncate max-w-[100px] sm:max-w-[140px] xl:max-w-[200px]">{row.raw.trainee_code}</div>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 max-w-[140px] sm:max-w-[180px] xl:max-w-[240px]">
+                            <span className="text-[10px] text-slate-400 font-medium truncate">{row.raw.trainee_code}</span>
+                            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold ${accessModePillClass(row.raw.access_mode)}`}>
+                              {formatAccessMode(row.raw.access_mode)}
+                            </span>
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td className="px-3 sm:px-4 py-4 text-slate-500 dark:text-slate-400 font-medium text-xs hidden lg:table-cell">{row.raw.email}</td>
                     <td className="px-3 sm:px-4 py-4 text-slate-500 dark:text-slate-400 font-bold text-xs hidden md:table-cell">{row.raw.batch.batch_code}</td>
                     <td className="px-2 sm:px-4 py-4">
-                      {/* OPTIMIZED: Dynamic width scales heavily on portrait */}
-                      <div className="w-[70px] sm:w-[120px] lg:w-[140px] 2xl:w-[180px] group-hover:scale-105 transition-transform">
-                        <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 font-bold mb-1.5 uppercase tracking-wider">
-                          <span>{row.raw.progress.label}</span>
-                          <span>{row.raw.progress.percent}%</span>
+                      {row.raw.access_mode === "lesson_only" ? (
+                        <div className="w-[90px] sm:w-[140px] lg:w-[170px] 2xl:w-[200px]">
+                          <div className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                            Lesson Only
+                          </div>
+                          <div className="mt-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500">
+                            Simulation KPI excluded
+                          </div>
                         </div>
-                        <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
-                          <div className="h-full bg-[#18B9C7] rounded-full transition-all" style={{ width: `${row.raw.progress.percent}%` }} />
+                      ) : (
+                        <div className="w-[70px] sm:w-[120px] lg:w-[140px] 2xl:w-[180px] group-hover:scale-105 transition-transform">
+                          <div className="flex justify-between text-[9px] text-slate-500 dark:text-slate-400 font-bold mb-1.5 uppercase tracking-wider">
+                            <span>{row.raw.progress.label}</span>
+                            <span>{row.raw.progress.percent}%</span>
+                          </div>
+                          <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden">
+                            <div className="h-full bg-[#18B9C7] rounded-full transition-all" style={{ width: `${row.raw.progress.percent}%` }} />
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </td>
                     <td className="px-2 sm:px-4 py-4 text-center">
-                      <span className={`inline-flex items-center justify-center w-[70px] py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)}`}>
+                      <span className={`inline-flex items-center justify-center min-w-[92px] px-3 py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)}`}>
                         {row.displayStatus}
                       </span>
                     </td>

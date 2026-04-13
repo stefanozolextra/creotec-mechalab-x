@@ -1,8 +1,9 @@
 import { listAdminTrainees, type AdminTraineesListParams } from "./adminTrainees";
 import { requestBlob, requestJson } from "./http";
-import type { AdminTraineesListResponse } from "../types/adminTrainee";
+import type { AdminTraineesListResponse, TraineeAccessMode } from "../types/adminTrainee";
 
 type NumericLike = string | number;
+export type AdminModuleReportingStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED" | "LESSON_ONLY";
 
 export type AdminTraineeModuleStatusItem = {
   module_id: NumericLike;
@@ -11,6 +12,8 @@ export type AdminTraineeModuleStatusItem = {
   required_sims: NumericLike;
   completed_required_sims: NumericLike;
   module_status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+  access_mode: TraineeAccessMode;
+  reporting_status: AdminModuleReportingStatus;
 };
 
 export const listAdminTraineesReport = async (

@@ -3,7 +3,7 @@ import type { FormEvent } from "react";
 import { UserPlus, Pencil, Loader2 } from "lucide-react";
 import { createAdminTrainee, updateAdminTrainee } from "../../api/adminTrainees";
 import { ApiError } from "../../api/http";
-import type { AdminTraineeItem, BatchFilter } from "../../types/adminTrainee";
+import type { AdminTraineeItem, BatchFilter, TraineeAccessMode } from "../../types/adminTrainee";
 import AdminModalShell from "./ui/AdminModalShell";
 
 type FormMode = "create" | "edit";
@@ -14,6 +14,7 @@ type FormState = {
   last_name: string;
   email: string;
   contact_number: string;
+  access_mode: TraineeAccessMode;
   batch_code: string;
 };
 
@@ -34,6 +35,15 @@ type TraineeFormModalProps = {
   onSaved: (result: TraineeFormSaveResult) => void;
 };
 
+const ACCESS_MODE_OPTIONS: Array<{
+  value: TraineeAccessMode;
+  label: string;
+  description: string;
+}> = [
+  { value: "standard", label: "Standard", description: "Full trainee access." },
+  { value: "lesson_only", label: "Lesson Only", description: "Reserved for later restriction enforcement." },
+];
+
 const buildInitialFormState = (
   mode: FormMode,
   initial: AdminTraineeItem | null | undefined,
@@ -46,6 +56,7 @@ const buildInitialFormState = (
       last_name: initial.last_name,
       email: initial.email,
       contact_number: initial.contact_number ?? "",
+      access_mode: initial.access_mode ?? "standard",
       batch_code: initial.batch.batch_code,
     };
   }
@@ -56,6 +67,7 @@ const buildInitialFormState = (
     last_name: "",
     email: "",
     contact_number: "",
+    access_mode: "standard",
     batch_code: batches[0]?.batch_code ?? "",
   };
 };
@@ -102,6 +114,7 @@ export default function TraineeFormModal({
       last_name: form.last_name.trim(),
       email: form.email.trim(),
       contact_number: form.contact_number.trim(),
+      access_mode: form.access_mode,
       batch_code: form.batch_code,
     };
 
@@ -243,6 +256,25 @@ export default function TraineeFormModal({
                 </option>
               ))}
             </select>
+          </label>
+
+          <label className="space-y-1.5 block md:col-span-2">
+            <span className="text-xs font-bold text-[#0B1B3D] dark:text-slate-200">Access Mode</span>
+            <select
+              value={form.access_mode}
+              onChange={(event) => onChange("access_mode", event.target.value as TraineeAccessMode)}
+              className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#0F172A] text-[#0B1B3D] dark:text-slate-200 font-medium text-sm outline-none focus:ring-2 focus:ring-[#3B82F6] transition-colors duration-300"
+              disabled={saving}
+            >
+              {ACCESS_MODE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+              {ACCESS_MODE_OPTIONS.find((option) => option.value === form.access_mode)?.description}
+            </p>
           </label>
         </div>
 

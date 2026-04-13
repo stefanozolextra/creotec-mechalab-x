@@ -32,6 +32,7 @@ CREATE TABLE accounts (
   trainee_id     BIGINT UNIQUE NOT NULL REFERENCES trainees(trainee_id) ON DELETE CASCADE,
   login_email    VARCHAR(120) UNIQUE NOT NULL,
   password_hash  TEXT NOT NULL,
+  access_mode    VARCHAR(30) NOT NULL DEFAULT 'standard' CHECK (access_mode IN ('standard', 'lesson_only')),
   is_active      BOOLEAN NOT NULL DEFAULT TRUE,
   last_login_at  TIMESTAMP,
   created_at     TIMESTAMP NOT NULL DEFAULT NOW()

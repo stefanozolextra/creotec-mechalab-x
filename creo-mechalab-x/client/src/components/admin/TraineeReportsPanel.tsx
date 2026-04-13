@@ -4,6 +4,7 @@ import {
   exportModuleStatusCsv,
   getAdminTraineeModuleStatus,
   listAdminTraineesReport,
+  type AdminModuleReportingStatus,
   type AdminTraineeModuleStatusItem,
 } from "../../api/adminReports";
 import { API_BASE_URL, ApiError } from "../../api/http";
@@ -11,18 +12,24 @@ import type { AdminTraineeItem, BatchFilter } from "../../types/adminTrainee";
 import { getAuthToken } from "../../utils/auth";
 
 type StatusFilter = "all" | "active" | "inactive";
-type PillStatus = "Passed" | "Active" | "Inactive";
-type ModuleStatus = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
+type PillStatus = "Passed" | "Active" | "Inactive" | "Lesson Only";
+type ModuleStatus = AdminModuleReportingStatus;
 
 // --- Helpers ---
 
 const statusPillClass = (status: PillStatus): string => {
   if (status === "Passed") return "bg-[#22C55E] text-white";
+  if (status === "Lesson Only") {
+    return "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30";
+  }
   if (status === "Active") return "bg-[#3B82F6] text-white";
   return "bg-[#64748B] text-white";
 };
 
 const moduleStatusPillClass = (status: ModuleStatus): string => {
+  if (status === "LESSON_ONLY") {
+    return "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30";
+  }
   if (status === "COMPLETED") return "bg-[#22C55E] text-white border-transparent";
   if (status === "IN_PROGRESS") return "bg-blue-50 dark:bg-[#3B82F6]/10 text-[#3B82F6] border-blue-200 dark:border-blue-900/50";
   return "bg-slate-50 dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700";
@@ -31,6 +38,18 @@ const moduleStatusPillClass = (status: ModuleStatus): string => {
 const toDisplayName = (item: AdminTraineeItem): string => {
   const middle = item.middle_name ? ` ${item.middle_name}` : "";
   return `${item.first_name}${middle} ${item.last_name}`.replace(/\s+/g, " ").trim();
+};
+
+const formatAccessMode = (mode: AdminTraineeItem["access_mode"]): string => {
+  if (mode === "lesson_only") return "Lesson Only";
+  return "Standard";
+};
+
+const accessModePillClass = (mode: AdminTraineeItem["access_mode"]): string => {
+  if (mode === "lesson_only") {
+    return "bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-500/10 dark:text-amber-300 dark:border-amber-500/30";
+  }
+  return "bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700";
 };
 
 const toInitials = (name: string): string => {
@@ -56,6 +75,7 @@ const parseFilenameFromHeader = (contentDisposition: string | null, fallback: st
 };
 
 const formatModuleStatus = (status: ModuleStatus): string => {
+  if (status === "LESSON_ONLY") return "Lesson Only";
   if (status === "IN_PROGRESS") return "In Progress";
   if (status === "NOT_STARTED") return "Not Started";
   return "Completed";
@@ -128,7 +148,13 @@ export default function TraineeReportsPanel() {
 
   const rows = useMemo(() => {
     return items.map((item) => {
-      const displayStatus: PillStatus = item.progress.percent === 100 ? "Passed" : item.status === "active" ? "Active" : "Inactive";
+      const displayStatus: PillStatus = item.status !== "active"
+        ? "Inactive"
+        : item.access_mode === "lesson_only"
+          ? "Lesson Only"
+          : item.progress.percent === 100
+            ? "Passed"
+            : "Active";
       const fullName = toDisplayName(item);
       return {
         id: String(item.trainee_id),
@@ -334,26 +360,41 @@ export default function TraineeReportsPanel() {
                           <div className="leading-tight">
                             {/* Text sizes fully matched to UsersPage */}
                             <div className="font-extrabold text-sm text-[#0B1B3D] dark:text-slate-200 transition-colors">{row.fullName}</div>
-                            <div className="text-[10px] text-slate-400 font-medium mt-0.5">{row.raw.trainee_code}</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              <span className="text-[10px] text-slate-400 font-medium">{row.raw.trainee_code}</span>
+                              <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold ${accessModePillClass(row.raw.access_mode)}`}>
+                                {formatAccessMode(row.raw.access_mode)}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </td>
                       <td className="px-4 py-4 text-slate-500 dark:text-slate-400 font-bold text-sm transition-colors duration-500">{row.raw.batch.batch_code}</td>
                       <td className="px-4 py-4">
-                        {/* Progress Bar fully matched to UsersPage (140-180px width) */}
-                        <div className="w-[140px] 2xl:w-[180px] group-hover:scale-105 transition-transform duration-300">
-                          <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold mb-1.5 uppercase tracking-wider">
-                            <span>{row.raw.progress.label}</span>
-                            <span>{row.raw.progress.percent}%</span>
+                        {row.raw.access_mode === "lesson_only" ? (
+                          <div className="w-[140px] 2xl:w-[180px]">
+                            <div className="text-[10px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-300">
+                              Lesson Only
+                            </div>
+                            <div className="mt-1 text-[10px] font-semibold text-slate-400 dark:text-slate-500">
+                              Simulation KPI excluded
+                            </div>
                           </div>
-                          <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden transition-colors duration-500">
-                            <div className="h-full bg-[#18B9C7] rounded-full transition-all duration-500" style={{ width: `${row.raw.progress.percent}%` }} />
+                        ) : (
+                          <div className="w-[140px] 2xl:w-[180px] group-hover:scale-105 transition-transform duration-300">
+                            <div className="flex justify-between text-[10px] text-slate-500 dark:text-slate-400 font-bold mb-1.5 uppercase tracking-wider">
+                              <span>{row.raw.progress.label}</span>
+                              <span>{row.raw.progress.percent}%</span>
+                            </div>
+                            <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden transition-colors duration-500">
+                              <div className="h-full bg-[#18B9C7] rounded-full transition-all duration-500" style={{ width: `${row.raw.progress.percent}%` }} />
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </td>
                       <td className="px-5 py-4 text-right pr-8">
                         {/* Status Pill fully matched to UsersPage */}
-                        <span className={`inline-flex items-center justify-center w-[80px] py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)} transition-colors duration-500`}>
+                        <span className={`inline-flex items-center justify-center min-w-[96px] px-3 py-1 rounded-full text-[9px] font-black tracking-widest uppercase ${statusPillClass(row.displayStatus)} transition-colors duration-500`}>
                           {row.displayStatus}
                         </span>
                       </td>
@@ -400,9 +441,14 @@ export default function TraineeReportsPanel() {
                 <h3 className="text-sm font-black text-[#0B1B3D] dark:text-slate-200 uppercase tracking-widest flex items-center gap-2">
                   <Layers size={18} className="text-[#3B82F6]" /> Module Status
                 </h3>
-                <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full shadow-sm truncate max-w-[150px]">
-                  {selectedTrainee.fullName}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-[#0F172A] border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full shadow-sm truncate max-w-[150px]">
+                    {selectedTrainee.fullName}
+                  </span>
+                  <span className={`inline-flex items-center rounded-full px-3 py-1 text-[9px] font-bold ${accessModePillClass(selectedTrainee.raw.access_mode)}`}>
+                    {formatAccessMode(selectedTrainee.raw.access_mode)}
+                  </span>
+                </div>
               </div>
 
               {/* Scrollable Modules List */}
@@ -426,7 +472,7 @@ export default function TraineeReportsPanel() {
                 {currentModuleData?.data && !currentModuleData.loading && !currentModuleData.error && (
                   <div className="flex flex-col gap-3">
                     {currentModuleData.data.map((mod) => {
-                      const moduleStatus = mod.module_status as ModuleStatus;
+                      const moduleStatus = mod.reporting_status as ModuleStatus;
                       return (
                         <div key={mod.module_id} className="p-4 rounded-2xl border border-slate-200 dark:border-slate-700/50 bg-slate-50/50 dark:bg-[#0B1120]/30 hover:bg-white dark:hover:bg-[#1E293B] shadow-sm transition-colors">
                           <div className="flex justify-between items-start gap-4 mb-3">
@@ -439,8 +485,16 @@ export default function TraineeReportsPanel() {
                             </span>
                           </div>
                           <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-300 mt-3 pt-3 border-t border-slate-200 dark:border-slate-800/50">
-                            <span className="uppercase tracking-wider text-[10px]">Simulations</span>
-                            <span><span className="text-[#3B82F6]">{mod.completed_required_sims}</span> / {mod.required_sims} Completed</span>
+                            {mod.access_mode === "lesson_only" ? (
+                              <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
+                                Simulation completion is excluded for lesson-only trainees.
+                              </span>
+                            ) : (
+                              <>
+                                <span className="uppercase tracking-wider text-[10px]">Simulations</span>
+                                <span><span className="text-[#3B82F6]">{mod.completed_required_sims}</span> / {mod.required_sims} Completed</span>
+                              </>
+                            )}
                           </div>
                         </div>
                       );

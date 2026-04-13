@@ -57,10 +57,27 @@ async function run() {
             }
         }
 
+        const accessModeDistribution = await client.query(
+            `SELECT access_mode, COUNT(*)::INT AS count
+             FROM accounts
+             GROUP BY access_mode
+             ORDER BY access_mode`
+        );
+
+        printHeader("Access Mode Distribution");
+        if (accessModeDistribution.rows.length === 0) {
+            console.log("(no rows in accounts)");
+        } else {
+            for (const row of accessModeDistribution.rows) {
+                console.log(`- ${row.access_mode}: ${row.count}`);
+            }
+        }
+
         const adminProtectedRows = await client.query(
             `SELECT
                login_email,
                role,
+               access_mode,
                is_system_protected,
                trainee_id,
                COALESCE(substring(password_hash FROM 1 FOR 4), '(null)') AS password_hash_prefix
@@ -75,7 +92,7 @@ async function run() {
         } else {
             for (const row of adminProtectedRows.rows) {
                 console.log(
-                    `- ${row.login_email} | role=${row.role} | protected=${row.is_system_protected} | trainee_id=${
+                    `- ${row.login_email} | role=${row.role} | access_mode=${row.access_mode} | protected=${row.is_system_protected} | trainee_id=${
                         row.trainee_id == null ? "null" : row.trainee_id
                     } | hash_prefix=${row.password_hash_prefix}`
                 );
@@ -94,6 +111,20 @@ async function run() {
                 "No invalid role/trainee linkage rows",
                 invalidLinkCount === 0,
                 `${invalidLinkCount} invalid row(s)`
+            ) && allPassed;
+
+        const invalidAccessModeResult = await client.query(
+            `SELECT COUNT(*)::INT AS count
+             FROM accounts
+             WHERE access_mode IS NULL
+                OR access_mode NOT IN ('standard', 'lesson_only')`
+        );
+        const invalidAccessModeCount = Number(invalidAccessModeResult.rows[0]?.count) || 0;
+        allPassed =
+            checkResult(
+                "All accounts use a valid access mode",
+                invalidAccessModeCount === 0,
+                `${invalidAccessModeCount} invalid row(s)`
             ) && allPassed;
 
         const adminProtectedCountResult = await client.query(

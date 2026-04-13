@@ -1,6 +1,7 @@
 export type ModuleStatusValue = "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
 export type ResourceType = "PDF" | "VIDEO";
 export type PgNumeric = string | number;
+export type TraineeAccessMode = "standard" | "lesson_only";
 
 export interface TraineeProfileApi {
     trainee_id: PgNumeric;
@@ -13,6 +14,7 @@ export interface TraineeProfileApi {
     address: string | null;
     birth_date: string | null;
     batch_code: string;
+    access_mode: TraineeAccessMode;
 }
 
 export interface ModuleStatusApi {

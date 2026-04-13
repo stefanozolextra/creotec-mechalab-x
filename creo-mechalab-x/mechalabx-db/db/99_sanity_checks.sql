@@ -9,10 +9,17 @@ FROM accounts
 GROUP BY role
 ORDER BY role;
 
+SELECT 'Access mode distribution' AS section;
+SELECT access_mode, COUNT(*)::INT AS count
+FROM accounts
+GROUP BY access_mode
+ORDER BY access_mode;
+
 SELECT 'Admin/protected accounts' AS section;
 SELECT
   login_email,
   role,
+  access_mode,
   is_system_protected,
   trainee_id,
   COALESCE(substring(password_hash FROM 1 FOR 4), '(null)') AS password_hash_prefix
@@ -23,6 +30,7 @@ ORDER BY login_email;
 DO $$
 DECLARE
   invalid_link_count INT;
+  invalid_access_mode_count INT;
   admin_or_protected_count INT;
   admin_or_protected_with_trainee_link_count INT;
   admin_or_protected_bad_hash_count INT;
@@ -37,6 +45,18 @@ BEGIN
     RAISE EXCEPTION
       'Sanity check failed: % account row(s) violate role/trainee linkage rules.',
       invalid_link_count;
+  END IF;
+
+  SELECT COUNT(*)::INT
+  INTO invalid_access_mode_count
+  FROM accounts
+  WHERE access_mode IS NULL
+     OR access_mode NOT IN ('standard', 'lesson_only');
+
+  IF invalid_access_mode_count > 0 THEN
+    RAISE EXCEPTION
+      'Sanity check failed: % account row(s) violate access mode rules.',
+      invalid_access_mode_count;
   END IF;
 
   SELECT COUNT(*)::INT

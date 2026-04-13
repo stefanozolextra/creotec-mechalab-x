@@ -17,6 +17,17 @@ ALTER TABLE accounts
   ALTER COLUMN role SET NOT NULL;
 
 ALTER TABLE accounts
+  ADD COLUMN IF NOT EXISTS access_mode TEXT;
+
+UPDATE accounts
+SET access_mode = 'standard'
+WHERE access_mode IS NULL;
+
+ALTER TABLE accounts
+  ALTER COLUMN access_mode SET DEFAULT 'standard',
+  ALTER COLUMN access_mode SET NOT NULL;
+
+ALTER TABLE accounts
   ADD COLUMN IF NOT EXISTS is_system_protected BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- 2) Allow standalone admin accounts (not linked to trainees).
@@ -44,6 +55,20 @@ BEGIN
     ALTER TABLE accounts
       ADD CONSTRAINT accounts_role_check
       CHECK (role IN ('admin', 'trainee'));
+  END IF;
+END $$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'accounts_access_mode_check'
+      AND conrelid = 'accounts'::regclass
+  ) THEN
+    ALTER TABLE accounts
+      ADD CONSTRAINT accounts_access_mode_check
+      CHECK (access_mode IN ('standard', 'lesson_only'));
   END IF;
 END $$;
 

@@ -56,6 +56,8 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
     return fallback;
 };
 
+const LESSON_ONLY_SIMULATION_MESSAGE = 'Simulation access is disabled for lesson-only trainees.';
+
 const toAbsoluteUrl = (value: string): string => {
     const trimmed = value.trim();
     if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
@@ -108,6 +110,7 @@ const ModuleView = () => {
     const [lessonOptions, setLessonOptions] = useState<ModuleLessonOption[]>([]);
     const [selectedLessonResourceId, setSelectedLessonResourceId] = useState<number | null>(hintedLessonResourceId);
     const [moduleSimulationLaunch, setModuleSimulationLaunch] = useState<ModuleSimulationLaunch | null>(null);
+    const [isSimulationRestricted, setIsSimulationRestricted] = useState(false);
 
     const [highestUnlockedIndex, setHighestUnlockedIndex] = useState<number>(0);
 
@@ -198,6 +201,7 @@ const ModuleView = () => {
         setLessonOptions([]);
         setHighestUnlockedIndex(0);
         setModuleSimulationLaunch(null);
+        setIsSimulationRestricted(false);
 
         if (!hasValidModuleId) {
             setResolveError('Invalid module id.');
@@ -220,6 +224,7 @@ const ModuleView = () => {
                         ? moduleRow.title.trim()
                         : `Module ${moduleId} Theory Manual`;
                 setModuleTitle(resolvedModuleTitle);
+                setIsSimulationRestricted(dashboard.trainee?.access_mode === 'lesson_only');
 
                 const moduleResources = dashboard.moduleContent.resources.filter(
                     (resource) => toNumber(resource.module_id) === moduleId
@@ -529,7 +534,7 @@ const ModuleView = () => {
 
                         <button
                             onClick={() => {
-                                if (!moduleSimulationLaunch) return;
+                                if (!moduleSimulationLaunch || isSimulationRestricted) return;
                                 const targetRoute = moduleSimulationLaunch.orderNo ?? 1;
                                 navigate(`/simulation/${targetRoute}`, {
                                     state: {
@@ -538,10 +543,10 @@ const ModuleView = () => {
                                     },
                                 });
                             }}
-                            disabled={!moduleSimulationLaunch}
+                            disabled={!moduleSimulationLaunch || isSimulationRestricted}
                             className="hidden sm:flex items-center gap-2 bg-cyan-500/10 hover:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-cyan-600 dark:text-cyan-400 border border-cyan-500/50 px-6 py-2.5 rounded font-black text-xs tracking-widest uppercase transition-all duration-300 hover:shadow-[0_0_15px_rgba(6,182,212,0.2)]"
                         >
-                            <Target size={16} strokeWidth={2.5} /> LAUNCH SIMULATOR
+                            <Target size={16} strokeWidth={2.5} /> {isSimulationRestricted ? 'SIMULATION DISABLED' : 'LAUNCH SIMULATOR'}
                         </button>
                     </div>
                 </header>
@@ -621,6 +626,11 @@ const ModuleView = () => {
                         <section
                             id="tour-module-content"
                             className="flex-1 flex flex-col h-[600px] lg:h-[calc(100vh-140px)] relative">
+                            {isSimulationRestricted ? (
+                                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                                    {LESSON_ONLY_SIMULATION_MESSAGE}
+                                </div>
+                            ) : null}
                             <div className="bg-white dark:bg-[#111622] border border-slate-200 dark:border-slate-800/80 shadow-sm relative h-full flex flex-col transition-colors duration-300">
                                 <div className="absolute top-0 left-0 w-2 h-2 border-t-2 border-l-2 border-cyan-400" />
                                 <div className="absolute bottom-0 right-0 w-2 h-2 border-b-2 border-r-2 border-cyan-400" />

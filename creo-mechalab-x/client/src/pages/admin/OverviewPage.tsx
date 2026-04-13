@@ -34,6 +34,8 @@ const emptyDashboard: AdminDashboardResponse = {
   scope: { batch_code: null },
   summary: {
     total_trainees: 0,
+    standard_trainees: 0,
+    lesson_only_trainees: 0,
     total_modules: 0,
     progress_percent: 0,
     completed_module_rows: 0,
@@ -369,7 +371,12 @@ export default function OverviewPage() {
                 {loading ? "--" : dashboard.summary.total_trainees}
               </div>
               <div className="text-[8px] sm:text-[10px] font-bold text-slate-400 group-hover:text-blue-500 flex items-center gap-1 transition-colors xl:pb-0.5">
-                <span className="hidden xl:inline">Roster</span> <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
+                <span>
+                  {loading
+                    ? "Roster"
+                    : `Std ${dashboard.summary.standard_trainees} • LO ${dashboard.summary.lesson_only_trainees}`}
+                </span>
+                <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
           </div>
@@ -384,7 +391,7 @@ export default function OverviewPage() {
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
             <div className="text-slate-500 dark:text-slate-400 font-bold text-[8px] sm:text-[10px] lg:text-xs uppercase tracking-widest flex items-center gap-1.5 relative z-10 truncate">
-              <Activity size={14} className="text-emerald-500 shrink-0 hidden sm:block" /> Progress
+              <Activity size={14} className="text-emerald-500 shrink-0 hidden sm:block" /> Simulation KPI
             </div>
 
             <div className="mt-1.5 sm:mt-2 relative z-10 flex flex-col xl:flex-row xl:items-end justify-between gap-0.5 xl:gap-0">
@@ -392,7 +399,8 @@ export default function OverviewPage() {
                 {loading ? "--" : dashboard.summary.progress_percent} <span className="text-xs sm:text-sm lg:text-lg text-slate-400 group-hover:text-emerald-500/70 transition-colors">%</span>
               </div>
               <div className="text-[8px] sm:text-[10px] font-bold text-slate-400 group-hover:text-emerald-500 flex items-center gap-1 transition-colors xl:pb-0.5">
-                <span className="hidden xl:inline">Reports</span> <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
+                <span>Std only</span>
+                <ArrowRight size={10} className="group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
           </div>
@@ -450,7 +458,7 @@ export default function OverviewPage() {
                 Milestone Tracker
               </h2>
               <p className="text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 mt-0.5">
-                Real-time trainee progression by module
+                Simulation completion for standard trainees only
               </p>
             </div>
             {loading && <Loader2 className="animate-spin text-blue-500" size={20} />}
@@ -510,7 +518,7 @@ export default function OverviewPage() {
                             <div className="text-cyan-400 mb-0.5">{item.module_code}</div>
                             <div>{completionPercent}% Cleared</div>
                             <div className="text-slate-400 font-medium mt-0.5">
-                              {item.completed_trainees} of {item.total_trainees} Trainees
+                              {item.completed_trainees} of {item.total_trainees} Standard Trainees
                             </div>
                             <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45"></div>
                           </div>
@@ -530,6 +538,15 @@ export default function OverviewPage() {
             <div className="mt-4 text-center text-[10px] sm:text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-400 py-2 rounded-lg">
               No trainees assigned. Modules reflect 0% completion.
             </div>
+          )}
+          {!loading
+            && dashboard.chart.points.length > 0
+            && dashboard.summary.total_trainees > 0
+            && dashboard.summary.standard_trainees === 0
+            && dashboard.summary.lesson_only_trainees > 0 && (
+              <div className="mt-4 text-center text-[10px] sm:text-xs font-bold text-amber-600 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-400 py-2 rounded-lg">
+                All trainees in scope are lesson-only. Simulation KPIs are excluded for this view.
+              </div>
           )}
         </div>
 

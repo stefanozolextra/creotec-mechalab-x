@@ -17,12 +17,15 @@ export const getTraineeDashboard = async (
     // No token checks, no backend trainee validation. 
     // If you are the Developer, you get the live curriculum data injected into a simulated dashboard struct!
     if (getAuthRole() === 'developer') {
-        const data = await requestJson<any>("/api/curriculum/public", { signal: options?.signal });
+        const data = await requestJson<any>("/api/curriculum/public?include_simulations=developer", {
+            signal: options?.signal,
+        });
         
         return {
             trainee: {
                 trainee_id: 999999, account_id: 999999, first_name: "God Mode", last_name: "Developer",
-                trainee_code: "DEV-OVERRIDE", batch_id: 1, batch_code: "SYS-ADMIN", created_at: new Date().toISOString()
+                trainee_code: "DEV-OVERRIDE", batch_id: 1, batch_code: "SYS-ADMIN", created_at: new Date().toISOString(),
+                access_mode: "standard",
             },
             moduleContent: {
                 modules: data.modules,

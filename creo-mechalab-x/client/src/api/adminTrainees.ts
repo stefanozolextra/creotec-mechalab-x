@@ -1,5 +1,5 @@
 import { requestJson } from "./http";
-import type { AdminTraineeItem, AdminTraineesListResponse } from "../types/adminTrainee";
+import type { AdminTraineeItem, AdminTraineesListResponse, TraineeAccessMode } from "../types/adminTrainee";
 
 export type AdminTraineesListParams = {
   search?: string;
@@ -15,6 +15,7 @@ export type AdminTraineePayload = {
   last_name: string;
   email: string;
   contact_number?: string;
+  access_mode?: TraineeAccessMode;
   batch_code?: string;
   batch_id?: number;
 };
