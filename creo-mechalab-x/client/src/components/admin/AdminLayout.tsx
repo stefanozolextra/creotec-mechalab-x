@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import logoSrc from '../../assets/logo.png';
 import { flushSync } from "react-dom";
-import { clearAuthRole, getAuthRole } from "../../utils/auth"; // <-- Imported getAuthRole
+import { clearAuthRole, isGodModeSession } from "../../utils/auth";
 import TutorialGuide, { type TutorialStep } from "../TutorialGuide";
 
 const navItems = [
@@ -23,7 +23,7 @@ const AdminLayout = () => {
   // FIX: Default to Light Mode
   const [isDark, setIsDark] = useState(false);
 
-  const role = getAuthRole(); // <-- Get the current active role
+  const godMode = isGodModeSession();
 
   useEffect(() => {
     if (isDark) {
@@ -135,7 +135,7 @@ const AdminLayout = () => {
         </nav>
 
         {/* BOTTOM SECTION - Mathematically Centered */}
-        <div className={`p-3 space-y-3 sm:space-y-4 flex flex-col ${role === 'developer' ? 'mb-24' : 'mb-2 sm:mb-4'}`}>
+        <div className={`p-3 space-y-3 sm:space-y-4 flex flex-col ${godMode ? 'mb-24' : 'mb-2 sm:mb-4'}`}>
 
           {/* Sidebar Guide Feature */}
           <TutorialGuide
@@ -189,7 +189,7 @@ const AdminLayout = () => {
           </div>
 
           {/* User Profile / Logout (HIDDEN FOR DEVELOPER) */}
-          {role !== 'developer' && (
+          {!godMode && (
             <div onClick={handleLogout} className="flex items-center h-12 sm:h-14 rounded-2xl hover:bg-white/40 dark:hover:bg-white/5 transition-all cursor-pointer group overflow-hidden">
               <div className="w-[56px] flex items-center justify-center shrink-0">
                 <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-full bg-gradient-to-tr from-slate-400 to-blue-900 border-2 border-white dark:border-slate-700 shadow-sm" />

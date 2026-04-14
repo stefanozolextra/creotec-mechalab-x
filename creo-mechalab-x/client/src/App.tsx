@@ -25,13 +25,13 @@ import ActivityLogsPage from './pages/admin/ActivityLogsPage';
 import QuizzesPage from './pages/admin/QuizzesPage';
 
 // Security Utilities
-import { getAuthRole, type AuthRole } from './utils/auth';
+import { getAuthRole, isGodModeSession, type AuthRole } from './utils/auth';
 import GodModeListener from './components/GodModeListener';
 import DeveloperDock from './components/DeveloperDock';
 
 /* SECTION: ROUTING ARCHITECTURE & SECURITY LOGIC */
 const getLandingRoute = (role: string): '/dashboard' | '/admin/dashboard' => {
-  return role === 'admin' || role === 'developer' ? '/admin/dashboard' : '/dashboard';
+  return role === 'admin' ? '/admin/dashboard' : '/dashboard';
 };
 
 interface RequireAuthProps {
@@ -42,18 +42,16 @@ interface RequireAuthProps {
 /* SECTION: AUTHENTICATION WRAPPER */
 const RequireAuth = ({ children, role }: RequireAuthProps) => {
   const currentRole = getAuthRole();
+  const godMode = isGodModeSession();
 
   if (!currentRole) {
     return <Navigate to="/login" replace />;
   }
 
-  // 🌟 GOD MODE OVERRIDE: Let the Developer access EVERYTHING 🌟
-  if (currentRole === 'developer') {
-    return children;
-  }
-
-  // Standard route protection for normal users
   if (role && currentRole !== role) {
+    if (godMode && currentRole === 'admin') {
+      return children;
+    }
     return <Navigate to={getLandingRoute(currentRole)} replace />;
   }
 

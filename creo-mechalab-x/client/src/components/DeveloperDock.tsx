@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Power, Lock } from 'lucide-react'; 
-import { getAuthRole, clearAuthSession } from '../utils/auth';
+import { isGodModeSession, clearAuthSession } from '../utils/auth';
 
 const DeveloperDock: React.FC = () => {
     const navigate = useNavigate();
     const location = useLocation();
-    const role = getAuthRole();
+    const godMode = isGodModeSession();
     
     const [isExpanded, setIsExpanded] = useState(false);
     const [isTerminating, setIsTerminating] = useState(false);
@@ -15,7 +15,7 @@ const DeveloperDock: React.FC = () => {
 
     // 🚀 CRITICAL FIX: We must keep this component mounted if it is currently animating 
     // the termination sequence, even if the role is wiped from storage!
-    if (role !== 'developer' && !isTerminating) return null;
+    if (!godMode && !isTerminating) return null;
 
     const handleLogout = () => {
         setIsExpanded(false); 

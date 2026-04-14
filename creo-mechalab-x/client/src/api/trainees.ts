@@ -1,6 +1,6 @@
 import { requestJson } from "./http";
 import type { DashboardResponseApi } from "../types/traineeDashboard";
-import { getAuthRole } from "../utils/auth";
+import { isGodModeSession } from "../utils/auth";
 
 const toPositiveInt = (value: number, label: string): number => {
     if (!Number.isInteger(value) || value < 1) {
@@ -16,7 +16,7 @@ export const getTraineeDashboard = async (
     // 🚀 THE ULTIMATE SHORT-CIRCUIT 🚀
     // No token checks, no backend trainee validation. 
     // If you are the Developer, you get the live curriculum data injected into a simulated dashboard struct!
-    if (getAuthRole() === 'developer') {
+    if (isGodModeSession()) {
         const data = await requestJson<any>("/api/curriculum/public?include_simulations=developer", {
             signal: options?.signal,
         });
@@ -50,7 +50,7 @@ export const completeSimulation = async (
     options?: { signal?: AbortSignal }
 ): Promise<{ ok: boolean }> => {
 
-    if (getAuthRole() === 'developer') {
+    if (isGodModeSession()) {
         return { ok: true };
     }
 

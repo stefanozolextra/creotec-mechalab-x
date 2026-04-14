@@ -1,55 +1,91 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Terminal, ShieldAlert, Cpu, Unlock, Lock } from 'lucide-react';
-import { useNavigate } from 'react-router-dom'; // <-- 1. Import useNavigate
+import { useNavigate } from 'react-router-dom';
 import { useKonamiCode } from '../hooks/useKonamiCode';
 import { setGodModeSession } from '../utils/auth';
+import { requestJson } from '../api/http';
+import { useToast } from '../contexts/ToastContext';
+
+type GodModeAuthResponse = {
+  token: string;
+  role: 'admin';
+  sub: number;
+  account_id: number;
+  trainee_id: number | null;
+  god_mode?: boolean;
+};
 
 const GodModeListener: React.FC = () => {
   const [isActivating, setIsActivating] = useState(false);
   const [step, setStep] = useState(0);
-  const navigate = useNavigate(); // <-- 2. Initialize navigate
+  const navigate = useNavigate();
+  const toast = useToast();
+  const timeoutIdsRef = useRef<number[]>([]);
 
-  const activateGodMode = () => {
+  const clearScheduledSteps = () => {
+    for (const timeoutId of timeoutIdsRef.current) {
+      window.clearTimeout(timeoutId);
+    }
+    timeoutIdsRef.current = [];
+  };
+
+  useEffect(() => {
+    return () => clearScheduledSteps();
+  }, []);
+
+  const runSuccessSequence = () => {
+    clearScheduledSteps();
+
+    timeoutIdsRef.current = [
+      window.setTimeout(() => setStep(1), 800),
+      window.setTimeout(() => setStep(2), 1600),
+      window.setTimeout(() => setStep(3), 2400),
+      window.setTimeout(() => setStep(4), 3200),
+      window.setTimeout(() => setStep(5), 4000),
+      window.setTimeout(() => setStep(6), 5000),
+      window.setTimeout(() => {
+        navigate('/admin/dashboard', { replace: true });
+      }, 5900),
+      window.setTimeout(() => setStep(7), 6000),
+      window.setTimeout(() => {
+        setIsActivating(false);
+        clearScheduledSteps();
+      }, 7000),
+    ];
+  };
+
+  const activateGodMode = async () => {
     if (isActivating) return;
     setIsActivating(true);
     setStep(0);
-    
-    // Inject Developer credentials instantly in the background
-    setGodModeSession();
 
-    // Stage 0: Hangar Doors Slam Shut (0ms)
-    // Stage 1: Terminal Boot (800ms)
-    setTimeout(() => setStep(1), 800); 
-    
-    // Stage 2: Bypassing Auth (1600ms)
-    setTimeout(() => setStep(2), 1600); 
-    
-    // Stage 3: Injecting Payload (2400ms)
-    setTimeout(() => setStep(3), 2400); 
-    
-    // Stage 4: M.A.X. Confirmation (3200ms)
-    setTimeout(() => setStep(4), 3200); 
-    
-    // Stage 5: Massive System Override Flash [RED] (4000ms)
-    setTimeout(() => setStep(5), 4000); 
+    try {
+      const auth = await requestJson<GodModeAuthResponse>('/api/auth/dev-god-mode', {
+        method: 'POST',
+      });
 
-    // Stage 6: Access Granted Stabilization [GREEN] (5000ms)
-    setTimeout(() => setStep(6), 5000); 
+      if (auth.role !== 'admin' || !auth.token || !Number.isInteger(auth.account_id) || auth.account_id < 1) {
+        throw new Error('God Mode returned an invalid backend session.');
+      }
 
-    // 🌟 THE SEAMLESS REDIRECT MAGIC 🌟
-    // Change the route behind the closed doors right before they open
-    setTimeout(() => {
-      navigate('/admin/dashboard', { replace: true });
-    }, 5900);
+      setGodModeSession({
+        role: auth.role,
+        token: auth.token,
+        account_id: auth.account_id,
+        trainee_id: auth.trainee_id,
+      });
 
-    // Stage 7: Hangar Doors Blast Open! (6000ms) - Dashboard is now revealed!
-    setTimeout(() => setStep(7), 6000);
-
-    // Final Cleanup (7000ms) - Remove overlay from DOM
-    setTimeout(() => {
+      runSuccessSequence();
+    } catch (error) {
+      clearScheduledSteps();
       setIsActivating(false);
-    }, 7000); 
+      setStep(0);
+      const message = error instanceof Error && error.message
+        ? error.message
+        : 'God Mode backend activation failed.';
+      toast.error(message);
+    }
   };
 
   useKonamiCode(activateGodMode);
@@ -137,7 +173,7 @@ const GodModeListener: React.FC = () => {
                             {step >= 2 && (
                                 <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }}>
                                     <span className="text-cyan-600 mr-3">{'>'}</span>
-                                    <span className="text-slate-300">Bypassing CREOSim Authentication Protocols... </span>
+                                    <span className="text-slate-300">Requesting backend-authenticated admin session... </span>
                                     <span className="text-emerald-400 font-bold ml-1 animate-pulse">[OK]</span>
                                 </motion.div>
                             )}
@@ -145,7 +181,7 @@ const GodModeListener: React.FC = () => {
                             {step >= 3 && (
                                 <motion.div initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.2 }}>
                                     <span className="text-cyan-600 mr-3">{'>'}</span>
-                                    <span className="text-slate-300">Injecting God Mode Developer Payload... </span>
+                                    <span className="text-slate-300">Issuing backend-valid admin JWT... </span>
                                     <span className="text-emerald-400 font-bold ml-1 animate-pulse">[OK]</span>
                                 </motion.div>
                             )}
@@ -222,7 +258,7 @@ const GodModeListener: React.FC = () => {
                                   </h1>
                                   
                                   <p className="text-sm sm:text-2xl text-emerald-200 font-bold tracking-[0.2em] sm:tracking-[0.3em] uppercase bg-emerald-950 px-6 py-2 border border-emerald-500/50 rounded shadow-[0_0_15px_rgba(16,185,129,0.5)] text-center">
-                                      Developer Privileges Active
+                                      Backend Admin Session Active
                                   </p>
                               </motion.div>
                           )}

@@ -6,13 +6,15 @@ import CyberTransition from '../components/CyberTransition';
 import { API_BASE_URL } from '../api/http';
 import { getTraineeDashboard } from '../api/trainees';
 import { getModuleQuizSummary } from '../api/traineeQuizzes';
-import { getAuthRole, getAuthToken } from '../utils/auth';
+import { getAuthRole, getAuthToken, isGodModeSession } from '../utils/auth';
 import { setNativeSecureScreen } from '../utils/nativeSecureScreen';
 import { resolveSupportedVideoLesson } from '../utils/videoLessons';
 import ReactAntiCapture from '../components/AntiCapture';
 import {
+    buildSimulationPath,
     getStoredSimulationStates,
     hasStoredActivityState,
+    resolveSimulationRouteId,
 } from '../simulation/utils/activityState';
 import type { ResourceType } from '../types/traineeDashboard';
 import type { TraineeQuizSummary } from '../types/traineeQuiz';
@@ -30,7 +32,8 @@ type ModuleLessonOption = {
 
 type ModuleSimulationLaunch = {
     simulationId: number;
-    orderNo: number | null;
+    routeId: string;
+    activityModuleId: number | null;
 };
 
 type ModuleLocationState = {
@@ -256,9 +259,11 @@ const ModuleView = () => {
                 const candidate = requiredSimulations.length > 0
                     ? requiredSimulations.find(s => {
                         const isDbCompleted = progressMap.get(toNumber(s.simulation_id));
+                        const routeId = resolveSimulationRouteId(s.route_id, s.order_no);
+                        if (!routeId) return false;
                         const isLocalCompleted = hasStoredActivityState(
                             localStates,
-                            String(s.order_no),
+                            routeId,
                             moduleId,
                         );
                         return !isDbCompleted && !isLocalCompleted;
@@ -266,11 +271,16 @@ const ModuleView = () => {
                     : rawSimulations[0];
 
                 if (candidate && toNumber(candidate.simulation_id) > 0) {
-                    const orderNo = toNumber(candidate.order_no);
-                    setModuleSimulationLaunch({
-                        simulationId: toNumber(candidate.simulation_id),
-                        orderNo: orderNo > 0 ? orderNo : null,
-                    });
+                    const routeId = resolveSimulationRouteId(candidate.route_id, candidate.order_no);
+                    if (!routeId) {
+                        setModuleSimulationLaunch(null);
+                    } else {
+                        setModuleSimulationLaunch({
+                            simulationId: toNumber(candidate.simulation_id),
+                            routeId,
+                            activityModuleId: toNumber(candidate.runtime_module_id) || null,
+                        });
+                    }
                 } else {
                     setModuleSimulationLaunch(null);
                 }
@@ -578,10 +588,15 @@ const ModuleView = () => {
                         <button
                             onClick={() => {
                                 if (!moduleSimulationLaunch || isSimulationRestricted) return;
-                                const targetRoute = moduleSimulationLaunch.orderNo ?? 1;
-                                navigate(`/simulation/${targetRoute}`, {
+                                navigate(buildSimulationPath({
+                                    routeId: moduleSimulationLaunch.routeId,
+                                    moduleId,
+                                    activityModuleId: moduleSimulationLaunch.activityModuleId,
+                                    simulationId: moduleSimulationLaunch.simulationId,
+                                }), {
                                     state: {
                                         moduleId,
+                                        activityModuleId: moduleSimulationLaunch.activityModuleId,
                                         simulationId: moduleSimulationLaunch.simulationId,
                                     },
                                 });
@@ -621,9 +636,9 @@ const ModuleView = () => {
                                     ) : lessonOptions.length > 0 ? (
                                         lessonOptions.map((option, index) => {
                                             const isSelected = option.resourceId === selectedLessonResourceId;
-                                            const role = getAuthRole();
-                                            const isLocked = role === 'developer' ? false : index > highestUnlockedIndex;
-                                            const isCompleted = role === 'developer' ? true : index < highestUnlockedIndex;
+                                            const godMode = isGodModeSession();
+                                            const isLocked = godMode ? false : index > highestUnlockedIndex;
+                                            const isCompleted = godMode ? true : index < highestUnlockedIndex;
 
                                             return (
                                                 <div

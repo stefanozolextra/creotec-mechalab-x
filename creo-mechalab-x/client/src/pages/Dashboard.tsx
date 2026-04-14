@@ -29,8 +29,10 @@ import CyberTransition from '../components/CyberTransition';
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
 import {
     SIMULATION_STATE_STORAGE_KEY,
+    buildSimulationPath,
     getStoredSimulationStates,
     hasStoredActivityState,
+    resolveSimulationRouteId,
 } from '../simulation/utils/activityState';
 import type {
     DashboardState,
@@ -136,9 +138,11 @@ const getNextSimulationByModuleId = (
                 ? requiredSimulations.find(
                     (simulation) => {
                         const isDbCompleted = simulationProgressById.get(toNumber(simulation.simulation_id));
+                        const routeId = resolveSimulationRouteId(simulation.route_id, simulation.order_no);
+                        if (!routeId) return false;
                         const isLocalCompleted = hasStoredActivityState(
                             localStates,
-                            String(simulation.order_no),
+                            routeId,
                             moduleId,
                         );
                         return !isDbCompleted && !isLocalCompleted;
@@ -504,10 +508,16 @@ const Dashboard = () => {
 
     const handleStartSimulation = () => {
         if (!selectedSimulation || !selectedLevelData || isLessonOnlyTrainee) return;
-        const targetRoute = selectedSimulation.order_no ?? 1;
-        navigate(`/simulation/${targetRoute}`, {
+        const targetRoute = resolveSimulationRouteId(selectedSimulation.route_id, selectedSimulation.order_no) ?? '1';
+        navigate(buildSimulationPath({
+            routeId: targetRoute,
+            moduleId: selectedLevelData.id,
+            activityModuleId: selectedSimulation.runtime_module_id,
+            simulationId: toNumber(selectedSimulation.simulation_id),
+        }), {
             state: {
                 moduleId: selectedLevelData.id,
+                activityModuleId: selectedSimulation.runtime_module_id,
                 simulationId: toNumber(selectedSimulation.simulation_id),
             },
         });

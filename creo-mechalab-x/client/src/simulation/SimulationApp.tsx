@@ -13,6 +13,7 @@ import { computeOrthogonalPath, type WireRoutingPoint } from './utils/wireRoutin
 import { evaluateActivityAnswer, type ActivityEvaluationResult } from './utils/evaluateActivityAnswer';
 import PortraitGuard from '../components/PortraitGuard';
 import CyberTransition from '../components/CyberTransition';
+import { completeSimulation } from '../api/trainees';
 import buttonDevice from '../assets/devices/button.png';
 import buzzerDevice from '../assets/devices/buzzer.png';
 import counterDevice from '../assets/devices/counter.png';
@@ -27,21 +28,32 @@ import {
   DEFAULT_ACTIVITY_MODULE_ID,
   SIMULATION_STATE_STORAGE_KEY,
   buildActivityStateKey,
+  buildSimulationPath,
   getStoredActivityState,
   getStoredSimulationStates,
   hasStoredActivityState,
   normalizeActivityModuleId,
+  resolveSimulationRuntimeModuleId,
 } from './utils/activityState';
 
 // M.A.X. DEPENDENCIES
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
-import { getAuthRole } from '../utils/auth';
+import { isGodModeSession } from '../utils/auth';
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
+interface SimulationRouteEntry {
+  simulationId?: number;
+  routeId: string;
+  activityModuleId?: number | null;
+  orderNo?: number | null;
+  title?: string;
+}
 interface SimulationAppProps {
   routeId?: string;
   moduleId?: number;
+  activityModuleId?: number;
   simulationId?: number;
+  activityEntries?: SimulationRouteEntry[];
   initialCompletedRoutes?: string[];
   onNavigateBack?: () => void;
 }
@@ -100,14 +112,23 @@ const INITIAL_MANUAL_RELAY_BUTTON_STATE: Record<ManualRelayButtonId, boolean> = 
 // 🔥 SMART SCALING CONSTANT: Defines the zoom level for the app wrapper
 const APP_SCALE = 0.90;
 
-export default function SimulationApp({ routeId, moduleId, initialCompletedRoutes = [], onNavigateBack }: SimulationAppProps) {
+export default function SimulationApp({
+  routeId,
+  moduleId,
+  activityModuleId,
+  simulationId,
+  activityEntries = [],
+  initialCompletedRoutes = [],
+  onNavigateBack,
+}: SimulationAppProps) {
   const navigate = useNavigate();
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const activityPreset = getActivityAnswerByRouteId(routeId, moduleId);
-  const resolvedModuleId = normalizeActivityModuleId(moduleId) ?? DEFAULT_ACTIVITY_MODULE_ID;
+  const resolvedModuleId = normalizeActivityModuleId(moduleId);
+  const resolvedActivityModuleId = resolveSimulationRuntimeModuleId(activityModuleId, moduleId);
+  const activityPreset = getActivityAnswerByRouteId(routeId, resolvedActivityModuleId);
   const activityStateKey = buildActivityStateKey(activityPreset.routeId, moduleId) ?? activityPreset.routeId;
-  const isLegacyM1Runtime = resolvedModuleId === DEFAULT_ACTIVITY_MODULE_ID;
+  const isLegacyM1Runtime = resolvedActivityModuleId === DEFAULT_ACTIVITY_MODULE_ID;
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
@@ -176,6 +197,7 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
   const mousePosRef = useRef<{ x: number; y: number } | null>(null);
   const hasDraggedWireRef = useRef(false);
   const rafRef = useRef<number | null>(null);
+  const completionRequestRef = useRef<Set<number>>(new Set());
   const activity5TimerTimeoutRef = useRef<number | null>(null);
   const activity5TimerIntervalRef = useRef<number | null>(null);
   const activity5TimerTriggerRef = useRef<HTMLButtonElement>(null);
@@ -208,11 +230,35 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
       : DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS;
   }, [activity5TimerDelayInput]);
 
-  const routeKeys = getActivityRouteIds(moduleId);
-  const currentIndex = routeKeys.indexOf(activityPreset.routeId);
-  const nextRouteId = currentIndex !== -1 && currentIndex < routeKeys.length - 1 ? routeKeys[currentIndex + 1] : null;
+  const routeEntries = useMemo<SimulationRouteEntry[]>(() => {
+    if (activityEntries.length > 0) {
+      return [...activityEntries].sort((left, right) => {
+        const leftOrder = left.orderNo ?? Number.MAX_SAFE_INTEGER;
+        const rightOrder = right.orderNo ?? Number.MAX_SAFE_INTEGER;
+        if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+        return left.routeId.localeCompare(right.routeId);
+      });
+    }
 
-  const isSessionCompleted = getAuthRole() === 'developer'
+    return getActivityRouteIds(resolvedActivityModuleId).map((entryRouteId, index) => ({
+      routeId: entryRouteId,
+      activityModuleId: resolvedActivityModuleId,
+      orderNo: index + 1,
+    }));
+  }, [activityEntries, resolvedActivityModuleId]);
+  const currentIndex = (() => {
+    if (simulationId) {
+      const simulationMatchIndex = routeEntries.findIndex((entry) => entry.simulationId === simulationId);
+      if (simulationMatchIndex !== -1) return simulationMatchIndex;
+    }
+
+    return routeEntries.findIndex((entry) => entry.routeId === activityPreset.routeId);
+  })();
+  const nextRouteEntry = currentIndex !== -1 && currentIndex < routeEntries.length - 1
+    ? routeEntries[currentIndex + 1]
+    : null;
+
+  const isSessionCompleted = isGodModeSession()
     ? false
     : hasStoredActivityState(savedStates, activityPreset.routeId, moduleId);
 
@@ -402,6 +448,15 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
       window.history.back();
     }
   };
+
+  const navigateToRouteEntry = useCallback((entry: SimulationRouteEntry) => {
+    navigate(buildSimulationPath({
+      routeId: entry.routeId,
+      moduleId,
+      activityModuleId: entry.activityModuleId ?? resolvedActivityModuleId,
+      simulationId: entry.simulationId,
+    }));
+  }, [moduleId, navigate, resolvedActivityModuleId]);
 
   const showTooltip = useCallback((x: number, y: number, desc: string) => {
     const normalizedDesc = desc.trim();
@@ -712,8 +767,20 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
       });
       setShowSuccessAnim(true);
       setTimeout(() => setShowSuccessAnim(false), 2500);
+
+      if (
+        simulationId
+        && !dbCompletedRoutes.has(activityStateKey)
+        && !completionRequestRef.current.has(simulationId)
+      ) {
+        completionRequestRef.current.add(simulationId);
+        void completeSimulation(simulationId, { bestScore: 100 }).catch((error) => {
+          completionRequestRef.current.delete(simulationId);
+          console.error('Failed to persist simulation completion', error);
+        });
+      }
     }
-  }, [activityPreset, activityStateKey, answerSignature, assignedDevices, routedWires, wires]);
+  }, [activityPreset, activityStateKey, answerSignature, assignedDevices, dbCompletedRoutes, routedWires, simulationId, wires]);
 
   const handleDeviceDragStart = useCallback(
     (deviceId: DeviceId, source: DeviceZone | 'library', event: DragEvent<HTMLElement>) => {
@@ -903,10 +970,10 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
               </div>
 
               <div className="flex items-center gap-3">
-                {(canProceedToNext) && nextRouteId && (
+                {(canProceedToNext) && nextRouteEntry && (
                   <button
                     type="button"
-                    onClick={() => navigate(`/simulation/${nextRouteId}`)}
+                    onClick={() => navigateToRouteEntry(nextRouteEntry)}
                     className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)] animate-[pulse_2s_infinite] mr-2"
                   >
                     Next Activity <ChevronRight size={16} strokeWidth={3} />
@@ -1083,17 +1150,23 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
 
                 {/* TOP NAVIGATION HUD - ADD ID HERE */}
                 <div id="tour-sim-hud" className="absolute top-10 left-1/2 -translate-x-1/2 z-30 flex items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-2.5 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-lg">
-                  {routeKeys.map((key, index) => {
+                  {routeEntries.map((entry, index) => {
+                    const key = entry.routeId;
 
                     // SMART NODE PARSING
-                    const isNodeCompleted = !!savedStates[key] || dbCompletedRoutes.has(key);
-                    const isCurrent = key === activityPreset.routeId;
-                    const prevNodeKey = index > 0 ? routeKeys[index - 1] : null;
-                    const prevCompleted = prevNodeKey ? (!!savedStates[prevNodeKey] || dbCompletedRoutes.has(prevNodeKey)) : true;
+                    const isNodeCompleted = isRouteCompleted(key);
+                    const isCurrent = simulationId
+                      ? entry.simulationId === simulationId
+                      : key === activityPreset.routeId;
+                    const prevNodeEntry = index > 0 ? routeEntries[index - 1] : null;
+                    const prevCompleted = prevNodeEntry ? isRouteCompleted(prevNodeEntry.routeId) : true;
 
                     const isUnlocked = index === 0 || isNodeCompleted || isCurrent || prevCompleted;
 
-                    const activityTitle = getActivityAnswerByRouteId(key).title;
+                    const activityTitle = entry.title || getActivityAnswerByRouteId(
+                      key,
+                      entry.activityModuleId ?? resolvedActivityModuleId,
+                    ).title;
 
                     let nodeClasses = "w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ";
 
@@ -1118,7 +1191,7 @@ export default function SimulationApp({ routeId, moduleId, initialCompletedRoute
                           <div className={`w-8 h-1 mx-1 rounded-full ${prevCompleted ? 'bg-emerald-400 dark:bg-emerald-500/80' : 'bg-slate-200 dark:bg-slate-700'}`} />
                         )}
                         <button
-                          onClick={() => isUnlocked && !isCurrent && navigate(`/simulation/${key}`)}
+                          onClick={() => isUnlocked && !isCurrent && navigateToRouteEntry(entry)}
                           disabled={!isUnlocked}
                           className={nodeClasses}
                           title={activityTitle}

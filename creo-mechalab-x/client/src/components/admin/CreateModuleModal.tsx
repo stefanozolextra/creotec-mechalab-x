@@ -3,6 +3,7 @@ import { X, Upload, Link as LinkIcon, Loader2, FileText, PlayCircle, Trash2, Lay
 import { requestJson } from "../../api/http";
 import { motion } from "framer-motion";
 import { useToast } from "../../contexts/ToastContext";
+import type { AdminLessonItem, AdminSimulationItem } from "../../types/adminLesson";
 
 interface ResourceInput {
     id: string;
@@ -10,12 +11,6 @@ interface ResourceInput {
     title: string;
     file: File | null;
     url: string;
-}
-
-interface SimulationOption {
-    simulation_id: number;
-    simulation_code: string;
-    title: string;
 }
 
 interface CreateModuleModalProps {
@@ -35,13 +30,13 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
     const [resources, setResources] = useState<ResourceInput[]>([]);
     
     // Multi-Simulation state
-    const [availableSimulations, setAvailableSimulations] = useState<SimulationOption[]>([]);
+    const [availableSimulations, setAvailableSimulations] = useState<AdminSimulationItem[]>([]);
     const [selectedSimulationIds, setSelectedSimulationIds] = useState<number[]>([]);
 
     useEffect(() => {
         const fetchSimulations = async () => {
             try {
-                const data = await requestJson<{ simulations: SimulationOption[] }>("/api/admin/simulations");
+                const data = await requestJson<{ simulations: AdminSimulationItem[] }>("/api/admin/simulations");
                 setAvailableSimulations(data.simulations || []);
             } catch (err) {
                 console.error("Failed to fetch simulations:", err);
@@ -88,19 +83,22 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
 
         try {
             // 1. Create the Module shell
-            const moduleRes = await requestJson<{ module: { module_id: number } }>("/api/admin/lessons/modules", {
+            const moduleRes = await requestJson<{ item: AdminLessonItem | null }>("/api/admin/lessons", {
                 method: "POST",
                 body: { moduleCode: moduleCode.trim(), title: moduleTitle.trim(), description: moduleDesc.trim() }
             });
             
-            const newModuleId = moduleRes.module.module_id;
+            const newModuleId = moduleRes.item?.module_id;
+            if (!newModuleId) {
+                throw new Error("Module creation succeeded but no module id was returned.");
+            }
 
             // 2. Attach ALL selected simulations
             if (selectedSimulationIds.length > 0) {
-                 await requestJson(`/api/admin/modules/${newModuleId}/simulations`, {
-                     method: "PUT",
-                     body: { simulationIds: selectedSimulationIds }
-                 }).catch(err => console.warn("Failed to assign simulations:", err));
+                await requestJson(`/api/admin/modules/${newModuleId}/simulations`, {
+                    method: "PUT",
+                    body: { simulationIds: selectedSimulationIds }
+                });
             }
 
             // 3. Upload/Attach all resources
@@ -183,7 +181,12 @@ export default function CreateModuleModal({ onClose, onSuccess }: CreateModuleMo
                                         {availableSimulations.map(sim => (
                                             <label key={sim.simulation_id} className="flex items-center gap-3 p-2 hover:bg-slate-200 dark:hover:bg-slate-800 rounded-lg cursor-pointer transition-colors">
                                                 <input type="checkbox" checked={selectedSimulationIds.includes(sim.simulation_id)} onChange={() => toggleSimulation(sim.simulation_id)} disabled={isLoading} className="w-4 h-4 text-[#3B82F6] rounded border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 focus:ring-[#3B82F6]" />
-                                                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">{sim.simulation_code} - {sim.title}</span>
+                                                <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                                                    {sim.title} · {sim.route_id || `#${sim.order_no}`}
+                                                    <span className="block text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                                                        {sim.simulation_code} · Owner: {sim.module_code || 'Unassigned'} · Runtime: {sim.runtime_module_code || 'Default'}
+                                                    </span>
+                                                </span>
                                             </label>
                                         ))}
                                     </div>

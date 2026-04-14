@@ -86,6 +86,11 @@ const sortLessons = (lessons: AdminLessonResource[]): AdminLessonResource[] => {
   });
 };
 
+const formatSimulationBadge = (simulation: AdminSimulationItem): string => {
+  const routeLabel = simulation.route_id || `#${simulation.order_no}`;
+  return `${routeLabel} · ${simulation.title}`;
+};
+
 const normalizeModuleItem = (item: AdminLessonItem): AdminLessonItem => ({
   ...item,
   lessons: sortLessons(item.lessons ?? []),
@@ -94,7 +99,7 @@ const normalizeModuleItem = (item: AdminLessonItem): AdminLessonItem => ({
 
 export default function LessonsPage() {
   const [items, setItems] = useState<AdminLessonItem[]>([]);
-  const [availableSimulations, setAvailableSimulations] = useState<{ simulation_id: number; simulation_code: string; title: string }[]>([]);
+  const [availableSimulations, setAvailableSimulations] = useState<AdminSimulationItem[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -151,7 +156,7 @@ export default function LessonsPage() {
         // Fetch both modules and available simulations
         const [response, simResponse] = await Promise.all([
           getAdminLessons(),
-          requestJson<{ simulations: { simulation_id: number; simulation_code: string; title: string }[] }>("/api/admin/simulations").catch(() => ({ simulations: [] }))
+          requestJson<{ simulations: AdminSimulationItem[] }>("/api/admin/simulations").catch(() => ({ simulations: [] }))
         ]);
 
         if (!active) return;
@@ -216,6 +221,14 @@ export default function LessonsPage() {
         item.module_code.toLowerCase().includes(needle) ||
         item.module_title.toLowerCase().includes(needle);
       if (moduleMatch) return true;
+
+      const simulationMatch = item.simulations.some((simulation) => {
+        const routeId = simulation.route_id?.toLowerCase() ?? "";
+        return simulation.title.toLowerCase().includes(needle)
+          || simulation.simulation_code.toLowerCase().includes(needle)
+          || routeId.includes(needle);
+      });
+      if (simulationMatch) return true;
 
       return item.lessons.some((lesson) => {
         const titleMatch = lesson.title.toLowerCase().includes(needle);
@@ -957,7 +970,12 @@ export default function LessonsPage() {
                                 disabled={isModuleBusy(selectedModule.module_id)}
                                 className="w-4 h-4 text-[#3B82F6] rounded border-slate-300 focus:ring-[#3B82F6]"
                               />
-                              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{sim.simulation_code} - {sim.title}</span>
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                {formatSimulationBadge(sim)}
+                                <span className="block text-[10px] font-medium text-slate-500 dark:text-slate-400">
+                                  {sim.simulation_code} · Owner: {sim.module_code || 'Unassigned'} · Runtime: {sim.runtime_module_code || 'Default'} · Order: {sim.order_no}
+                                </span>
+                              </span>
                             </label>
                           ))}
                         </div>
@@ -989,7 +1007,7 @@ export default function LessonsPage() {
                         <div className="mt-4 flex flex-wrap gap-2">
                           {(selectedModule).simulations.map((sim) => (
                             <span key={sim.simulation_id} className="inline-flex items-center gap-1.5 bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-400 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border border-indigo-100 dark:border-indigo-500/20">
-                              <Gamepad2 size={12} /> {sim.simulation_code}
+                              <Gamepad2 size={12} /> {sim.route_id || `#${sim.order_no}`}
                             </span>
                           ))}
                         </div>

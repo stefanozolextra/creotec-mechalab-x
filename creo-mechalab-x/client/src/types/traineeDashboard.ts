@@ -57,6 +57,8 @@ export interface SimulationApi {
     title: string;
     description: string | null;
     order_no: number;
+    route_id: string | null;
+    runtime_module_id: PgNumeric | null;
     is_required: boolean;
 }
 

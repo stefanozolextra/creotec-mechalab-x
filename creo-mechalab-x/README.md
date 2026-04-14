@@ -110,6 +110,7 @@ Common optional values used by the API:
 
 - `PORT` (default: `4000`)
 - `JWT_EXPIRES_IN` (default: `8h`)
+- `ENABLE_DEV_GOD_MODE` (`true` enables the backend-issued Konami/God Mode admin session in non-production only)
 - `DEFAULT_TRAINEE_PASSWORD` (used for CSV import)
 - `RETURN_GENERATED_PASSWORD` (`true` only for non-production password reveal)
 - `ADMIN_EMAILS` (comma-separated allowlist for bootstrap admin behavior)
@@ -163,6 +164,12 @@ Common optional values used by the API:
    ```
 
 4. Open the frontend URL shown by Vite (usually `http://localhost:5173`).
+
+## Local testing credentials
+
+- Seeded admin: `admin@demo.local` / `P@ssw0rd!`
+- Seeded trainees: `trainee01@demo.local` .. `trainee25@demo.local` / `P@ssw0rd!`
+- Optional God Mode: set `ENABLE_DEV_GOD_MODE=true` in `server/.env`, then enter the Konami code on the login screen. This issues a real backend admin JWT in non-production; it is disabled in production.
 
 ## Helpful commands
 

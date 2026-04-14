@@ -2,9 +2,18 @@ export type AdminLessonResourceType = "PDF" | "VIDEO";
 
 export type AdminSimulationItem = {
   simulation_id: number;
+  module_id: number | null;
+  module_code: string | null;
+  module_title: string | null;
   simulation_code: string;
   title: string;
-  module_id: number | null;
+  description: string | null;
+  order_no: number;
+  route_id: string | null;
+  runtime_module_id: number | null;
+  runtime_module_code: string | null;
+  runtime_module_title: string | null;
+  is_required: boolean;
 };
 
 export type AdminLessonResource = {

@@ -77,6 +77,96 @@ const PDF_ALLOWED_MIME_TYPES = new Set(["application/pdf", "application/x-pdf"])
 const ACCOUNT_ACCESS_MODE_STANDARD = "standard";
 const ACCOUNT_ACCESS_MODE_LESSON_ONLY = "lesson_only";
 const ACCOUNT_ACCESS_MODES = new Set([ACCOUNT_ACCESS_MODE_STANDARD, ACCOUNT_ACCESS_MODE_LESSON_ONLY]);
+const SIMULATION_ROUTE_ID_MAX_LENGTH = 64;
+const MODULE_CODE_MAX_LENGTH = 20;
+const LEGACY_SIMULATION_DESCRIPTION_PREFIX = "Required simulation activity";
+const ACTIVE_SIMULATION_MANIFEST = [
+    {
+        routeId: "1",
+        ownerModuleCode: "M01",
+        runtimeModuleCode: "M01",
+        orderNo: 1,
+        simulationCode: "ACT-1",
+        title: "Start-Stop Control Unit",
+    },
+    {
+        routeId: "2",
+        ownerModuleCode: "M01",
+        runtimeModuleCode: "M01",
+        orderNo: 2,
+        simulationCode: "ACT-2",
+        title: "Start-Stop Latching Conrtol Unit",
+    },
+    {
+        routeId: "3",
+        ownerModuleCode: "M01",
+        runtimeModuleCode: "M01",
+        orderNo: 3,
+        simulationCode: "ACT-3",
+        title: "Series Start",
+    },
+    {
+        routeId: "4",
+        ownerModuleCode: "M01",
+        runtimeModuleCode: "M01",
+        orderNo: 4,
+        simulationCode: "ACT-4",
+        title: "Parallel Start",
+    },
+    {
+        routeId: "5",
+        ownerModuleCode: "M01",
+        runtimeModuleCode: "M01",
+        orderNo: 5,
+        simulationCode: "ACT-5",
+        title: "On-Delay Timer Indicator",
+    },
+    {
+        routeId: "5.1",
+        ownerModuleCode: "M05",
+        runtimeModuleCode: "M05",
+        orderNo: 1,
+        simulationCode: "ACT-5.1",
+        title: "Start - Stop Electropneumatics Control",
+    },
+    {
+        routeId: "5.2",
+        ownerModuleCode: "M05",
+        runtimeModuleCode: "M05",
+        orderNo: 2,
+        simulationCode: "ACT-5.2",
+        title: "A+ A-",
+    },
+    {
+        routeId: "5.3",
+        ownerModuleCode: "M05",
+        runtimeModuleCode: "M05",
+        orderNo: 3,
+        simulationCode: "ACT-5.3",
+        title: "A+ B+ A- B-",
+    },
+    {
+        routeId: "5.4",
+        ownerModuleCode: "M05",
+        runtimeModuleCode: "M05",
+        orderNo: 4,
+        simulationCode: "ACT-5.4",
+        title: "A+ B+ B- A-",
+    },
+    {
+        routeId: "5.5",
+        ownerModuleCode: "M05",
+        runtimeModuleCode: "M05",
+        orderNo: 5,
+        simulationCode: "ACT-5.5",
+        title: "A+ A- B+ B-",
+    },
+];
+const ACTIVE_SIMULATION_MANIFEST_BY_ROUTE_ID = new Map(
+    ACTIVE_SIMULATION_MANIFEST.map((entry) => [entry.routeId, entry]),
+);
+
+let simulationInventoryCompatibilityPromise = null;
 
 const adminDashboardCache = new Map();
 const adminActivityLogsCache = new Map();
@@ -163,6 +253,8 @@ const ADMIN_EMAILS = new Set(
         .map((email) => normalizeEmail(email))
         .filter(Boolean)
 );
+const ENABLE_DEV_GOD_MODE = process.env.ENABLE_DEV_GOD_MODE?.trim().toLowerCase() === "true";
+const SEEDED_ADMIN_LOGIN_EMAIL = "admin@demo.local";
 
 function isBootstrapAdminEmail(email) {
     return ADMIN_EMAILS.has(normalizeEmail(email));
@@ -237,6 +329,111 @@ async function resolveLoginAccountRole(client, accountId) {
         }
         throw error;
     }
+}
+
+function buildAuthSessionPayload(account) {
+    const role = roleFromAccountRow(account);
+    const accountId = Number(account.account_id);
+    const traineeId = account.trainee_id == null ? null : Number(account.trainee_id);
+    const subject = traineeId ?? accountId;
+
+    return {
+        payload: {
+            sub: String(subject),
+            role,
+            account_id: accountId,
+            ...(traineeId == null ? {} : { trainee_id: traineeId }),
+        },
+        role,
+        subject,
+        accountId,
+        traineeId,
+    };
+}
+
+function createAuthSessionResponse(account, extra = {}) {
+    const { payload, role, subject, accountId, traineeId } = buildAuthSessionPayload(account);
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+
+    return {
+        token,
+        role,
+        sub: subject,
+        account_id: accountId,
+        trainee_id: traineeId,
+        ...extra,
+    };
+}
+
+async function resolveDevGodModeAdminAccount(client) {
+    const adminOrderClause = `
+        ORDER BY
+          CASE WHEN lower(login_email) = $1 THEN 0 ELSE 1 END,
+          is_system_protected DESC,
+          account_id ASC
+        LIMIT 1
+    `;
+
+    const activeAdminResult = await client.query(
+        `SELECT account_id, trainee_id, login_email, is_active, role, is_system_protected
+         FROM accounts
+         WHERE is_active = TRUE
+           AND (role = 'admin' OR is_system_protected = TRUE)
+         ${adminOrderClause}`,
+        [SEEDED_ADMIN_LOGIN_EMAIL]
+    );
+    if (activeAdminResult.rowCount > 0) {
+        return { account: activeAdminResult.rows[0], source: "existing_admin" };
+    }
+
+    const anyAdminResult = await client.query(
+        `SELECT login_email, is_active
+         FROM accounts
+         WHERE role = 'admin' OR is_system_protected = TRUE
+         ${adminOrderClause}`,
+        [SEEDED_ADMIN_LOGIN_EMAIL]
+    );
+    if (anyAdminResult.rowCount > 0) {
+        const adminAccount = anyAdminResult.rows[0];
+        return {
+            error: adminAccount.is_active
+                ? "God Mode could not resolve an active admin account."
+                : `God Mode found admin-capable account ${adminAccount.login_email}, but it is inactive.`,
+        };
+    }
+
+    if (ADMIN_EMAILS.size === 0) {
+        return {
+            error: "God Mode is enabled, but no admin-capable account exists in DB and ADMIN_EMAILS is empty.",
+        };
+    }
+
+    const bootstrapCandidateResult = await client.query(
+        `SELECT account_id, trainee_id, login_email, is_active, role, is_system_protected
+         FROM accounts
+         WHERE is_active = TRUE
+           AND lower(login_email) = ANY($1::TEXT[])
+         ORDER BY account_id ASC
+         LIMIT 1`,
+        [Array.from(ADMIN_EMAILS)]
+    );
+    if (bootstrapCandidateResult.rowCount === 0) {
+        return {
+            error: "God Mode could not find an active bootstrap admin candidate in the current DB state.",
+        };
+    }
+
+    const resolvedAccount = await resolveLoginAccountRole(
+        client,
+        Number(bootstrapCandidateResult.rows[0].account_id)
+    );
+    if (!resolvedAccount.is_active || roleFromAccountRow(resolvedAccount) !== "admin") {
+        return {
+            error: "God Mode failed to resolve an admin-capable backend account.",
+        };
+    }
+
+    return { account: resolvedAccount, source: "bootstrap_admin_email" };
 }
 
 function requireAuth(req, res, next) {
@@ -411,6 +608,59 @@ function parsePositiveIntParam(value) {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed < 1) return null;
     return parsed;
+}
+
+function normalizeRouteIdValue(value) {
+    if (value === null || value === undefined) return null;
+    const normalized = String(value).trim();
+    if (!normalized || normalized.length > SIMULATION_ROUTE_ID_MAX_LENGTH) return null;
+    return normalized;
+}
+
+function resolveSimulationRouteId(row, moduleCode = null) {
+    const explicitRouteId = normalizeRouteIdValue(row?.route_id);
+    if (explicitRouteId) return explicitRouteId;
+
+    const orderNo = parsePositiveIntParam(row?.order_no);
+    if (!orderNo) return null;
+
+    if (moduleCode === "M05" && orderNo <= 9) {
+        return `5.${orderNo}`;
+    }
+
+    return String(orderNo);
+}
+
+function normalizeModuleCodeInput(value) {
+    if (typeof value !== "string") return null;
+    const normalized = value.trim().toUpperCase();
+    if (!normalized || normalized.length > MODULE_CODE_MAX_LENGTH) return null;
+    return normalized;
+}
+
+function getManifestSimulationByRouteId(routeId) {
+    const normalizedRouteId = normalizeRouteIdValue(routeId);
+    if (!normalizedRouteId) return null;
+    return ACTIVE_SIMULATION_MANIFEST_BY_ROUTE_ID.get(normalizedRouteId) || null;
+}
+
+function inferRuntimeModuleCodeFromRoute(routeId) {
+    const manifestEntry = getManifestSimulationByRouteId(routeId);
+    if (manifestEntry?.runtimeModuleCode) return manifestEntry.runtimeModuleCode;
+
+    const normalizedRouteId = normalizeRouteIdValue(routeId);
+    if (!normalizedRouteId) return null;
+    if (normalizedRouteId.startsWith("5.")) return "M05";
+    return "M01";
+}
+
+function buildSimulationDescription(routeId, title) {
+    return `Runtime activity ${routeId}: ${title}`;
+}
+
+function isLegacySimulationDescription(value) {
+    return typeof value === "string"
+        && value.trim().toLowerCase().startsWith(LEGACY_SIMULATION_DESCRIPTION_PREFIX.toLowerCase());
 }
 
 function parseNonNegativeInt(value) {
@@ -1543,12 +1793,231 @@ async function getModuleResourcesRowsSafe() {
     }
 }
 
+function mapSimulationInventoryRow(row) {
+    const moduleId = parsePositiveIntParam(row?.module_id);
+    const runtimeModuleId = parsePositiveIntParam(row?.runtime_module_id);
+    const routeId = normalizeRouteIdValue(row?.route_id)
+        || (parsePositiveIntParam(row?.order_no) ? String(Number(row.order_no)) : null);
+
+    return {
+        simulation_id: parsePositiveIntParam(row?.simulation_id) || 0,
+        module_id: moduleId,
+        module_code: row?.module_code || null,
+        module_title: row?.module_title || null,
+        simulation_code: row?.simulation_code || "",
+        title: row?.title || "",
+        description: row?.description || null,
+        order_no: parsePositiveIntParam(row?.order_no) || 0,
+        route_id: routeId,
+        runtime_module_id: runtimeModuleId,
+        runtime_module_code: row?.runtime_module_code || null,
+        runtime_module_title: row?.runtime_module_title || null,
+        is_required: row?.is_required !== false,
+    };
+}
+
+async function ensureSimulationInventoryCompatibility() {
+    if (simulationInventoryCompatibilityPromise) {
+        return simulationInventoryCompatibilityPromise;
+    }
+
+    simulationInventoryCompatibilityPromise = (async () => {
+        const client = await pool.connect();
+        let committed = false;
+
+        try {
+            await client.query("BEGIN");
+            await client.query(
+                "SELECT pg_advisory_xact_lock(hashtext('simulation_inventory_compatibility_v1'))",
+            );
+
+            await client.query(`ALTER TABLE simulations ADD COLUMN IF NOT EXISTS route_id TEXT`);
+            await client.query(`ALTER TABLE simulations ADD COLUMN IF NOT EXISTS runtime_module_id BIGINT`);
+            await client.query(`ALTER TABLE simulations ALTER COLUMN module_id DROP NOT NULL`).catch(() => {});
+
+            const modulesResult = await client.query(
+                `SELECT module_id::INT AS module_id, module_code
+                 FROM modules`,
+            );
+            const moduleIdByCode = new Map();
+            const moduleCodeById = new Map();
+            for (const row of modulesResult.rows) {
+                const moduleId = parsePositiveIntParam(row.module_id);
+                const moduleCode = normalizeModuleCodeInput(row.module_code);
+                if (!moduleId || !moduleCode) continue;
+                moduleIdByCode.set(moduleCode, moduleId);
+                moduleCodeById.set(moduleId, moduleCode);
+            }
+
+            const simulationsResult = await client.query(
+                `SELECT
+                   simulation_id::INT AS simulation_id,
+                   module_id::INT AS module_id,
+                   simulation_code,
+                   title,
+                   description,
+                   order_no::INT AS order_no,
+                   route_id,
+                   runtime_module_id::INT AS runtime_module_id
+                 FROM simulations
+                 ORDER BY simulation_id
+                 FOR UPDATE`,
+            );
+
+            for (const row of simulationsResult.rows) {
+                const ownerModuleCode = row.module_id ? moduleCodeById.get(Number(row.module_id)) || null : null;
+                const routeId = resolveSimulationRouteId(row, ownerModuleCode);
+                const runtimeModuleCode = inferRuntimeModuleCodeFromRoute(routeId);
+                const manifestEntry = getManifestSimulationByRouteId(routeId);
+
+                let runtimeModuleId = parsePositiveIntParam(row.runtime_module_id);
+                if (!runtimeModuleId && runtimeModuleCode) {
+                    runtimeModuleId = moduleIdByCode.get(runtimeModuleCode) || null;
+                }
+
+                let nextSimulationCode = row.simulation_code;
+                let nextTitle = row.title;
+                let nextDescription = row.description;
+                if (manifestEntry) {
+                    nextSimulationCode = manifestEntry.simulationCode;
+                    nextTitle = manifestEntry.title;
+                    if (!sanitizeOptionalString(row.description) || isLegacySimulationDescription(row.description)) {
+                        nextDescription = buildSimulationDescription(manifestEntry.routeId, manifestEntry.title);
+                    }
+                }
+
+                const shouldUpdate =
+                    routeId !== normalizeRouteIdValue(row.route_id)
+                    || runtimeModuleId !== parsePositiveIntParam(row.runtime_module_id)
+                    || nextSimulationCode !== row.simulation_code
+                    || nextTitle !== row.title
+                    || nextDescription !== row.description;
+
+                if (!shouldUpdate) continue;
+
+                await client.query(
+                    `UPDATE simulations
+                     SET route_id = $2,
+                         runtime_module_id = $3,
+                         simulation_code = $4,
+                         title = $5,
+                         description = $6
+                     WHERE simulation_id = $1`,
+                    [
+                        row.simulation_id,
+                        routeId,
+                        runtimeModuleId,
+                        nextSimulationCode,
+                        nextTitle,
+                        nextDescription,
+                    ],
+                );
+            }
+
+            for (const manifestEntry of ACTIVE_SIMULATION_MANIFEST) {
+                const ownerModuleId = moduleIdByCode.get(manifestEntry.ownerModuleCode);
+                const runtimeModuleId =
+                    moduleIdByCode.get(manifestEntry.runtimeModuleCode) || ownerModuleId || null;
+                if (!ownerModuleId || !runtimeModuleId) continue;
+
+                const existingResult = await client.query(
+                    `SELECT simulation_id::INT AS simulation_id
+                     FROM simulations
+                     WHERE module_id = $1
+                       AND route_id = $2
+                     LIMIT 1`,
+                    [ownerModuleId, manifestEntry.routeId],
+                );
+
+                if (existingResult.rowCount > 0) continue;
+
+                await client.query(
+                    `INSERT INTO simulations
+                      (module_id, simulation_code, title, description, order_no, route_id, runtime_module_id, is_required)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE)`,
+                    [
+                        ownerModuleId,
+                        manifestEntry.simulationCode,
+                        manifestEntry.title,
+                        buildSimulationDescription(manifestEntry.routeId, manifestEntry.title),
+                        manifestEntry.orderNo,
+                        manifestEntry.routeId,
+                        runtimeModuleId,
+                    ],
+                );
+            }
+
+            await client.query("COMMIT");
+            committed = true;
+        } catch (error) {
+            if (!committed) {
+                try {
+                    await client.query("ROLLBACK");
+                } catch (rollbackError) {
+                    console.error("Simulation inventory compatibility rollback failed:", rollbackError);
+                }
+            }
+            throw error;
+        } finally {
+            client.release();
+        }
+    })().catch((error) => {
+        simulationInventoryCompatibilityPromise = null;
+        throw error;
+    });
+
+    return simulationInventoryCompatibilityPromise;
+}
+
+async function normalizeSimulationOrderForModules(client, moduleIds) {
+    const uniqueModuleIds = [...new Set(
+        (Array.isArray(moduleIds) ? moduleIds : [])
+            .map((value) => parsePositiveIntParam(value))
+            .filter(Boolean),
+    )];
+
+    for (const moduleId of uniqueModuleIds) {
+        const result = await client.query(
+            `SELECT simulation_id::INT AS simulation_id
+             FROM simulations
+             WHERE module_id = $1
+             ORDER BY order_no ASC, route_id ASC NULLS LAST, simulation_id ASC
+             FOR UPDATE`,
+            [moduleId],
+        );
+
+        for (let index = 0; index < result.rows.length; index += 1) {
+            await client.query(
+                `UPDATE simulations
+                 SET order_no = $2
+                 WHERE simulation_id = $1`,
+                [result.rows[index].simulation_id, index + 1],
+            );
+        }
+    }
+}
+
 async function getCurriculumContent({ includeSimulations = true } = {}) {
+    await ensureSimulationInventoryCompatibility();
     const [modulesResult, resources, simulationsResult] = await Promise.all([
         pool.query("SELECT * FROM modules ORDER BY order_no"),
         getModuleResourcesRowsSafe(),
         includeSimulations
-            ? pool.query("SELECT * FROM simulations ORDER BY module_id, order_no")
+            ? pool.query(
+                `SELECT
+                   s.simulation_id::INT AS simulation_id,
+                   s.module_id::INT AS module_id,
+                   s.simulation_code,
+                   s.title,
+                   s.description,
+                   s.order_no::INT AS order_no,
+                   COALESCE(NULLIF(TRIM(s.route_id), ''), s.order_no::TEXT) AS route_id,
+                   s.runtime_module_id::INT AS runtime_module_id,
+                   s.is_required
+                 FROM simulations s
+                 WHERE s.module_id IS NOT NULL
+                 ORDER BY s.module_id, s.order_no, s.route_id, s.simulation_id`,
+            )
             : Promise.resolve({ rows: [] }),
     ]);
 
@@ -1761,6 +2230,7 @@ function findAdminLessonByResourceId(item, resourceId) {
 }
 
 async function getAdminLessonItems(moduleId = null) {
+    await ensureSimulationInventoryCompatibility();
     const [moduleResult, lessonRows, simRows] = await Promise.all([
         pool.query(
             `SELECT
@@ -1777,10 +2247,25 @@ async function getAdminLessonItems(moduleId = null) {
         ),
         getAdminLessonResourceRows(moduleId),
         pool.query(
-            `SELECT simulation_id::INT AS simulation_id, simulation_code, title, module_id::INT AS module_id
-             FROM simulations
-             WHERE ($1::BIGINT IS NULL OR module_id = $1)
-             ORDER BY order_no, simulation_id`,
+            `SELECT
+               s.simulation_id::INT AS simulation_id,
+               s.module_id::INT AS module_id,
+               owner.module_code,
+               owner.title AS module_title,
+               s.simulation_code,
+               s.title,
+               s.description,
+               s.order_no::INT AS order_no,
+               COALESCE(NULLIF(TRIM(s.route_id), ''), s.order_no::TEXT) AS route_id,
+               s.runtime_module_id::INT AS runtime_module_id,
+               runtime.module_code AS runtime_module_code,
+               runtime.title AS runtime_module_title,
+               s.is_required
+             FROM simulations s
+             LEFT JOIN modules owner ON owner.module_id = s.module_id
+             LEFT JOIN modules runtime ON runtime.module_id = s.runtime_module_id
+             WHERE ($1::BIGINT IS NULL OR s.module_id = $1)
+             ORDER BY s.order_no, s.route_id, s.simulation_id`,
             [moduleId]
         )
     ]);
@@ -1796,7 +2281,7 @@ async function getAdminLessonItems(moduleId = null) {
     for (const sim of simRows.rows) {
         const key = Number(sim.module_id);
         if (!simsByModuleId.has(key)) simsByModuleId.set(key, []);
-        simsByModuleId.get(key).push(sim);
+        simsByModuleId.get(key).push(mapSimulationInventoryRow(sim));
     }
 
     return moduleResult.rows.map((row) => {
@@ -3018,12 +3503,28 @@ async function finalizeQuizAttempt(
 
 app.get("/api/admin/simulations", requireAuth, requireAdmin, async (req, res) => {
     try {
+        await ensureSimulationInventoryCompatibility();
         const result = await pool.query(
-            `SELECT simulation_id::INT, simulation_code, title, module_id::INT
-             FROM simulations
-             ORDER BY simulation_code, title`
+            `SELECT
+               s.simulation_id::INT AS simulation_id,
+               s.module_id::INT AS module_id,
+               owner.module_code,
+               owner.title AS module_title,
+               s.simulation_code,
+               s.title,
+               s.description,
+               s.order_no::INT AS order_no,
+               COALESCE(NULLIF(TRIM(s.route_id), ''), s.order_no::TEXT) AS route_id,
+               s.runtime_module_id::INT AS runtime_module_id,
+               runtime.module_code AS runtime_module_code,
+               runtime.title AS runtime_module_title,
+               s.is_required
+             FROM simulations s
+             LEFT JOIN modules owner ON owner.module_id = s.module_id
+             LEFT JOIN modules runtime ON runtime.module_id = s.runtime_module_id
+             ORDER BY COALESCE(owner.order_no, 2147483647), s.order_no, s.route_id, s.simulation_id`
         );
-        res.json({ simulations: result.rows });
+        res.json({ simulations: result.rows.map(mapSimulationInventoryRow) });
     } catch (error) {
         console.error("Admin simulations fetch failed:", error);
         res.status(500).json({ error: "Internal server error" });
@@ -3041,17 +3542,90 @@ app.put("/api/admin/modules/:moduleId/simulations", requireAuth, requireAdmin, a
 
     const client = await pool.connect();
     try {
+        await ensureSimulationInventoryCompatibility();
         await client.query("BEGIN");
-        
-        // 🔥 Self-healing DB patch: Allow simulations to sit in an unassigned pool
-        await client.query(`ALTER TABLE simulations ALTER COLUMN module_id DROP NOT NULL`)
-            .catch(e => console.warn("Notice: Could not auto-drop constraint. You may need to run this manually in Supabase."));
+        await client.query(`ALTER TABLE simulations ALTER COLUMN module_id DROP NOT NULL`).catch(() => {});
 
-        // Unassign existing simulations for this module
-        await client.query(`UPDATE simulations SET module_id = NULL WHERE module_id = $1`, [moduleId]);
+        const moduleResult = await client.query(
+            `SELECT module_code
+             FROM modules
+             WHERE module_id = $1
+             FOR UPDATE`,
+            [moduleId],
+        );
+        if (moduleResult.rowCount === 0) {
+            await client.query("ROLLBACK");
+            return res.status(404).json({ error: "Module not found" });
+        }
 
-        // Assign the newly selected ones
-        const safeIds = simulationIds.map(id => Number(id)).filter(id => Number.isInteger(id) && id > 0);
+        const safeIds = [...new Set(
+            simulationIds
+                .map((id) => parsePositiveIntParam(id))
+                .filter(Boolean),
+        )];
+
+        const affectedModuleIds = new Set([moduleId]);
+        if (safeIds.length > 0) {
+            const selectedSimulationsResult = await client.query(
+                `SELECT
+                   simulation_id::INT AS simulation_id,
+                   module_id::INT AS module_id,
+                   COALESCE(NULLIF(TRIM(route_id), ''), order_no::TEXT) AS route_id
+                 FROM simulations
+                 WHERE simulation_id = ANY($1::INT[])
+                 FOR UPDATE`,
+                [safeIds],
+            );
+
+            if (selectedSimulationsResult.rowCount !== safeIds.length) {
+                await client.query("ROLLBACK");
+                return res.status(400).json({ error: "One or more simulations no longer exist" });
+            }
+
+            const seenRouteIds = new Set();
+            for (const row of selectedSimulationsResult.rows) {
+                const routeId = normalizeRouteIdValue(row.route_id);
+                if (!routeId) continue;
+                if (seenRouteIds.has(routeId)) {
+                    await client.query("ROLLBACK");
+                    return res.status(409).json({ error: `Duplicate route ${routeId} cannot be assigned to the same module` });
+                }
+                seenRouteIds.add(routeId);
+
+                const previousModuleId = parsePositiveIntParam(row.module_id);
+                if (previousModuleId) {
+                    affectedModuleIds.add(previousModuleId);
+                }
+            }
+
+            const selectedRouteIds = [...seenRouteIds];
+            if (selectedRouteIds.length > 0) {
+                const routeConflictResult = await client.query(
+                    `SELECT COALESCE(NULLIF(TRIM(route_id), ''), order_no::TEXT) AS route_id
+                     FROM simulations
+                     WHERE module_id = $1
+                       AND NOT (simulation_id = ANY($2::INT[]))
+                       AND COALESCE(NULLIF(TRIM(route_id), ''), order_no::TEXT) = ANY($3::TEXT[])
+                     LIMIT 1`,
+                    [moduleId, safeIds, selectedRouteIds],
+                );
+                if (routeConflictResult.rowCount > 0) {
+                    await client.query("ROLLBACK");
+                    return res.status(409).json({
+                        error: `Route ${routeConflictResult.rows[0].route_id} is already assigned to this module`,
+                    });
+                }
+            }
+        }
+
+        await client.query(
+            `UPDATE simulations
+             SET module_id = NULL
+             WHERE module_id = $1
+               AND NOT (simulation_id = ANY($2::INT[]))`,
+            [moduleId, safeIds],
+        );
+
         if (safeIds.length > 0) {
             await client.query(
                 `UPDATE simulations SET module_id = $1 WHERE simulation_id = ANY($2::INT[])`,
@@ -3059,8 +3633,9 @@ app.put("/api/admin/modules/:moduleId/simulations", requireAuth, requireAdmin, a
             );
         }
 
-        const modRes = await client.query(`SELECT module_code FROM modules WHERE module_id = $1`, [moduleId]);
-        const moduleCode = modRes.rows[0]?.module_code || moduleId;
+        await normalizeSimulationOrderForModules(client, [...affectedModuleIds]);
+
+        const moduleCode = moduleResult.rows[0]?.module_code || moduleId;
 
         await logAdminAction(client, req.user?.account_id || req.auth?.account_id || null, 'admin_simulation_moved', null, `Updated simulation assignments for Module ${moduleCode} (${safeIds.length} mapped)`, { module_id: moduleId, simulations: safeIds });
 
@@ -3129,6 +3704,7 @@ async function getDashboardPayloadForTrainee(traineeId) {
                  FROM trainee_simulation_progress tsp
                  JOIN simulations s ON s.simulation_id = tsp.simulation_id
                  WHERE tsp.trainee_id = $1
+                   AND s.module_id IS NOT NULL
                  ORDER BY s.module_id, s.order_no, tsp.simulation_id`,
                 [traineeId]
             )
@@ -3220,28 +3796,39 @@ app.post("/api/auth/login", async (req, res) => {
             return res.status(403).json({ error: "Account is inactive" });
         }
 
-        const role = roleFromAccountRow(resolvedAccount);
-        const accountId = Number(resolvedAccount.account_id);
-        const traineeId = resolvedAccount.trainee_id == null ? null : Number(resolvedAccount.trainee_id);
-        const subject = traineeId ?? accountId;
-        const payload = {
-            sub: String(subject),
-            role,
-            account_id: accountId,
-            ...(traineeId == null ? {} : { trainee_id: traineeId }),
-        };
-        const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
-
-        res.json({
-            token,
-            role,
-            sub: subject,
-            account_id: accountId,
-            trainee_id: traineeId,
-        });
+        res.json(createAuthSessionResponse(resolvedAccount));
     } catch (e) {
         console.error("Login endpoint failed:", e);
         res.status(500).json({ error: "Internal server error" });
+    } finally {
+        client.release();
+    }
+});
+
+app.post("/api/auth/dev-god-mode", async (req, res) => {
+    if (process.env.NODE_ENV === "production") {
+        return res.status(404).json({ error: "Not found" });
+    }
+
+    if (!ENABLE_DEV_GOD_MODE) {
+        return res.status(403).json({
+            error: "God Mode is disabled. Set ENABLE_DEV_GOD_MODE=true in server/.env for local testing.",
+        });
+    }
+
+    const client = await pool.connect();
+    try {
+        const result = await resolveDevGodModeAdminAccount(client);
+        if (!result.account) {
+            return res.status(409).json({
+                error: result.error || "God Mode could not resolve an admin-capable backend account.",
+            });
+        }
+
+        return res.json(createAuthSessionResponse(result.account, { god_mode: true }));
+    } catch (error) {
+        console.error("Dev God Mode endpoint failed:", error);
+        return res.status(500).json({ error: "Internal server error" });
     } finally {
         client.release();
     }
@@ -4302,6 +4889,17 @@ app.post("/api/admin/lessons", async (req, res) => {
         return res.status(400).json({ error: `Title must be at most ${MODULE_TITLE_MAX_LENGTH} characters` });
     }
 
+    const rawModuleCode = req.body?.moduleCode;
+    const requestedModuleCode =
+        rawModuleCode == null || rawModuleCode === ""
+            ? null
+            : normalizeModuleCodeInput(rawModuleCode);
+    if (rawModuleCode != null && rawModuleCode !== "" && !requestedModuleCode) {
+        return res.status(400).json({ error: `Module code must be at most ${MODULE_CODE_MAX_LENGTH} characters` });
+    }
+
+    const description = sanitizeOptionalString(req.body?.description);
+
     const client = await pool.connect();
     let createdModuleId = null;
     let committed = false;
@@ -4327,13 +4925,13 @@ app.post("/api/admin/lessons", async (req, res) => {
         while (usedCodeNumbers.has(candidateCodeNumber)) {
             candidateCodeNumber += 1;
         }
-        const moduleCode = formatModuleCodeFromNumber(candidateCodeNumber);
+        const moduleCode = requestedModuleCode || formatModuleCodeFromNumber(candidateCodeNumber);
 
         const insertResult = await client.query(
-            `INSERT INTO modules (module_code, title, order_no)
-             VALUES ($1, $2, $3)
+            `INSERT INTO modules (module_code, title, description, order_no)
+             VALUES ($1, $2, $3, $4)
              RETURNING module_id`,
-            [moduleCode, title, nextOrder]
+            [moduleCode, title, description, nextOrder]
         );
 
         createdModuleId = Number(insertResult.rows[0]?.module_id) || null;
@@ -7686,4 +8284,28 @@ app.post("/api/me/simulations/:simulationId/complete", requireAuth, async (req, 
 });
 
 const PORT = Number(process.env.PORT || 4000);
-app.listen(PORT, "0.0.0.0", () => console.log(`✅ API running on port ${PORT}`));
+
+async function ensureAdminActionLogsTable() {
+    await pool.query(`
+        CREATE TABLE IF NOT EXISTS admin_action_logs (
+            action_id SERIAL PRIMARY KEY,
+            type VARCHAR(50) NOT NULL,
+            occurred_at TIMESTAMPTZ DEFAULT NOW(),
+            batch_code VARCHAR(255),
+            actor_account_id INTEGER REFERENCES accounts(account_id) ON DELETE SET NULL,
+            message TEXT NOT NULL,
+            meta JSONB
+        );
+    `);
+}
+
+async function startServer() {
+    await ensureAdminActionLogsTable();
+    await ensureSimulationInventoryCompatibility();
+    app.listen(PORT, "0.0.0.0", () => console.log(`✅ API running on port ${PORT}`));
+}
+
+startServer().catch((error) => {
+    console.error("API startup failed:", error);
+    process.exit(1);
+});

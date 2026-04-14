@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { useLocation, useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle, ArrowLeft, BookOpen } from 'lucide-react';
 import CyberTransition from '../components/CyberTransition';
 import SimulationApp from '../simulation/SimulationApp';
@@ -8,30 +8,46 @@ import {
     buildActivityStateKey,
     normalizeActivityModuleId,
     normalizeActivityRouteId,
+    normalizeActivitySimulationId,
+    resolveSimulationRouteId,
+    resolveSimulationRuntimeModuleId,
 } from '../simulation/utils/activityState';
 
 type SimulationLocationState = {
     moduleId?: unknown;
+    activityModuleId?: unknown;
     simulationId?: unknown;
 } | null;
+
+type SimulationActivityEntry = {
+    simulationId?: number;
+    routeId: string;
+    activityModuleId?: number | null;
+    orderNo: number;
+    title: string;
+};
 
 export default function SimulationView() {
     const { id } = useParams();
     const location = useLocation();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
 
     const locationState = (location.state as SimulationLocationState) ?? null;
-    const moduleId = normalizeActivityModuleId(
+    const requestedModuleId = normalizeActivityModuleId(
         locationState?.moduleId as string | number | null | undefined,
-    );
-    const simulationId = (() => {
-        const parsedSimulationId = Number(locationState?.simulationId);
-        return Number.isInteger(parsedSimulationId) && parsedSimulationId > 0 ? parsedSimulationId : undefined;
-    })();
-
+    ) ?? normalizeActivityModuleId(searchParams.get('module'));
+    const requestedActivityModuleId = normalizeActivityModuleId(
+        locationState?.activityModuleId as string | number | null | undefined,
+    ) ?? normalizeActivityModuleId(searchParams.get('activity_module'));
+    const simulationId = normalizeActivitySimulationId(locationState?.simulationId as string | number | null | undefined)
+        ?? normalizeActivitySimulationId(searchParams.get('simulation'))
+        ?? undefined;
     const simulationRouteId = normalizeActivityRouteId(id) ?? '1';
 
+    const [resolvedModuleId, setResolvedModuleId] = useState<number | null>(requestedModuleId);
     const [completedRoutes, setCompletedRoutes] = useState<string[]>([]);
+    const [activityEntries, setActivityEntries] = useState<SimulationActivityEntry[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [restrictionMessage, setRestrictionMessage] = useState<string | null>(null);
 
@@ -47,6 +63,7 @@ export default function SimulationView() {
                 if (dashboard.trainee?.access_mode === 'lesson_only') {
                     setRestrictionMessage('This trainee account has lesson-only access. Simulations are disabled.');
                     setCompletedRoutes([]);
+                    setActivityEntries([]);
                     return;
                 }
 
@@ -60,35 +77,74 @@ export default function SimulationView() {
                     progressMap.set(Number(progressRow.simulation_id), isCompleted);
                 });
 
-                const completedOrderNos: string[] = [];
-                dashboard.moduleContent.simulations.forEach((simulationRow) => {
-                    const simulationModuleId = Number(simulationRow.module_id);
-                    if (moduleId !== null && simulationModuleId !== moduleId) {
-                        return;
-                    }
+                const matchedSimulationById = simulationId
+                    ? dashboard.moduleContent.simulations.find(
+                        (simulationRow) => Number(simulationRow.simulation_id) === simulationId,
+                    ) ?? null
+                    : null;
 
-                    if (moduleId === null && simulationModuleId !== 1) {
-                        return;
-                    }
+                const effectiveModuleId = requestedModuleId
+                    ?? normalizeActivityModuleId(matchedSimulationById?.module_id)
+                    ?? null;
+                setResolvedModuleId(effectiveModuleId);
 
-                    if (!progressMap.get(Number(simulationRow.simulation_id))) {
-                        return;
-                    }
+                const scopedSimulations = dashboard.moduleContent.simulations
+                    .filter((simulationRow) => {
+                        const ownerModuleId = normalizeActivityModuleId(simulationRow.module_id);
+                        if (effectiveModuleId !== null) {
+                            return ownerModuleId === effectiveModuleId;
+                        }
 
-                    const orderNo = Number(simulationRow.order_no);
-                    if (orderNo <= 0) {
-                        return;
-                    }
+                        if (simulationId) {
+                            return Number(simulationRow.simulation_id) === simulationId;
+                        }
 
-                    const completionKey = moduleId === null
-                        ? String(orderNo)
-                        : buildActivityStateKey(orderNo, moduleId);
-                    if (completionKey) {
-                        completedOrderNos.push(completionKey);
-                    }
-                });
+                        return false;
+                    })
+                    .map((simulationRow) => {
+                        const routeId = resolveSimulationRouteId(simulationRow.route_id, simulationRow.order_no);
+                        if (!routeId) return null;
 
-                setCompletedRoutes(completedOrderNos);
+                        return {
+                            simulationId: Number(simulationRow.simulation_id),
+                            routeId,
+                            activityModuleId: resolveSimulationRuntimeModuleId(
+                                simulationRow.runtime_module_id,
+                                requestedActivityModuleId ?? simulationRow.module_id,
+                            ),
+                            orderNo: Number(simulationRow.order_no) || Number.MAX_SAFE_INTEGER,
+                            title: typeof simulationRow.title === 'string' ? simulationRow.title : routeId,
+                        } as SimulationActivityEntry;
+                    })
+                    .filter((entry): entry is SimulationActivityEntry => entry !== null)
+                    .sort((left, right) => {
+                        if (left.orderNo !== right.orderNo) return left.orderNo - right.orderNo;
+                        if ((left.simulationId ?? 0) !== (right.simulationId ?? 0)) {
+                            return (left.simulationId ?? 0) - (right.simulationId ?? 0);
+                        }
+                        return left.routeId.localeCompare(right.routeId);
+                    });
+
+                const fallbackEntry: SimulationActivityEntry = {
+                    simulationId,
+                    routeId: simulationRouteId,
+                    activityModuleId: resolveSimulationRuntimeModuleId(
+                        requestedActivityModuleId,
+                        effectiveModuleId,
+                    ),
+                    orderNo: 1,
+                    title: simulationRouteId,
+                };
+
+                const nextActivityEntries = scopedSimulations.length > 0 ? scopedSimulations : [fallbackEntry];
+                setActivityEntries(nextActivityEntries);
+
+                const completedRouteKeys = nextActivityEntries
+                    .filter((entry) => entry.simulationId && progressMap.get(entry.simulationId))
+                    .map((entry) => buildActivityStateKey(entry.routeId, effectiveModuleId))
+                    .filter((value): value is string => Boolean(value));
+
+                setCompletedRoutes(completedRouteKeys);
             } catch (error) {
                 console.error('Failed to sync simulation progress', error);
             } finally {
@@ -104,7 +160,20 @@ export default function SimulationView() {
             active = false;
             controller.abort();
         };
-    }, [moduleId]);
+    }, [requestedActivityModuleId, requestedModuleId, simulationId, simulationRouteId]);
+
+    const currentActivityEntry = useMemo(() => {
+        if (simulationId) {
+            const bySimulationId = activityEntries.find((entry) => entry.simulationId === simulationId) ?? null;
+            if (bySimulationId) return bySimulationId;
+        }
+
+        return activityEntries.find((entry) => entry.routeId === simulationRouteId) ?? null;
+    }, [activityEntries, simulationId, simulationRouteId]);
+
+    const effectiveActivityModuleId = currentActivityEntry?.activityModuleId
+        ?? resolveSimulationRuntimeModuleId(requestedActivityModuleId, resolvedModuleId)
+        ?? undefined;
 
     return (
         <CyberTransition>
@@ -125,10 +194,10 @@ export default function SimulationView() {
                         <h1 className="mt-5 text-lg font-black uppercase tracking-[0.2em] text-amber-200">Simulation Blocked</h1>
                         <p className="mt-4 text-sm font-medium text-slate-300">{restrictionMessage}</p>
                         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                            {moduleId !== null ? (
+                            {resolvedModuleId !== null ? (
                                 <button
                                     type="button"
-                                    onClick={() => navigate(`/module/${moduleId}`)}
+                                    onClick={() => navigate(`/module/${resolvedModuleId}`)}
                                     className="inline-flex items-center justify-center gap-2 rounded-full bg-cyan-500 px-5 py-3 text-xs font-black uppercase tracking-[0.2em] text-slate-950 transition-colors hover:bg-cyan-400"
                                 >
                                     <BookOpen size={14} />
@@ -148,10 +217,12 @@ export default function SimulationView() {
                 </div>
             ) : (
                 <SimulationApp
-                    key={`${moduleId ?? 'legacy'}:${simulationRouteId}`}
+                    key={`${resolvedModuleId ?? 'legacy'}:${effectiveActivityModuleId ?? 'default'}:${simulationRouteId}:${simulationId ?? 'anonymous'}`}
                     routeId={simulationRouteId}
-                    moduleId={moduleId ?? undefined}
+                    moduleId={resolvedModuleId ?? undefined}
+                    activityModuleId={effectiveActivityModuleId}
                     simulationId={simulationId}
+                    activityEntries={activityEntries}
                     initialCompletedRoutes={completedRoutes}
                     onNavigateBack={() => navigate('/dashboard')}
                 />

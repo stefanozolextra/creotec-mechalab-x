@@ -2,7 +2,7 @@
 "use strict";
 
 // Usage:
-// BASE_URL=http://localhost:4000 ADMIN_EMAIL=admin@demo.local ADMIN_PASSWORD=Admin@12345! node scripts/admin-smoke.js
+// BASE_URL=http://localhost:4000 ADMIN_EMAIL=admin@demo.local ADMIN_PASSWORD=P@ssw0rd! node scripts/admin-smoke.js
 
 if (typeof fetch !== "function") {
     console.error("FAIL Node runtime does not provide fetch(). Use Node 18+.");
@@ -11,7 +11,7 @@ if (typeof fetch !== "function") {
 
 const BASE_URL = (process.env.BASE_URL || "http://localhost:4000").replace(/\/+$/, "");
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@demo.local";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Admin@12345!";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "P@ssw0rd!";
 
 const state = {
     failed: false,

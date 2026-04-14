@@ -75,11 +75,13 @@ CREATE TABLE module_resource_files (
 
 CREATE TABLE simulations (
   simulation_id   BIGSERIAL PRIMARY KEY,
-  module_id       BIGINT NOT NULL REFERENCES modules(module_id) ON DELETE CASCADE,
+  module_id       BIGINT REFERENCES modules(module_id) ON DELETE CASCADE,
   simulation_code VARCHAR(30) NOT NULL,
   title           VARCHAR(150) NOT NULL,
   description     TEXT,
   order_no        INT NOT NULL,
+  route_id        TEXT,
+  runtime_module_id BIGINT REFERENCES modules(module_id),
   is_required     BOOLEAN NOT NULL DEFAULT TRUE,
   UNIQUE (module_id, simulation_code)
 );

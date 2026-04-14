@@ -61,27 +61,59 @@ SELECT m.module_id, 'VIDEO', m.module_code || ' Video Lesson',
 FROM modules m;
 
 -- =========================
--- 2 SIMULATIONS per module (A)
+-- SIMULATIONS
+-- - M01 exposes the active default runtime pack routes 1..5
+-- - M05 exposes the active electropneumatics runtime pack routes 5.1..5.5
+-- - Other seeded modules keep 2 compatibility rows that still launch the default runtime pack
 -- =========================
-INSERT INTO simulations (module_id, simulation_code, title, description, order_no, is_required)
+INSERT INTO simulations (module_id, simulation_code, title, description, order_no, route_id, runtime_module_id, is_required)
 SELECT
   m.module_id,
-  m.module_code || '-SIM1',
-  m.module_code || ' Simulation 1',
-  'Required simulation activity (1).',
-  1,
+  manifest.simulation_code,
+  manifest.title,
+  manifest.description,
+  manifest.order_no,
+  manifest.route_id,
+  runtime_module.module_id,
   TRUE
-FROM modules m;
+FROM modules m
+JOIN (
+  VALUES
+    ('M01', 'ACT-1', 'Start-Stop Control Unit', 'Runtime activity 1: Start-Stop Control Unit', 1, '1', 'M01'),
+    ('M01', 'ACT-2', 'Start-Stop Latching Conrtol Unit', 'Runtime activity 2: Start-Stop Latching Conrtol Unit', 2, '2', 'M01'),
+    ('M01', 'ACT-3', 'Series Start', 'Runtime activity 3: Series Start', 3, '3', 'M01'),
+    ('M01', 'ACT-4', 'Parallel Start', 'Runtime activity 4: Parallel Start', 4, '4', 'M01'),
+    ('M01', 'ACT-5', 'On-Delay Timer Circuit', 'Runtime activity 5: On-Delay Timer Circuit', 5, '5', 'M01'),
+    ('M05', 'ACT-5.1', 'Start - Stop Electropneumatics Control', 'Runtime activity 5.1: Start - Stop Electropneumatics Control', 1, '5.1', 'M05'),
+    ('M05', 'ACT-5.2', 'A+ A-', 'Runtime activity 5.2: A+ A-', 2, '5.2', 'M05'),
+    ('M05', 'ACT-5.3', 'A+ B+ A- B-', 'Runtime activity 5.3: A+ B+ A- B-', 3, '5.3', 'M05'),
+    ('M05', 'ACT-5.4', 'A+ B+ B- A-', 'Runtime activity 5.4: A+ B+ B- A-', 4, '5.4', 'M05'),
+    ('M05', 'ACT-5.5', 'A+ A- B+ B-', 'Runtime activity 5.5: A+ A- B+ B-', 5, '5.5', 'M05')
+) AS manifest(owner_module_code, simulation_code, title, description, order_no, route_id, runtime_module_code)
+  ON manifest.owner_module_code = m.module_code
+JOIN modules runtime_module
+  ON runtime_module.module_code = manifest.runtime_module_code;
 
-INSERT INTO simulations (module_id, simulation_code, title, description, order_no, is_required)
+INSERT INTO simulations (module_id, simulation_code, title, description, order_no, route_id, runtime_module_id, is_required)
 SELECT
   m.module_id,
-  m.module_code || '-SIM2',
-  m.module_code || ' Simulation 2',
-  'Required simulation activity (2).',
-  2,
+  fallback.simulation_code,
+  fallback.title,
+  fallback.description,
+  fallback.order_no,
+  fallback.route_id,
+  runtime_default.module_id,
   TRUE
-FROM modules m;
+FROM modules m
+JOIN (
+  VALUES
+    ('ACT-1', 'Start-Stop Control Unit', 'Runtime activity 1: Start-Stop Control Unit', 1, '1'),
+    ('ACT-2', 'Start-Stop Latching Conrtol Unit', 'Runtime activity 2: Start-Stop Latching Conrtol Unit', 2, '2')
+) AS fallback(simulation_code, title, description, order_no, route_id)
+  ON TRUE
+JOIN modules runtime_default
+  ON runtime_default.module_code = 'M01'
+WHERE m.module_code NOT IN ('M01', 'M05');
 
 -- =========================
 -- TRAINEE SIMULATION PROGRESS (deterministic realistic distribution)
