@@ -33,7 +33,8 @@ This prints a PASS/FAIL report and exits with status code `1` on failure.
 
 ## Manual Quiz Schema Apply
 
-For databases that were initialized before the quiz tables existed, apply the incremental SQL from the repository root:
+The API attempts to apply the incremental quiz SQL automatically at startup.
+If the database user cannot run DDL, apply it manually from the repository root:
 
 ```bash
 psql "$DATABASE_URL" -f "mechalabx-db/db/06_quizzes.sql"

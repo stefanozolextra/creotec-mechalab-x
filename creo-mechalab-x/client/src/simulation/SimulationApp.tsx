@@ -85,15 +85,15 @@ const TIMER_WIDGET_BOUNDS = { x: 675, y: 455, width: 85, height: 95 };
 const formatActivity5TimerDisplay = (seconds: number) => Math.max(0, seconds).toFixed(2).padStart(5, '0');
 
 const DEVICE_LIBRARY = [
-  { id: 'push-button', name: 'Push Button', image: buttonDevice },
-  { id: 'buzzer', name: 'Buzzer', image: buzzerDevice },
-  { id: 'counter', name: 'Counter', image: counterDevice },
-  { id: 'light-indicator', name: 'Light Indicator', image: lightIndicatorDevice },
-  { id: 'magnetic-contactor', name: 'Magnetic Contactor', image: magneticContactorDevice },
-  { id: 'relay-module', name: 'Relay Module', image: relayModuleDevice },
-  { id: 'limit-switch', name: 'Limit Switch', image: limitSwitchDevice },
-  { id: 'solenoid-valve', name: 'Solenoid Valve', image: solenoidValveDevice },
-  { id: 'timer', name: 'Timer', image: timerDevice },
+  { id: 'push-button', name: 'Push Button', image: buttonDevice, maxQuantity: 1 },
+  { id: 'buzzer', name: 'Buzzer', image: buzzerDevice, maxQuantity: 1 },
+  { id: 'counter', name: 'Counter', image: counterDevice, maxQuantity: 1 },
+  { id: 'light-indicator', name: 'Light Indicator', image: lightIndicatorDevice, maxQuantity: 1 },
+  { id: 'magnetic-contactor', name: 'Magnetic Contactor', image: magneticContactorDevice, maxQuantity: 1 },
+  { id: 'relay-module', name: 'Relay Module', image: relayModuleDevice, maxQuantity: 4 },
+  { id: 'limit-switch', name: 'Limit Switch', image: limitSwitchDevice, maxQuantity: 4 },
+  { id: 'solenoid-valve', name: 'Solenoid Valve', image: solenoidValveDevice, maxQuantity: 2 },
+  { id: 'timer', name: 'Timer', image: timerDevice, maxQuantity: 1 },
 ] as const;
 
 type DeviceId = (typeof DEVICE_LIBRARY)[number]['id'];
@@ -102,6 +102,66 @@ type DeviceDragState = { deviceId: DeviceId; source: DeviceZone | 'library' } | 
 
 const isDeviceId = (value: string): value is DeviceId => DEVICE_LIBRARY.some((device) => device.id === value);
 const getDeviceById = (deviceId: DeviceId) => DEVICE_LIBRARY.find((device) => device.id === deviceId) ?? DEVICE_LIBRARY[0];
+const getDeviceMaxQuantity = (deviceId: DeviceId) => getDeviceById(deviceId).maxQuantity;
+const supportsDeviceQuantity = (deviceId: DeviceId) => getDeviceMaxQuantity(deviceId) > 1;
+const createEmptyAssignedDevices = (): Record<DeviceZone, DeviceId[]> => ({ input: [], output: [] });
+const countDeviceOccurrences = (deviceIds: readonly DeviceId[], deviceId: DeviceId) =>
+  deviceIds.reduce((total, entry) => total + Number(entry === deviceId), 0);
+const countDeviceIds = (deviceIds: readonly DeviceId[]) => {
+  const counts: Partial<Record<DeviceId, number>> = {};
+
+  deviceIds.forEach((deviceId) => {
+    counts[deviceId] = (counts[deviceId] ?? 0) + 1;
+  });
+
+  return counts;
+};
+const removeOneDeviceInstance = (deviceIds: readonly DeviceId[], deviceId: DeviceId) => {
+  const removalIndex = deviceIds.lastIndexOf(deviceId);
+  if (removalIndex === -1) return [...deviceIds];
+
+  return [
+    ...deviceIds.slice(0, removalIndex),
+    ...deviceIds.slice(removalIndex + 1),
+  ];
+};
+const normalizeDeviceEntries = (
+  deviceIds: unknown,
+  totalCounts: Partial<Record<DeviceId, number>>,
+): DeviceId[] => {
+  if (!Array.isArray(deviceIds)) return [];
+
+  const normalized: DeviceId[] = [];
+
+  for (const rawDeviceId of deviceIds) {
+    if (typeof rawDeviceId !== 'string' || !isDeviceId(rawDeviceId)) {
+      continue;
+    }
+
+    const nextCount = (totalCounts[rawDeviceId] ?? 0) + 1;
+    if (nextCount > getDeviceMaxQuantity(rawDeviceId)) {
+      continue;
+    }
+
+    totalCounts[rawDeviceId] = nextCount;
+    normalized.push(rawDeviceId);
+  }
+
+  return normalized;
+};
+const normalizeAssignedDevicesState = (value: unknown): Record<DeviceZone, DeviceId[]> => {
+  if (!value || typeof value !== 'object') {
+    return createEmptyAssignedDevices();
+  }
+
+  const rawValue = value as Record<string, unknown>;
+  const totalCounts: Partial<Record<DeviceId, number>> = {};
+
+  return {
+    input: normalizeDeviceEntries(rawValue.input, totalCounts),
+    output: normalizeDeviceEntries(rawValue.output, totalCounts),
+  };
+};
 const toWireKey = (fromPin: string, toPin: string) => [fromPin, toPin].sort().join('|');
 const isWireIssue = (issue: string) => issue.startsWith('Add at least ') || issue.startsWith('Missing required connection:') || issue.startsWith('Missing one required connection option:');
 
@@ -144,7 +204,7 @@ export default function SimulationApp({
       activityPreset.routeId,
       moduleId,
     );
-    return saved ? saved.assignedDevices : { input: [], output: [] };
+    return normalizeAssignedDevicesState(saved?.assignedDevices);
   });
 
   const [dragState, setDragState] = useState<DeviceDragState>(null);
@@ -673,8 +733,8 @@ export default function SimulationApp({
     };
   }, [isActivity5TimerPopupOpen]);
 
-  const assignedDeviceIds = useMemo(
-    () => new Set([...assignedDevices.input, ...assignedDevices.output]),
+  const assignedDeviceCounts = useMemo(
+    () => countDeviceIds([...assignedDevices.input, ...assignedDevices.output]),
     [assignedDevices],
   );
 
@@ -726,21 +786,79 @@ export default function SimulationApp({
   const shouldShowOnlyWrongWireMessage = Boolean(answerFeedback && !answerFeedback.passed && !shouldShowOnlyNoDeviceMessage && answerFeedback.wrongConnections.length);
   const shouldShowOnlyMissingWireMessage = Boolean(answerFeedback && !answerFeedback.passed && !shouldShowOnlyNoDeviceMessage && !shouldShowOnlyWrongWireMessage && answerFeedback.issues.length && answerFeedback.issues.every(isWireIssue));
 
-  const placeDeviceInZone = useCallback((deviceId: DeviceId, zone: DeviceZone) => {
+  const placeDeviceInZone = useCallback((deviceId: DeviceId, zone: DeviceZone, source: DeviceZone | 'library' = 'library') => {
     setAssignedDevices((previous) => {
-      const nextInput = previous.input.filter((entry) => entry !== deviceId);
-      const nextOutput = previous.output.filter((entry) => entry !== deviceId);
-      if (zone === 'input') return { input: [...nextInput, deviceId], output: nextOutput };
-      return { input: nextInput, output: [...nextOutput, deviceId] };
+      if (!supportsDeviceQuantity(deviceId)) {
+        const nextInput = previous.input.filter((entry) => entry !== deviceId);
+        const nextOutput = previous.output.filter((entry) => entry !== deviceId);
+        if (zone === 'input') return { input: [...nextInput, deviceId], output: nextOutput };
+        return { input: nextInput, output: [...nextOutput, deviceId] };
+      }
+
+      if (source !== 'library' && source === zone) {
+        return previous;
+      }
+
+      if (source !== 'library') {
+        const nextSourceEntries = removeOneDeviceInstance(previous[source], deviceId);
+        if (nextSourceEntries.length === previous[source].length) {
+          return previous;
+        }
+
+        const nextTargetEntries = [...previous[zone], deviceId];
+        if (source === 'input') {
+          return { input: nextSourceEntries, output: nextTargetEntries };
+        }
+
+        return { input: nextTargetEntries, output: nextSourceEntries };
+      }
+
+      const totalCount = countDeviceOccurrences(previous.input, deviceId) + countDeviceOccurrences(previous.output, deviceId);
+      if (totalCount >= getDeviceMaxQuantity(deviceId)) {
+        return previous;
+      }
+
+      if (zone === 'input') return { input: [...previous.input, deviceId], output: previous.output };
+      return { input: previous.input, output: [...previous.output, deviceId] };
     });
   }, []);
 
-  const removeDeviceFromZones = useCallback((deviceId: DeviceId) => {
+  const adjustDeviceQuantity = useCallback((zone: DeviceZone, deviceId: DeviceId, delta: number) => {
     if (isSessionCompleted) return;
-    setAssignedDevices((previous) => ({
-      input: previous.input.filter((entry) => entry !== deviceId),
-      output: previous.output.filter((entry) => entry !== deviceId),
-    }));
+
+    if (!delta) return;
+
+    setAssignedDevices((previous) => {
+      const currentZoneEntries = previous[zone];
+
+      if (delta > 0) {
+        if (!supportsDeviceQuantity(deviceId)) {
+          return previous;
+        }
+
+        const totalCount = countDeviceOccurrences(previous.input, deviceId) + countDeviceOccurrences(previous.output, deviceId);
+        if (totalCount >= getDeviceMaxQuantity(deviceId)) {
+          return previous;
+        }
+
+        const nextZoneEntries = [...currentZoneEntries, deviceId];
+        return zone === 'input'
+          ? { input: nextZoneEntries, output: previous.output }
+          : { input: previous.input, output: nextZoneEntries };
+      }
+
+      const nextZoneEntries = supportsDeviceQuantity(deviceId)
+        ? removeOneDeviceInstance(currentZoneEntries, deviceId)
+        : currentZoneEntries.filter((entry) => entry !== deviceId);
+
+      if (nextZoneEntries.length === currentZoneEntries.length) {
+        return previous;
+      }
+
+      return zone === 'input'
+        ? { input: nextZoneEntries, output: previous.output }
+        : { input: previous.input, output: nextZoneEntries };
+    });
   }, [isSessionCompleted]);
 
   const handleCheckAnswer = useCallback(() => {
@@ -821,7 +939,7 @@ export default function SimulationApp({
       const deviceId = isDeviceId(rawDeviceId) ? rawDeviceId : dragState?.deviceId;
       if (!deviceId) return;
 
-      placeDeviceInZone(deviceId, zone);
+      placeDeviceInZone(deviceId, zone, dragState?.source ?? 'library');
       setDragState(null);
       setActiveDropZone(null);
     },
@@ -875,6 +993,10 @@ export default function SimulationApp({
   const renderDeviceDropZone = (zone: DeviceZone, title: string) => {
     const devices = assignedDevices[zone];
     const isActive = activeDropZone === zone && !isSessionCompleted;
+    const groupedDevices = Array.from(new Set(devices)).map((deviceId) => ({
+      deviceId,
+      quantity: countDeviceOccurrences(devices, deviceId),
+    }));
 
     return (
       <div
@@ -889,8 +1011,12 @@ export default function SimulationApp({
           <p className="mt-2.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">Drag devices here</p>
         ) : (
           <div className="mt-2.5 flex flex-wrap gap-2">
-            {devices.map((deviceId) => {
+            {groupedDevices.map(({ deviceId, quantity }) => {
               const device = getDeviceById(deviceId);
+              const isQuantityCapable = supportsDeviceQuantity(device.id);
+              const totalSelected = assignedDeviceCounts[device.id] ?? 0;
+              const maxQuantity = getDeviceMaxQuantity(device.id);
+              const canIncreaseQuantity = isQuantityCapable && totalSelected < maxQuantity;
 
               return (
                 <div
@@ -898,15 +1024,62 @@ export default function SimulationApp({
                   draggable={!isSessionCompleted}
                   onDragStart={(event) => handleDeviceDragStart(device.id, zone, event)}
                   onDragEnd={handleDeviceDragEnd}
-                  className={`group relative flex items-center justify-center rounded-xl border border-slate-200 bg-white p-1.5 shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-800 h-12 w-12 ${isSessionCompleted ? 'cursor-default' : 'cursor-grab hover:border-cyan-400 dark:hover:border-cyan-500'}`}
+                  className={`group relative flex min-h-[58px] min-w-[132px] items-center gap-3 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm transition-colors dark:border-slate-700 dark:bg-slate-800 ${isSessionCompleted ? 'cursor-default' : 'cursor-grab hover:border-cyan-400 dark:hover:border-cyan-500'}`}
                   title={device.name}
                 >
-                  <img src={device.image} alt={device.name} className="h-full w-full object-contain" />
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-50 p-2 dark:bg-slate-900/80">
+                    <img src={device.image} alt={device.name} className="h-full w-full object-contain" />
+                  </div>
 
-                  {!isSessionCompleted && (
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-700 dark:text-slate-100">
+                      {device.name}
+                    </p>
+
+                    {isQuantityCapable ? (
+                      <div className="mt-1 flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            adjustDeviceQuantity(zone, device.id, -1);
+                          }}
+                          disabled={isSessionCompleted || quantity < 1}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-black text-slate-700 transition-colors hover:border-slate-400 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-slate-400 dark:hover:bg-slate-800"
+                          aria-label={`Decrease ${device.name} quantity`}
+                        >
+                          -
+                        </button>
+                        <span className="min-w-[40px] text-center text-[11px] font-black uppercase tracking-[0.12em] text-slate-600 dark:text-slate-200">
+                          x{quantity}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            adjustDeviceQuantity(zone, device.id, 1);
+                          }}
+                          disabled={isSessionCompleted || !canIncreaseQuantity}
+                          className="inline-flex h-6 w-6 items-center justify-center rounded-lg border border-slate-200 bg-white text-xs font-black text-slate-700 transition-colors hover:border-cyan-400 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100 dark:hover:border-cyan-500 dark:hover:bg-cyan-500/10"
+                          aria-label={`Increase ${device.name} quantity`}
+                        >
+                          +
+                        </button>
+                        <span className="text-[9px] font-bold uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
+                          Max {maxQuantity}
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                        Selected
+                      </p>
+                    )}
+                  </div>
+
+                  {!isSessionCompleted && !isQuantityCapable && (
                     <button
                       type="button"
-                      onClick={() => removeDeviceFromZones(device.id)}
+                      onClick={() => adjustDeviceQuantity(zone, device.id, -1)}
                       className="absolute -top-1.5 -right-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] font-black text-slate-500 shadow-sm transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-red-500/20 dark:hover:text-red-400"
                       aria-label={`Remove ${device.name}`}
                     >
@@ -1440,7 +1613,7 @@ export default function SimulationApp({
                             onDragStart={(event) => handleDeviceDragStart(device.id, 'library', event)}
                             onDragEnd={handleDeviceDragEnd}
                             className={`group relative flex h-[124px] flex-col items-center justify-start rounded-2xl border bg-white px-2 pt-3 pb-2 text-center shadow-sm transition-all dark:bg-slate-900/70 ${isSessionCompleted ? 'cursor-default opacity-80 border-slate-200 dark:border-slate-700' : 'hover:-translate-y-0.5 hover:shadow-md'
-                              } ${assignedDeviceIds.has(device.id)
+                              } ${(assignedDeviceCounts[device.id] ?? 0) > 0
                                 ? 'border-emerald-400 dark:border-emerald-500/50'
                                 : 'border-slate-200 hover:border-cyan-400 dark:border-slate-700 dark:hover:border-cyan-500/70'
                               }`}
@@ -1453,9 +1626,15 @@ export default function SimulationApp({
                               {device.name}
                             </span>
 
-                            {assignedDeviceIds.has(device.id) && (
+                            {supportsDeviceQuantity(device.id) && (
+                              <span className="mt-1 text-[8px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                                Max {getDeviceMaxQuantity(device.id)}
+                              </span>
+                            )}
+
+                            {(assignedDeviceCounts[device.id] ?? 0) > 0 && (
                               <div className="absolute bottom-2 left-1/2 w-10/12 -translate-x-1/2 rounded-full bg-emerald-50 py-0.5 text-[8px] font-black uppercase tracking-[0.15em] text-emerald-600 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/30">
-                                In Use
+                                Selected x{assignedDeviceCounts[device.id] ?? 0}
                               </div>
                             )}
                           </button>

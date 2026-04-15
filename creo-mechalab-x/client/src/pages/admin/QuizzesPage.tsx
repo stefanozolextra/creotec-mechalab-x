@@ -574,7 +574,7 @@ export default function QuizzesPage() {
               Module quizzes stay server-controlled
             </h2>
             <p className="mt-2 text-sm text-slate-500 dark:text-slate-400 max-w-3xl">
-              Draft, publish, archive, and clone module-linked quizzes without changing trainee quiz-taking yet.
+              Draft, publish, archive, and clone module-linked quizzes while preserving trainee delivery, scoring, and reporting.
             </p>
           </div>
 
@@ -1204,7 +1204,7 @@ export default function QuizzesPage() {
           </div>
 
           <div className="rounded-2xl border border-blue-200 bg-blue-50/80 px-4 py-3 text-sm font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-200">
-            Passing score is fixed at {QUIZ_PASSING_SCORE}%. Trainee quiz-taking, timer runtime behavior, and result screens are still deferred.
+            Passing score is fixed at {QUIZ_PASSING_SCORE}%. Published quizzes are timed, server-scored, and available to trainees in their assigned modules.
           </div>
         </div>
       </AdminModalShell>

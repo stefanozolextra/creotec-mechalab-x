@@ -167,6 +167,9 @@ const ACTIVE_SIMULATION_MANIFEST_BY_ROUTE_ID = new Map(
 );
 
 let simulationInventoryCompatibilityPromise = null;
+let quizSchemaCompatibilityPromise = null;
+let quizSchemaCompatibilitySql = null;
+const QUIZ_SCHEMA_SQL_PATH = path.resolve(__dirname, "..", "mechalabx-db", "db", "06_quizzes.sql");
 
 const adminDashboardCache = new Map();
 const adminActivityLogsCache = new Map();
@@ -1969,6 +1972,118 @@ async function ensureSimulationInventoryCompatibility() {
     return simulationInventoryCompatibilityPromise;
 }
 
+function getQuizSchemaCompatibilitySql() {
+    if (quizSchemaCompatibilitySql) {
+        return quizSchemaCompatibilitySql;
+    }
+
+    const rawSql = fs.readFileSync(QUIZ_SCHEMA_SQL_PATH, "utf8").replace(/^\uFEFF/, "");
+    const normalizedSql = rawSql
+        .replace(/^\s*BEGIN;\s*$/gim, "")
+        .replace(/^\s*COMMIT;\s*$/gim, "")
+        .trim();
+
+    if (!normalizedSql) {
+        throw new Error(`Quiz schema compatibility SQL is empty at ${QUIZ_SCHEMA_SQL_PATH}`);
+    }
+
+    quizSchemaCompatibilitySql = normalizedSql;
+    return quizSchemaCompatibilitySql;
+}
+
+async function getQuizSchemaCompatibilityState(queryable = pool) {
+    const result = await queryable.query(`
+        SELECT
+            to_regclass('public.quizzes') IS NOT NULL AS has_quizzes_table,
+            to_regclass('public.quiz_questions') IS NOT NULL AS has_quiz_questions_table,
+            to_regclass('public.quiz_choices') IS NOT NULL AS has_quiz_choices_table,
+            to_regclass('public.quiz_attempts') IS NOT NULL AS has_quiz_attempts_table,
+            to_regclass('public.quiz_attempt_answers') IS NOT NULL AS has_quiz_attempt_answers_table,
+            to_regclass('public.uq_quizzes_one_published_per_module') IS NOT NULL AS has_one_published_per_module_index,
+            to_regclass('public.uq_quiz_choices_one_correct_per_question') IS NOT NULL AS has_one_correct_choice_index,
+            to_regclass('public.uq_quiz_attempts_one_in_progress_per_quiz_trainee') IS NOT NULL AS has_one_in_progress_attempt_index,
+            to_regclass('public.v_trainee_module_status') IS NOT NULL AS has_module_status_view,
+            CASE
+                WHEN to_regclass('public.v_trainee_module_status') IS NULL THEN NULL
+                ELSE pg_get_viewdef('public.v_trainee_module_status'::regclass, TRUE)
+            END AS module_status_view_sql
+    `);
+
+    const row = result.rows[0] || {};
+    const moduleStatusViewSql = String(row.module_status_view_sql || "");
+    const hasQuizAwareModuleStatusView =
+        row.has_module_status_view === true &&
+        moduleStatusViewSql.includes("published_module_quizzes") &&
+        moduleStatusViewSql.includes("trainee_module_quiz_progress");
+
+    const missingParts = [];
+    if (row.has_quizzes_table !== true) missingParts.push("quizzes");
+    if (row.has_quiz_questions_table !== true) missingParts.push("quiz_questions");
+    if (row.has_quiz_choices_table !== true) missingParts.push("quiz_choices");
+    if (row.has_quiz_attempts_table !== true) missingParts.push("quiz_attempts");
+    if (row.has_quiz_attempt_answers_table !== true) missingParts.push("quiz_attempt_answers");
+    if (row.has_one_published_per_module_index !== true) {
+        missingParts.push("uq_quizzes_one_published_per_module");
+    }
+    if (row.has_one_correct_choice_index !== true) {
+        missingParts.push("uq_quiz_choices_one_correct_per_question");
+    }
+    if (row.has_one_in_progress_attempt_index !== true) {
+        missingParts.push("uq_quiz_attempts_one_in_progress_per_quiz_trainee");
+    }
+    if (!hasQuizAwareModuleStatusView) missingParts.push("v_trainee_module_status");
+
+    return {
+        isReady: missingParts.length === 0,
+        missingParts,
+    };
+}
+
+async function ensureQuizSchemaCompatibility() {
+    if (quizSchemaCompatibilityPromise) {
+        return quizSchemaCompatibilityPromise;
+    }
+
+    quizSchemaCompatibilityPromise = (async () => {
+        const client = await pool.connect();
+        let committed = false;
+
+        try {
+            await client.query("BEGIN");
+            await client.query(
+                "SELECT pg_advisory_xact_lock(hashtext('quiz_schema_compatibility_v1'))",
+            );
+            await client.query(getQuizSchemaCompatibilitySql());
+
+            const compatibilityState = await getQuizSchemaCompatibilityState(client);
+            if (!compatibilityState.isReady) {
+                throw new Error(
+                    `Quiz schema compatibility check failed for: ${compatibilityState.missingParts.join(", ")}`
+                );
+            }
+
+            await client.query("COMMIT");
+            committed = true;
+        } catch (error) {
+            if (!committed) {
+                try {
+                    await client.query("ROLLBACK");
+                } catch (rollbackError) {
+                    console.error("Quiz schema compatibility rollback failed:", rollbackError);
+                }
+            }
+            throw error;
+        } finally {
+            client.release();
+        }
+    })().catch((error) => {
+        quizSchemaCompatibilityPromise = null;
+        throw error;
+    });
+
+    return quizSchemaCompatibilityPromise;
+}
+
 async function normalizeSimulationOrderForModules(client, moduleIds) {
     const uniqueModuleIds = [...new Set(
         (Array.isArray(moduleIds) ? moduleIds : [])
@@ -2319,7 +2434,7 @@ function isMissingQuizSchemaError(error) {
 }
 
 function getQuizSchemaApplyMessage() {
-    return 'Quiz schema is not installed. Run: psql "$DATABASE_URL" -f "mechalabx-db/db/06_quizzes.sql"';
+    return 'Quiz schema is unavailable. The server attempts to apply "mechalabx-db/db/06_quizzes.sql" automatically at startup. If the database user cannot run DDL, apply it manually with: psql "$DATABASE_URL" -f "mechalabx-db/db/06_quizzes.sql"';
 }
 
 function normalizeQuizTextField(value, maxLength) {
@@ -6446,6 +6561,9 @@ app.get("/api/admin/reports/module-status.csv", async (req, res) => {
         res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
         return res.status(200).send(csvContent);
     } catch (error) {
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
         console.error("Admin module status export endpoint failed:", error);
         return res.status(500).json({ error: "Internal server error" });
     }
@@ -7068,6 +7186,9 @@ app.get("/api/admin/trainees/:id/module-status", async (req, res) => {
         const rows = await getAdminModuleStatusRowsForTrainee(traineeId);
         return res.json(rows);
     } catch (error) {
+        if (isMissingQuizSchemaError(error)) {
+            return res.status(503).json({ error: getQuizSchemaApplyMessage() });
+        }
         console.error("Admin trainee module status endpoint failed:", error);
         return res.status(500).json({ error: "Internal server error" });
     }
@@ -7629,10 +7750,6 @@ app.get("/api/me/modules/:moduleId/quiz", requireAuth, async (req, res) => {
             traineeId: account.trainee_id,
         });
         currentAttempt = expiration.attempt;
-
-        if (currentAttempt) {
-            throw createHttpError(409, "Quiz attempt is still in progress");
-        }
 
         const latestResult =
             expiration.finalized?.attempt ||
@@ -8302,6 +8419,7 @@ async function ensureAdminActionLogsTable() {
 async function startServer() {
     await ensureAdminActionLogsTable();
     await ensureSimulationInventoryCompatibility();
+    await ensureQuizSchemaCompatibility();
     app.listen(PORT, "0.0.0.0", () => console.log(`✅ API running on port ${PORT}`));
 }
 

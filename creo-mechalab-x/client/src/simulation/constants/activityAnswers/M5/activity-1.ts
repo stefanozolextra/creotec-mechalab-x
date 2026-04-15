@@ -17,12 +17,12 @@ const connectToAny = (sourcePin: string, targetPins: string[]): ActivityConnecti
 export const activityAnswer: ActivityAnswerDefinition = {
   routeId: '5.1',
   title: 'Start – Stop Electropneumatics Control',
-  instruction: 'Follow the ladder diagram, place the required devices, and complete the wiring path for the start-stop control circuit. With the main switch on, pressing START-1 should turn the green light on and keep it on until STOP-1 is pressed.',
+  instruction: 'Follow the ladder diagram, place the required devices, and complete the electrical wiring for the start-stop electro-pneumatic control circuit. The intended result is that START-1 energizes R1 to drive A+ and extend the cylinder, while STOP-1 releases the circuit so A- retracts the cylinder.',
   diagram: activity51Diagram,
   rule: {
     requiredInputDevices: { button: 1 },
-    requiredOutputDevices: { relayModule: 2, solenoidValve: 1 },
-    requiredComponents: { button: 1, relayModule: 2, solenoidValve: 1 },
+    requiredOutputDevices: { relayModule: 1, solenoidValve: 1 },
+    requiredComponents: { button: 1, relayModule: 1, solenoidValve: 1 },
     minWires: 7,
 
 

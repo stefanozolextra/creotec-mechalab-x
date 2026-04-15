@@ -139,7 +139,8 @@ Common optional values used by the API:
 
    This auto-runs SQL files in `mechalabx-db/db/` on first init.
 
-   For an existing local database that was initialized before quiz support was added, apply the quiz schema manually:
+   The API now attempts to apply the quiz compatibility SQL at startup for existing databases too.
+   If your database user cannot run DDL, apply the quiz schema manually:
 
    ```bash
    psql "$DATABASE_URL" -f "mechalabx-db/db/06_quizzes.sql"
