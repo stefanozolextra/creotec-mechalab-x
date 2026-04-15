@@ -20,10 +20,10 @@ export const activityAnswer: ActivityAnswerDefinition = {
   instruction: 'Follow the ladder diagram, place the required devices, and complete the electrical wiring for the single-cylinder A+ A- sequence. With the main switch on, START-1 should latch R1 to drive A+, LS2 should hand off to the return branch, and LS1 should complete the end/reset feedback for A-.',
   diagram: activity52Diagram,
   rule: {
-    // LS1/LS2 and the extra relay contacts are already available on the static board hardware.
-    requiredInputDevices: { button: 1 },
-    requiredOutputDevices: { relayModule: 1, solenoidValve: 1 },
-    requiredComponents: { button: 1, relayModule: 1, solenoidValve: 1 },
+    // Tray counts mirror the reference answer while the actual LS/relay terminals remain on the static board.
+    requiredInputDevices: { button: 1, limitSwitch: 2 },
+    requiredOutputDevices: { relayModule: 3, solenoidValve: 1 },
+    requiredComponents: { button: 1, limitSwitch: 2, relayModule: 3, solenoidValve: 1 },
     minWires: 7,
     // Other wiring combinations may work, but these are the expected paths from the diagram.
     // Button mapping: PB1/PB2 = START-1/START-2, PB3/PB4 = STOP-1/STOP-2.

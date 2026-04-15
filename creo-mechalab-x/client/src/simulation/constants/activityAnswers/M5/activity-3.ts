@@ -17,9 +17,10 @@ const connectToAny = (sourcePin: string, targetPins: string[]): ActivityConnecti
 export const activityAnswer: ActivityAnswerDefinition = {
   routeId: '5.3',
   title: 'A+ B+ A- B-',
-  instruction: 'Follow the ladder diagram, place the required devices, and complete the wiring path for the start-stop control circuit. With the main switch on, pressing START-1 should turn the green light on and keep it on until STOP-1 is pressed.',
+  instruction: 'Follow the ladder diagram, place the required devices, and complete the electrical wiring for the two-cylinder A+ B+ A- B- sequence. With the main switch on, START-1 should latch R1 to drive A+, LS2 should hand off to B+, LS4 should enable the return branch for A-, LS1 should hand off to B-, and LS3 should complete the finish/reset step.',
   diagram: activity53Diagram,
   rule: {
+    // Tray counts mirror the reference answer while the actual LS/relay terminals remain on the static board.
     requiredInputDevices: { button: 1, limitSwitch: 4 },
     requiredOutputDevices: { relayModule: 3, solenoidValve: 2 },
     requiredComponents: { button: 1, limitSwitch: 4, relayModule: 3, solenoidValve: 2 },
