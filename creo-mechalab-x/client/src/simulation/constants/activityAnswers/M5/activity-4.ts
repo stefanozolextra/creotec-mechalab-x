@@ -17,12 +17,13 @@ const connectToAny = (sourcePin: string, targetPins: string[]): ActivityConnecti
 export const activityAnswer: ActivityAnswerDefinition = {
   routeId: '5.4',
   title: 'A+ B+ B- A-',
-  instruction: 'Follow the ladder diagram, place the required devices, and complete the wiring path for the start-stop control circuit. With the main switch on, pressing START-1 should turn the green light on and keep it on until STOP-1 is pressed.',
+  instruction: 'Follow the ladder diagram, place the required devices, and complete the electrical wiring for the two-cylinder A+ B+ B- A- sequence. With the main switch on, START-1 should latch R1 to drive A+, LS2 should hand off to B+, LS4 should enable the R2 return branch, LS3 should hand off to A-, and LS1 should complete the finish/reset step through R3.',
   diagram: activity54Diagram,
   rule: {
-    requiredInputDevices: { button: 1 },
-    requiredOutputDevices: { relayModule: 1, solenoidValve: 1 },
-    requiredComponents: { battery: 1, relayModule: 1, solenoidValve: 1 },
+    // Tray counts mirror the ladder/reference while the actual LS/relay terminals remain on the static board.
+    requiredInputDevices: { button: 1, limitSwitch: 4 },
+    requiredOutputDevices: { relayModule: 3, solenoidValve: 2 },
+    requiredComponents: { button: 1, limitSwitch: 4, relayModule: 3, solenoidValve: 2 },
     minWires: 7,
     // These are the expected connections from the diagram.
     // Button mapping: PB1/PB2 = START-1/START-2, PB3/PB4 = STOP-1/STOP-2.
@@ -43,7 +44,7 @@ export const activityAnswer: ActivityAnswerDefinition = {
       ],
 
 
-      // These lines drive the A+ and A- paths.
+      // These lines drive A+ and set up the LS2 handoff into B+.
       connectToAny(RELAY_PIN_IDS.relay1.terminal10, VPLUS_PINS),
 
       [RELAY_PIN_IDS.relay1.terminal6, RELAY_PIN_IDS.relay2.terminal9],
@@ -66,9 +67,9 @@ export const activityAnswer: ActivityAnswerDefinition = {
 
       [RELAY_PIN_IDS.relay1.terminal7, RELAY_PIN_IDS.solenoid2.ls4Com],
 
-      [RELAY_PIN_IDS.solenoid2.ls4No, RELAY_PIN_IDS.relay3.terminal9], // A- extend point
+      [RELAY_PIN_IDS.solenoid2.ls4No, RELAY_PIN_IDS.relay3.terminal9], // LS4 handoff into the relay branch that energizes R2
       [RELAY_PIN_IDS.relay3.terminal1, RELAY_PIN_IDS.relay2.terminal14],
-      connectToAny(RELAY_PIN_IDS.relay2.terminal13, VMINUS_PINS), // A- retract point
+      connectToAny(RELAY_PIN_IDS.relay2.terminal13, VMINUS_PINS), // R2 coil return
 
       [
         [RELAY_PIN_IDS.relay2.terminal10, RELAY_PIN_IDS.relay1.terminal7],
@@ -93,7 +94,7 @@ export const activityAnswer: ActivityAnswerDefinition = {
         [RELAY_PIN_IDS.solenoid2.ls3Com, RELAY_PIN_IDS.solenoid2.bMinusPositive], // B- extend point can also be powered from the limit switch output
       ],
 
-      [RELAY_PIN_IDS.solenoid2.ls3No, RELAY_PIN_IDS.solenoid1.aMinusPositive], // B- extend point can also be powered from the limit switch output
+      [RELAY_PIN_IDS.solenoid2.ls3No, RELAY_PIN_IDS.solenoid1.aMinusPositive], // LS3 handoff to A- extend
 
       [
         ...connectToAny(RELAY_PIN_IDS.solenoid1.aMinusNegative, VMINUS_PINS),
@@ -106,8 +107,8 @@ export const activityAnswer: ActivityAnswerDefinition = {
       ],
 
       [RELAY_PIN_IDS.relay2.terminal8, RELAY_PIN_IDS.solenoid1.ls1Com],
-      [RELAY_PIN_IDS.solenoid1.ls1No, RELAY_PIN_IDS.relay3.terminal14], // B+ extend point can also be powered from the limit switch output
-      connectToAny(RELAY_PIN_IDS.relay3.terminal13, VMINUS_PINS), // B+ retract point can also be powered from the limit switch output
+      [RELAY_PIN_IDS.solenoid1.ls1No, RELAY_PIN_IDS.relay3.terminal14], // LS1 finish/reset handoff to R3 coil
+      connectToAny(RELAY_PIN_IDS.relay3.terminal13, VMINUS_PINS), // R3 coil return
     ],
   },
 };
