@@ -35,6 +35,16 @@ import {
   normalizeActivityModuleId,
   resolveSimulationRuntimeModuleId,
 } from './utils/activityState';
+import {
+  advanceModule5Runtime,
+  createModule5RuntimeState,
+  getModule5ValveIndicators,
+  isModule5RouteId,
+  resetModule5Runtime as buildIdleModule5RuntimeState,
+  startModule5Runtime as buildRunningModule5RuntimeState,
+  stopModule5Runtime as buildStoppedModule5RuntimeState,
+  type Module5RuntimeState,
+} from './utils/module5Runtime';
 
 // M.A.X. DEPENDENCIES
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
@@ -229,6 +239,7 @@ export default function SimulationApp({
   const [activity5TimerDelayInput, setActivity5TimerDelayInput] = useState(String(DEFAULT_ACTIVITY5_TIMER_DELAY_SECONDS));
   const [activity5TimerRemainingMs, setActivity5TimerRemainingMs] = useState<number | null>(null);
   const [isActivity5TimerPopupOpen, setIsActivity5TimerPopupOpen] = useState(false);
+  const [module5RuntimeState, setModule5RuntimeState] = useState<Module5RuntimeState>(() => createModule5RuntimeState());
   const [wires, setWires] = useState<Connection[]>(() => {
     const saved = getStoredActivityState(
       getStoredSimulationStates<SavedActivityState>(SIMULATION_STATE_STORAGE_KEY),
@@ -262,6 +273,9 @@ export default function SimulationApp({
   const activity5TimerIntervalRef = useRef<number | null>(null);
   const activity5TimerTriggerRef = useRef<HTMLButtonElement>(null);
   const activity5TimerPopupRef = useRef<HTMLDivElement>(null);
+  const module5RuntimeStateRef = useRef<Module5RuntimeState>(module5RuntimeState);
+  const module5AnimationFrameRef = useRef<number | null>(null);
+  const module5LastFrameRef = useRef<number | null>(null);
 
   const [historyPast, setHistoryPast] = useState<Connection[][]>([]);
   const [historyFuture, setHistoryFuture] = useState<Connection[][]>([]);
@@ -344,10 +358,75 @@ export default function SimulationApp({
     setActivity5TimerRemainingMs(null);
   }, [clearActivity5TimerInterval, clearActivity5TimerTimeout]);
 
+  const cancelModule5AnimationLoop = useCallback(() => {
+    if (module5AnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(module5AnimationFrameRef.current);
+      module5AnimationFrameRef.current = null;
+    }
+
+    module5LastFrameRef.current = null;
+  }, []);
+
+  const stepModule5Runtime = useCallback((timestamp: number) => {
+    const previousTimestamp = module5LastFrameRef.current ?? timestamp;
+    module5LastFrameRef.current = timestamp;
+
+    const deltaMs = Math.min(64, Math.max(0, timestamp - previousTimestamp));
+    const nextState = advanceModule5Runtime(module5RuntimeStateRef.current, deltaMs);
+    module5RuntimeStateRef.current = nextState;
+    setModule5RuntimeState(nextState);
+
+    if (nextState.status === 'running') {
+      module5AnimationFrameRef.current = window.requestAnimationFrame(stepModule5Runtime);
+      return;
+    }
+
+    cancelModule5AnimationLoop();
+  }, [cancelModule5AnimationLoop]);
+
+  const ensureModule5AnimationLoop = useCallback(() => {
+    if (module5AnimationFrameRef.current !== null) {
+      return;
+    }
+
+    module5LastFrameRef.current = null;
+    module5AnimationFrameRef.current = window.requestAnimationFrame(stepModule5Runtime);
+  }, [stepModule5Runtime]);
+
+  const stopModule5RuntimeSequence = useCallback(() => {
+    cancelModule5AnimationLoop();
+    const nextState = buildStoppedModule5RuntimeState(module5RuntimeStateRef.current);
+    module5RuntimeStateRef.current = nextState;
+    setModule5RuntimeState(nextState);
+  }, [cancelModule5AnimationLoop]);
+
+  const resetModule5RuntimeSequence = useCallback(() => {
+    cancelModule5AnimationLoop();
+    const nextState = buildIdleModule5RuntimeState();
+    module5RuntimeStateRef.current = nextState;
+    setModule5RuntimeState(nextState);
+  }, [cancelModule5AnimationLoop]);
+
+  const startModule5RuntimeSequence = useCallback((routeId: Parameters<typeof buildRunningModule5RuntimeState>[0]) => {
+    const nextState = buildRunningModule5RuntimeState(routeId, module5RuntimeStateRef.current);
+    module5RuntimeStateRef.current = nextState;
+    setModule5RuntimeState(nextState);
+    ensureModule5AnimationLoop();
+  }, [ensureModule5AnimationLoop]);
+
   useEffect(() => () => {
     clearActivity5TimerTimeout();
     clearActivity5TimerInterval();
-  }, [clearActivity5TimerInterval, clearActivity5TimerTimeout]);
+    cancelModule5AnimationLoop();
+  }, [cancelModule5AnimationLoop, clearActivity5TimerInterval, clearActivity5TimerTimeout]);
+
+  useEffect(() => {
+    module5RuntimeStateRef.current = module5RuntimeState;
+  }, [module5RuntimeState]);
+
+  useEffect(() => {
+    resetModule5RuntimeSequence();
+  }, [activityPreset.routeId, resetModule5RuntimeSequence]);
 
   useEffect(() => {
     const handleResize = () => { if (containerRef.current) setViewport({ width: window.innerWidth, height: window.innerHeight }); };
@@ -367,13 +446,14 @@ export default function SimulationApp({
       setActivity3LampMode('off');
       setActivity4LampMode('off');
       resetActivity5Runtime();
+      resetModule5RuntimeSequence();
       return;
     }
 
     if (activityPreset.routeId === '3') {
       setActivity3LampMode('yellow');
     }
-  }, [activityPreset.routeId, isMainSwitchOn, resetActivity5Runtime]);
+  }, [activityPreset.routeId, isMainSwitchOn, resetActivity5Runtime, resetModule5RuntimeSequence]);
 
   const handleActivity5TimerDelayChange = useCallback((event: ChangeEvent<HTMLInputElement>) => {
     setActivity5TimerDelayInput(event.target.value);
@@ -402,6 +482,24 @@ export default function SimulationApp({
       wires: wires.map(({ fromPin, toPin }) => ({ fromPin, toPin })),
     }).passed;
     const isActivity1Route = activityPreset.routeId === '1';
+
+    if (resolvedActivityModuleId === 5 && isModule5RouteId(activityPreset.routeId)) {
+      if (buttonId === 'stop-1' || buttonId === 'stop-2' || buttonId === 'emergency-stop') {
+        stopModule5RuntimeSequence();
+        return;
+      }
+
+      if (buttonId !== 'start-1' || !isMainSwitchOn || !isCurrentSetupValid) {
+        return;
+      }
+
+      if (module5RuntimeStateRef.current.status === 'running' && module5RuntimeStateRef.current.routeId === activityPreset.routeId) {
+        return;
+      }
+
+      startModule5RuntimeSequence(activityPreset.routeId);
+      return;
+    }
 
     if (isActivity1Route && buttonId === 'stop-1') {
       setIsActivity1GreenLampLatched(false);
@@ -499,7 +597,7 @@ export default function SimulationApp({
     if (isActivity1Route) {
       setIsActivity1GreenLampLatched(true);
     }
-  }, [activity5TimerDelaySeconds, activity5TimerStatus, activityPreset, assignedDevices.input, assignedDevices.output, clearActivity5TimerInterval, clearActivity5TimerTimeout, isMainSwitchOn, resetActivity5Runtime, wires]);
+  }, [activity5TimerDelaySeconds, activity5TimerStatus, activityPreset, assignedDevices.input, assignedDevices.output, clearActivity5TimerInterval, clearActivity5TimerTimeout, isMainSwitchOn, resetActivity5Runtime, resolvedActivityModuleId, startModule5RuntimeSequence, stopModule5RuntimeSequence, wires]);
 
   const handleBackNavigation = () => {
     if (onNavigateBack) {
@@ -680,6 +778,7 @@ export default function SimulationApp({
     setActivity3LampMode('off');
     setActivity4LampMode('off');
     resetActivity5Runtime();
+    resetModule5RuntimeSequence();
   };
 
   useEffect(() => {
@@ -780,6 +879,10 @@ export default function SimulationApp({
     : activity5TimerStatus === 'timing'
       ? 'Timing'
       : 'Delay Complete';
+  const module5ValveIndicators = useMemo(
+    () => getModule5ValveIndicators(module5RuntimeState),
+    [module5RuntimeState],
+  );
 
   const hasNoSelectedDevices = !assignedDevices.input.length && !assignedDevices.output.length;
   const shouldShowOnlyNoDeviceMessage = Boolean(answerFeedback && !answerFeedback.passed && hasNoSelectedDevices);
@@ -1507,6 +1610,12 @@ export default function SimulationApp({
                         isRedLampOn={isActivity2RedLampOn}
                         timerDisplayText={activity5TimerDisplayText}
                         manualButtonState={pressedManualButtons}
+                        module5CylinderPositions={{
+                          A: module5RuntimeState.cylinders.A.position,
+                          B: module5RuntimeState.cylinders.B.position,
+                        }}
+                        module5ActiveLimitSwitch={module5RuntimeState.activeLimitSwitch}
+                        module5ValveIndicators={module5ValveIndicators}
                         onToggleSwitch={handleToggleSwitch}
                         onManualButtonPressChange={handleManualButtonPressChange}
                       />

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Layer, Group, Rect, Text, Circle, Line } from 'react-konva';
-import { HW_STYLES } from '../constants/relayBoard';
+import { HW_STYLES, RELAY4_TERMINAL_STRIP_START, SOLENOID1_TERMINAL_STRIP_START, SOLENOID2_TERMINAL_STRIP_START } from '../constants/relayBoard';
+import type { Module5LimitSwitchId, Module5ValveSide } from '../utils/module5Runtime';
 
 export type ManualRelayButtonId = 'start-1' | 'start-2' | 'stop-1' | 'stop-2' | 'emergency-stop';
 
@@ -15,6 +16,9 @@ interface RelayStaticBackgroundProps {
     isRedLampOn: boolean;
     timerDisplayText?: string;
     manualButtonState: Record<ManualRelayButtonId, boolean>;
+    module5CylinderPositions: Record<'A' | 'B', number>;
+    module5ActiveLimitSwitch: Module5LimitSwitchId | null;
+    module5ValveIndicators: Record<'A' | 'B', Module5ValveSide>;
     onToggleSwitch: () => void;
     onManualButtonPressChange: (buttonId: ManualRelayButtonId, isPressed: boolean) => void;
 }
@@ -30,6 +34,9 @@ export const RelayStaticBackground = React.memo(({
     isRedLampOn,
     timerDisplayText,
     manualButtonState,
+    module5CylinderPositions,
+    module5ActiveLimitSwitch,
+    module5ValveIndicators,
     onToggleSwitch,
     onManualButtonPressChange
 }: RelayStaticBackgroundProps) => {
@@ -40,7 +47,22 @@ export const RelayStaticBackground = React.memo(({
     const dashStroke = isDarkMode ? '#475569' : '#94a3b8';
     const holeFill = isDarkMode ? '#0f172a' : '#cbd5e1';
     const holeStroke = isDarkMode ? '#334155' : '#94a3b8';
-    
+    const activeLimitSwitchFill = '#22c55e';
+    const activeLimitSwitchStroke = '#15803d';
+    const solenoid1OutlineX = SOLENOID1_TERMINAL_STRIP_START.x - 22;
+    const solenoid1OutlineY = SOLENOID1_TERMINAL_STRIP_START.y - 22;
+    const relay4OutlineX = RELAY4_TERMINAL_STRIP_START.x - 18;
+    const relay4OutlineY = RELAY4_TERMINAL_STRIP_START.y - 22;
+    const solenoid2OutlineX = SOLENOID2_TERMINAL_STRIP_START.x - 22;
+    const solenoid2OutlineY = SOLENOID2_TERMINAL_STRIP_START.y - 22;
+    const upperActuatorAssemblyOffsetY = -10;
+    const cylinderAY = 190 + upperActuatorAssemblyOffsetY;
+    const valveAY = 275 + upperActuatorAssemblyOffsetY;
+    const ls1Y = 218 + upperActuatorAssemblyOffsetY;
+    const ls2Y = 172 + upperActuatorAssemblyOffsetY;
+    const ls1LabelY = 238 + upperActuatorAssemblyOffsetY;
+    const ls2LabelY = 120 + upperActuatorAssemblyOffsetY;
+
     // Buttons arranged vertically, paired side-by-side
     const MANUAL_BUTTONS: Array<{ id: ManualRelayButtonId; label: string; x: number; y: number; kind: 'start' | 'stop' | 'emergency' }> = [
         { id: 'start-1', label: 'START 1', x: 90, y: 500, kind: 'start' },
@@ -69,33 +91,39 @@ export const RelayStaticBackground = React.memo(({
         );
     };
 
-    const renderPneumaticCylinder = (x: number, y: number, label: string) => (
-        <Group x={x} y={y} listening={false}>
-            <Rect width={180} height={36} fill="#e2e8f0" cornerRadius={4} stroke="#94a3b8" strokeWidth={2} shadowColor="rgba(0,0,0,0.2)" shadowBlur={5} shadowOffsetY={3} />
-            <Rect x={10} y={0} width={20} height={36} fill="#3498db" />
-            <Rect x={150} y={0} width={20} height={36} fill="#3498db" />
-            <Text text={label} x={40} y={12} fontSize={12} fontStyle="bold" fill="#475569" width={100} align="center" />
-            <Rect x={180} y={14} width={85} height={8} fill="#bdc3c7" stroke="#7f8c8d" strokeWidth={1} />
-        </Group>
-    );
+    const renderPneumaticCylinder = (x: number, y: number, label: string, extension = 0) => {
+        const normalizedExtension = Math.max(0, Math.min(1, extension));
+        const rodWidth = 36 + normalizedExtension * 49;
 
-    const renderMicroSwitch = (x: number, y: number, rotation = 0) => (
+        return (
+            <Group x={x} y={y} listening={false}>
+                <Rect width={180} height={36} fill="#e2e8f0" cornerRadius={4} stroke="#94a3b8" strokeWidth={2} shadowColor="rgba(0,0,0,0.2)" shadowBlur={5} shadowOffsetY={3} />
+                <Rect x={10} y={0} width={20} height={36} fill="#3498db" />
+                <Rect x={150} y={0} width={20} height={36} fill="#3498db" />
+                <Text text={label} x={40} y={12} fontSize={12} fontStyle="bold" fill="#475569" width={100} align="center" />
+                <Rect x={180} y={14} width={rodWidth} height={8} fill="#bdc3c7" stroke="#7f8c8d" strokeWidth={1} />
+                <Rect x={180 + rodWidth - 6} y={11} width={6} height={14} fill="#94a3b8" stroke="#64748b" strokeWidth={1} />
+            </Group>
+        );
+    };
+
+    const renderMicroSwitch = (x: number, y: number, rotation = 0, isActive = false) => (
         <Group x={x} y={y} listening={false}>
             <Group x={20} y={13} offsetX={20} offsetY={13} rotation={rotation}>
-                <Circle x={40} y={10} radius={4} fill={holeFill} stroke={holeStroke} strokeWidth={1} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} />
-                <Line points={[24, 6, 32, 6, 40, 10]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
-                <Line points={[24, 10, 34, 10, 39, 10]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
+                <Circle x={40} y={10} radius={4} fill={isActive ? activeLimitSwitchFill : holeFill} stroke={isActive ? activeLimitSwitchStroke : holeStroke} strokeWidth={1} shadowColor={isActive ? activeLimitSwitchFill : "rgba(0,0,0,0.3)"} shadowBlur={isActive ? 8 : 2} />
+                <Line points={[24, 6, 32, 6, 40, 10]} stroke={isActive ? activeLimitSwitchFill : "#ef4444"} strokeWidth={1.5} tension={0.3} />
+                <Line points={[24, 10, 34, 10, 39, 10]} stroke={isActive ? activeLimitSwitchFill : "#ef4444"} strokeWidth={1.5} tension={0.3} />
                 <Rect x={-4} y={-4} width={36} height={26} fill="#8b5a2b" cornerRadius={2} opacity={isDarkMode ? 0.6 : 0.8} />
-                <Rect width={28} height={18} fill="#111827" cornerRadius={2} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} shadowOffsetY={1} />
+                <Rect width={28} height={18} fill="#111827" cornerRadius={2} shadowColor={isActive ? activeLimitSwitchFill : "rgba(0,0,0,0.3)"} shadowBlur={isActive ? 10 : 2} shadowOffsetY={1} />
                 <Circle x={6} y={6} radius={2} fill="#374151" />
                 <Circle x={22} y={12} radius={2} fill="#374151" />
                 <Line points={[2, 18, 16, 28]} stroke="#cbd5e1" strokeWidth={1.5} lineCap="round" />
-                <Circle x={16} y={28} radius={2.5} fill="#f8fafc" stroke="#475569" strokeWidth={1} />
+                <Circle x={16} y={28} radius={2.5} fill={isActive ? activeLimitSwitchFill : "#f8fafc"} stroke={isActive ? activeLimitSwitchStroke : "#475569"} strokeWidth={1} />
             </Group>
         </Group>
     );
 
-    const render52Valve = (x: number, y: number, cylX: number, cylY: number) => (
+    const render52Valve = (x: number, y: number, cylX: number, cylY: number, activeSide: Module5ValveSide) => (
         <Group listening={false}>
             <Line points={[x + 25, y, x + 25, y - 25, cylX + 20, y - 25, cylX + 20, cylY + 36]} stroke="#f97316" strokeWidth={3.5} lineJoin="round" />
             <Line points={[x + 55, y, x + 55, y - 15, cylX + 160, y - 15, cylX + 160, cylY + 36]} stroke="#f97316" strokeWidth={3.5} lineJoin="round" />
@@ -114,6 +142,16 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={-30} y={-16} width={24} height={16} fill="rgba(69, 26, 3, 0.85)" stroke="#000000" strokeWidth={1} />
                 <Line points={[-18, -10, -35, -10, -42, 6]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
                 <Line points={[-18, -14, -30, -14, -40, 4]} stroke="#111827" strokeWidth={1.5} tension={0.3} />
+                <Circle
+                    x={-18}
+                    y={18}
+                    radius={5.5}
+                    fill={activeSide === 'extend' ? '#22c55e' : '#0f172a'}
+                    stroke={activeSide === 'extend' ? '#15803d' : '#334155'}
+                    strokeWidth={1.25}
+                    shadowColor={activeSide === 'extend' ? '#22c55e' : 'transparent'}
+                    shadowBlur={activeSide === 'extend' ? 10 : 0}
+                />
 
                 <Circle x={122} y={6} radius={4} fill={holeFill} stroke={holeStroke} strokeWidth={1} shadowColor="rgba(0,0,0,0.3)" shadowBlur={2} />
                 <Rect x={80} y={0} width={36} height={36} fill="#111827" cornerRadius={[0, 4, 4, 0]} />
@@ -121,6 +159,16 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={86} y={-16} width={24} height={16} fill="rgba(69, 26, 3, 0.85)" stroke="#000000" strokeWidth={1} />
                 <Line points={[98, -10, 115, -10, 122, 6]} stroke="#ef4444" strokeWidth={1.5} tension={0.3} />
                 <Line points={[98, -14, 110, -14, 120, 4]} stroke="#111827" strokeWidth={1.5} tension={0.3} />
+                <Circle
+                    x={98}
+                    y={18}
+                    radius={5.5}
+                    fill={activeSide === 'retract' ? '#ef4444' : '#0f172a'}
+                    stroke={activeSide === 'retract' ? '#dc2626' : '#334155'}
+                    strokeWidth={1.25}
+                    shadowColor={activeSide === 'retract' ? '#ef4444' : 'transparent'}
+                    shadowBlur={activeSide === 'retract' ? 10 : 0}
+                />
 
                 <Rect x={20} y={-6} width={10} height={6} fill="#d4af37" />
                 <Rect x={21} y={-8} width={8} height={2} fill="#3b82f6" />
@@ -239,8 +287,8 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={544} y={380} width={240} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="TERMINALS (RELAY 3)" x={544} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
 
-                <Rect x={792} y={380} width={240} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="TERMINALS (RELAY 4)" x={792} y={365} fontSize={10} fontStyle="bold" fill={textFill} />
+                <Rect x={relay4OutlineX} y={relay4OutlineY} width={240} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="TERMINALS (RELAY 4)" x={relay4OutlineX} y={relay4OutlineY - 15} fontSize={10} fontStyle="bold" fill={textFill} />
 
                 {/* Bottom Labels */}
                 <Rect x={60} y={604} width={216} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
@@ -252,16 +300,16 @@ export const RelayStaticBackground = React.memo(({
                 <Rect x={556} y={604} width={216} height={45} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
                 <Text text="TIMER" x={556} y={589} fontSize={10} fontStyle="bold" fill={textFill} />
 
-                <Rect x={830} y={100} width={45} height={220} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="SOLENOID 1" x={830} y={85} fontSize={11} fontStyle="bold" fill={textFill} />
-                <Rect x={830} y={400} width={45} height={220} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
-                <Text text="SOLENOID 2" x={830} y={385} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Rect x={solenoid1OutlineX} y={solenoid1OutlineY} width={45} height={220} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="SOLENOID 1" x={solenoid1OutlineX} y={solenoid1OutlineY - 15} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Rect x={solenoid2OutlineX} y={solenoid2OutlineY} width={45} height={220} stroke={dashStroke} strokeWidth={1.5} dash={[4, 4]} cornerRadius={4} />
+                <Text text="SOLENOID 2" x={solenoid2OutlineX} y={solenoid2OutlineY - 15} fontSize={11} fontStyle="bold" fill={textFill} />
 
                 {/* Labels for the Limit Switches */}
-                <Text text="LS1" x={1082} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
-                <Text text="LS2" x={1142} y={120} fontSize={11} fontStyle="bold" fill={textFill} />
-                <Text text="LS3" x={1082} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
-                <Text text="LS4" x={1142} y={420} fontSize={11} fontStyle="bold" fill={textFill} />
+                <Text text="LS1" x={1082} y={ls1LabelY} fontSize={11} fontStyle="bold" fill={module5ActiveLimitSwitch === 'LS1' ? activeLimitSwitchFill : textFill} />
+                <Text text="LS2" x={1142} y={ls2LabelY} fontSize={11} fontStyle="bold" fill={module5ActiveLimitSwitch === 'LS2' ? activeLimitSwitchFill : textFill} />
+                <Text text="LS3" x={1082} y={538} fontSize={11} fontStyle="bold" fill={module5ActiveLimitSwitch === 'LS3' ? activeLimitSwitchFill : textFill} />
+                <Text text="LS4" x={1142} y={420} fontSize={11} fontStyle="bold" fill={module5ActiveLimitSwitch === 'LS4' ? activeLimitSwitchFill : textFill} />
             </Group>
 
             {/* SEPARATED HARDWARE COMPONENTS */}
@@ -272,7 +320,7 @@ export const RelayStaticBackground = React.memo(({
                     <Rect x={5} y={5} width={50} height={80} fill="#334155" cornerRadius={2} />
                     <Text text="RY-1" x={16} y={40} fill="#94a3b8" fontStyle="bold" />
                 </Group>
-                
+
                 {/* RY-2: Centered left at X: 290 (Exactly 90px gap from RY-1) */}
                 <Group x={400} y={460}>
                     <Rect width={60} height={90} fill="#1e293b" cornerRadius={4} shadowColor="rgba(0,0,0,0.3)" shadowBlur={4} shadowOffsetY={2} />
@@ -287,7 +335,7 @@ export const RelayStaticBackground = React.memo(({
                     <Text text="0000" x={10} y={16} width={60} align="center" fill="#3b82f6" fontSize={18} fontFamily={HW_STYLES.technicalMono} />
                     <Text text="COUNTER" x={18} y={60} fill="#64748b" fontSize={10} fontStyle="bold" />
                 </Group>
-                
+
                 {/* TIMER: Shifted right to X: 610 (Exactly 90px gap from COUNTER) */}
                 <Group x={680} y={460}>
                     <Rect width={80} height={90} fill="#f8fafc" stroke="#cbd5e1" strokeWidth={2} cornerRadius={4} shadowColor="rgba(0,0,0,0.2)" shadowBlur={4} shadowOffsetY={2} />
@@ -297,18 +345,18 @@ export const RelayStaticBackground = React.memo(({
                 </Group>
 
                 {/* Cylinders */}
-                {renderPneumaticCylinder(920, 190, "CYLINDER A")}
-                {renderPneumaticCylinder(920, 490, "CYLINDER B")}
+                {renderPneumaticCylinder(920, cylinderAY, "CYLINDER A", module5CylinderPositions.A)}
+                {renderPneumaticCylinder(920, 490, "CYLINDER B", module5CylinderPositions.B)}
 
                 {/* Limit Switch Mounts & Bodies */}
-                {renderMicroSwitch(1105, 172, 180)}
-                {renderMicroSwitch(1165, 172)}
-                {renderMicroSwitch(1105, 472, 180)}
-                {renderMicroSwitch(1165, 472)}
+                {renderMicroSwitch(1105, ls1Y, 180, module5ActiveLimitSwitch === 'LS1')}
+                {renderMicroSwitch(1165, ls2Y, 0, module5ActiveLimitSwitch === 'LS2')}
+                {renderMicroSwitch(1105, 518, 180, module5ActiveLimitSwitch === 'LS3')}
+                {renderMicroSwitch(1165, 472, 0, module5ActiveLimitSwitch === 'LS4')}
 
                 {/* 5/2-Way Valves */}
-                {render52Valve(970, 275, 920, 190)}
-                {render52Valve(970, 575, 920, 490)}
+                {render52Valve(970, valveAY, 920, cylinderAY, module5ValveIndicators.A)}
+                {render52Valve(970, 575, 920, 490, module5ValveIndicators.B)}
             </Group>
 
             {/* Manual Input Buttons */}
@@ -322,14 +370,14 @@ export const RelayStaticBackground = React.memo(({
             {renderTerminalStripBase('relay1_top', 66, 402, 14, false)}
             {renderTerminalStripBase('relay2_top', 314, 402, 14, false)}
             {renderTerminalStripBase('relay3_top', 562, 402, 14, false)}
-            {renderTerminalStripBase('relay4_top', 810, 402, 14, false)}
+            {renderTerminalStripBase('relay4_top', RELAY4_TERMINAL_STRIP_START.x, RELAY4_TERMINAL_STRIP_START.y, 14, false)}
 
             {renderTerminalStripBase('button_bot', 82, 626, 12, false)}
             {renderTerminalStripBase('counter_bot', 330, 626, 12, false)}
             {renderTerminalStripBase('timer_bot', 578, 626, 12, false)}
 
-            {renderTerminalStripBase('solenoid1', 852, 122, 12, true)}
-            {renderTerminalStripBase('solenoid2', 852, 422, 12, true)}
+            {renderTerminalStripBase('solenoid1', SOLENOID1_TERMINAL_STRIP_START.x, SOLENOID1_TERMINAL_STRIP_START.y, 12, true)}
+            {renderTerminalStripBase('solenoid2', SOLENOID2_TERMINAL_STRIP_START.x, SOLENOID2_TERMINAL_STRIP_START.y, 12, true)}
         </Layer>
     );
 });

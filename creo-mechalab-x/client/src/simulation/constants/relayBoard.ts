@@ -18,6 +18,9 @@ export const HW_STYLES = {
 };
 
 export const RELAY_PORTS: Record<string, { x: number; y: number; color: string; label: string; desc: string }> = {};
+export const SOLENOID1_TERMINAL_STRIP_START = { x: 852, y: 112 } as const;
+export const RELAY4_TERMINAL_STRIP_START = { x: 845, y: 402 } as const;
+export const SOLENOID2_TERMINAL_STRIP_START = { x: 852, y: 470 } as const;
 
 const generateTerminalStrip = (prefix: string, startX: number, startY: number, count: number, isVertical: boolean, color: string, labelPrefix: string) => {
     const spacing = 16;
@@ -39,7 +42,7 @@ generateTerminalStrip('lights', 572, 252, 12, false, HW_STYLES.jackBlue, 'Signal
 generateTerminalStrip('relay1', 66, 402, 14, false, HW_STYLES.jackYellow, 'Relay 1');
 generateTerminalStrip('relay2', 314, 402, 14, false, HW_STYLES.jackYellow, 'Relay 2');
 generateTerminalStrip('relay3', 562, 402, 14, false, HW_STYLES.jackYellow, 'Relay 3');
-generateTerminalStrip('relay4', 810, 402, 14, false, HW_STYLES.jackYellow, 'Relay 4');
+generateTerminalStrip('relay4', RELAY4_TERMINAL_STRIP_START.x, RELAY4_TERMINAL_STRIP_START.y, 14, false, HW_STYLES.jackYellow, 'Relay 4');
 
 // 3. Bottom Terminals
 generateTerminalStrip('button', 82, 626, 12, false, HW_STYLES.jackYellow, 'Buttons');
@@ -47,7 +50,7 @@ generateTerminalStrip('counter', 330, 626, 12, false, HW_STYLES.jackYellow, 'Cou
 generateTerminalStrip('timer', 578, 626, 12, false, HW_STYLES.jackYellow, 'Timer');
 
 // 4. Solenoid Terminals 
-generateTerminalStrip('solenoid1', 852, 122, 12, true, HW_STYLES.jackBlue, 'Solenoid 1');
-generateTerminalStrip('solenoid2', 852, 422, 12, true, HW_STYLES.jackBlue, 'Solenoid 2');
+generateTerminalStrip('solenoid1', SOLENOID1_TERMINAL_STRIP_START.x, SOLENOID1_TERMINAL_STRIP_START.y, 12, true, HW_STYLES.jackBlue, 'Solenoid 1');
+generateTerminalStrip('solenoid2', SOLENOID2_TERMINAL_STRIP_START.x, SOLENOID2_TERMINAL_STRIP_START.y, 12, true, HW_STYLES.jackBlue, 'Solenoid 2');
 
 applyRelayPinConfiguration(RELAY_PORTS);
