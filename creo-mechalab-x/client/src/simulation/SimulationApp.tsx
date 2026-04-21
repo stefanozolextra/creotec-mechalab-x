@@ -849,6 +849,7 @@ export default function SimulationApp({
   );
 
   const answerFeedback = answerFeedbackState?.signature === answerSignature ? answerFeedbackState.result : null;
+  const visibleFeedbackIssues = answerFeedback?.displayIssues ?? answerFeedback?.issues ?? [];
   const answerPercent = answerFeedback?.passed ? '100%' : '0%';
   const wrongWireKeySet = useMemo(
     () => new Set((answerFeedback?.wrongConnections ?? []).map(({ fromPin, toPin }) => toWireKey(fromPin, toPin))),
@@ -887,7 +888,14 @@ export default function SimulationApp({
   const hasNoSelectedDevices = !assignedDevices.input.length && !assignedDevices.output.length;
   const shouldShowOnlyNoDeviceMessage = Boolean(answerFeedback && !answerFeedback.passed && hasNoSelectedDevices);
   const shouldShowOnlyWrongWireMessage = Boolean(answerFeedback && !answerFeedback.passed && !shouldShowOnlyNoDeviceMessage && answerFeedback.wrongConnections.length);
-  const shouldShowOnlyMissingWireMessage = Boolean(answerFeedback && !answerFeedback.passed && !shouldShowOnlyNoDeviceMessage && !shouldShowOnlyWrongWireMessage && answerFeedback.issues.length && answerFeedback.issues.every(isWireIssue));
+  const shouldShowOnlyMissingWireMessage = Boolean(
+    answerFeedback
+    && !answerFeedback.passed
+    && !shouldShowOnlyNoDeviceMessage
+    && !shouldShowOnlyWrongWireMessage
+    && visibleFeedbackIssues.length
+    && visibleFeedbackIssues.every(isWireIssue),
+  );
 
   const placeDeviceInZone = useCallback((deviceId: DeviceId, zone: DeviceZone, source: DeviceZone | 'library' = 'library') => {
     setAssignedDevices((previous) => {
@@ -1394,9 +1402,9 @@ export default function SimulationApp({
                                   Missing wires.
                                 </p>
                               )}
-                              {answerFeedback.issues.length > 0 && !shouldShowOnlyWrongWireMessage && !shouldShowOnlyNoDeviceMessage && !shouldShowOnlyMissingWireMessage && (
+                              {visibleFeedbackIssues.length > 0 && !shouldShowOnlyWrongWireMessage && !shouldShowOnlyNoDeviceMessage && !shouldShowOnlyMissingWireMessage && (
                                 <div className="mt-3 space-y-1.5 text-xs leading-5">
-                                  {answerFeedback.issues.map((issue) => (
+                                  {visibleFeedbackIssues.map((issue) => (
                                     <p key={issue}>{issue}</p>
                                   ))}
                                 </div>

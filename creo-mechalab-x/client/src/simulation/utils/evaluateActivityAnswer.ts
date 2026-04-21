@@ -15,6 +15,8 @@ export interface ActivityEvaluationResult {
   passed: boolean;
   feedback: string;
   issues: string[];
+  displayIssues: string[];
+  diagnosticIssues: string[];
   wrongConnections: Array<{ fromPin: string; toPin: string }>;
 }
 
@@ -28,6 +30,12 @@ interface ResolvedConnectionOption {
 interface ResolvedCustomConnections {
   issues: string[];
   requirements: ResolvedConnectionOption[][];
+}
+
+interface CountValidationIssueResult {
+  diagnosticIssues: string[];
+  displayIssues: string[];
+  hasMismatch: boolean;
 }
 
 const DEVICE_RULE_KEY_BY_ID: Record<string, string> = {
@@ -84,6 +92,52 @@ const collectMissingCounts = (
   });
 
   return missing.length ? [`${scopeLabel}: ${missing.join(', ')}`] : [];
+};
+
+const formatCountSummary = (counts: Record<string, number>) => {
+  const entries = Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
+    .map(([key, count]) => `${key} x${count}`);
+
+  return entries.length ? entries.join(', ') : 'none';
+};
+
+const collectExactCountIssues = (
+  required: Record<string, number> | undefined,
+  actual: Record<string, number>,
+  scopeLabel: string,
+  displayIssue: string,
+): CountValidationIssueResult => {
+  if (!required) {
+    return {
+      diagnosticIssues: [],
+      displayIssues: [],
+      hasMismatch: false,
+    };
+  }
+
+  const comparedKeys = Array.from(new Set([
+    ...Object.keys(required),
+    ...Object.keys(actual),
+  ]));
+  const hasMismatch = comparedKeys.some((key) => (required[key] ?? 0) !== (actual[key] ?? 0));
+
+  if (!hasMismatch) {
+    return {
+      diagnosticIssues: [],
+      displayIssues: [],
+      hasMismatch: false,
+    };
+  }
+
+  return {
+    diagnosticIssues: [
+      `${scopeLabel}: expected ${formatCountSummary(required)}; actual ${formatCountSummary(actual)}`,
+    ],
+    displayIssues: [displayIssue],
+    hasMismatch: true,
+  };
 };
 
 const resolvePortId = (portId: string) => {
@@ -208,16 +262,43 @@ export const evaluateActivityAnswer = (
     }
   }
 
-  const issues = [
-    ...collectMissingCounts(activity.rule.requiredInputDevices, inputDeviceCounts, 'Input device list missing'),
-    ...collectMissingCounts(activity.rule.requiredOutputDevices, outputDeviceCounts, 'Output device list missing'),
-    ...collectMissingCounts(activity.rule.requiredComponents, componentCounts, 'Required components missing'),
+  const inputDeviceIssues = collectExactCountIssues(
+    activity.rule.requiredInputDevices,
+    inputDeviceCounts,
+    'Input device setup mismatch',
+    'Incorrect input device setup.',
+  );
+  const outputDeviceIssues = collectExactCountIssues(
+    activity.rule.requiredOutputDevices,
+    outputDeviceCounts,
+    'Output device setup mismatch',
+    'Incorrect output device setup.',
+  );
+  const componentIssues = collectMissingCounts(
+    activity.rule.requiredComponents,
+    componentCounts,
+    'Required components missing',
+  );
+  const diagnosticIssues = [
+    ...inputDeviceIssues.diagnosticIssues,
+    ...outputDeviceIssues.diagnosticIssues,
+    ...componentIssues,
+  ];
+  const displayIssues = [
+    ...inputDeviceIssues.displayIssues,
+    ...outputDeviceIssues.displayIssues,
+    ...(componentIssues.length && !inputDeviceIssues.hasMismatch && !outputDeviceIssues.hasMismatch
+      ? ['Incorrect required component setup.']
+      : []),
   ];
   const resolvedCustomConnections = resolveCustomConnections(activity.rule.customConnections);
-  issues.push(...resolvedCustomConnections.issues);
+  diagnosticIssues.push(...resolvedCustomConnections.issues);
+  displayIssues.push(...resolvedCustomConnections.issues);
 
   if (activity.rule.minWires && context.wires.length < activity.rule.minWires) {
-    issues.push(`Add at least ${activity.rule.minWires} wire connection(s).`);
+    const minWireIssue = `Add at least ${activity.rule.minWires} wire connection(s).`;
+    diagnosticIssues.push(minWireIssue);
+    displayIssues.push(minWireIssue);
   }
 
   const normalizedWires = context.wires.flatMap((wire) => {
@@ -244,14 +325,18 @@ export const evaluateActivityAnswer = (
 
     if (requirement.length === 1) {
       const [option] = requirement;
-      issues.push(`Missing required connection: ${option.originalFromPin} <-> ${option.originalToPin}`);
+      const missingConnectionIssue = `Missing required connection: ${option.originalFromPin} <-> ${option.originalToPin}`;
+      diagnosticIssues.push(missingConnectionIssue);
+      displayIssues.push(missingConnectionIssue);
       continue;
     }
 
     const labels = requirement
       .map((option) => `${option.originalFromPin} <-> ${option.originalToPin}`)
       .join(' OR ');
-    issues.push(`Missing one required connection option: ${labels}`);
+    const missingOptionIssue = `Missing one required connection option: ${labels}`;
+    diagnosticIssues.push(missingOptionIssue);
+    displayIssues.push(missingOptionIssue);
   }
 
   const hasDistinctWireAssignment = canSatisfyRequirementsWithDistinctWires(
@@ -268,7 +353,9 @@ export const evaluateActivityAnswer = (
     && hasAllRequirementsIndividuallyMatched
     && !hasDistinctWireAssignment
   ) {
-    issues.push('Add distinct wire connections to satisfy all required paths.');
+    const distinctWireIssue = 'Add distinct wire connections to satisfy all required paths.';
+    diagnosticIssues.push(distinctWireIssue);
+    displayIssues.push(distinctWireIssue);
   }
 
   const validConnectionKeys = new Set(
@@ -294,26 +381,30 @@ export const evaluateActivityAnswer = (
     })
     .map(({ fromPin, toPin }) => ({ fromPin, toPin }));
 
-  issues.push(
-    ...wrongConnections.map(
-      ({ fromPin, toPin }) =>
-        `Wrong connection: ${describePin(fromPin)} <-> ${describePin(toPin)}`,
-    ),
+  const wrongConnectionIssues = wrongConnections.map(
+    ({ fromPin, toPin }) =>
+      `Wrong connection: ${describePin(fromPin)} <-> ${describePin(toPin)}`,
   );
+  diagnosticIssues.push(...wrongConnectionIssues);
+  displayIssues.push(...wrongConnectionIssues);
 
-  if (!issues.length) {
+  if (!diagnosticIssues.length) {
     return {
       passed: true,
       feedback: 'Correct setup. Activity passed.',
       issues: [],
+      displayIssues: [],
+      diagnosticIssues: [],
       wrongConnections: [],
     };
   }
 
   return {
     passed: false,
-    feedback: issues.join('\n'),
-    issues,
+    feedback: displayIssues.join('\n'),
+    issues: displayIssues,
+    displayIssues,
+    diagnosticIssues,
     wrongConnections,
   };
 };
