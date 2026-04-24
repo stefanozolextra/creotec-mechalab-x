@@ -45,7 +45,7 @@ VALUES
 ('M03', 'Module 03 - Core Process', 'Step-by-step main process.', 3),
 ('M04', 'Module 04 - Advanced Tasks', 'Advanced workflow scenarios.', 4),
 ('M05', 'Module 05 - Troubleshooting', 'Common issues and solutions.', 5),
-('M06', 'Module 06 - Final Assessment', 'Wrap-up and final simulation.', 6);
+('M06', 'Module 06 - Basic PLC', 'Basic PLC trainer wiring and activity exercises.', 6);
 
 -- =========================
 -- RESOURCES: PDF + VIDEO per module
@@ -88,7 +88,12 @@ JOIN (
     ('M05', 'ACT-5.2', 'A+ A-', 'Runtime activity 5.2: A+ A-', 2, '5.2', 'M05'),
     ('M05', 'ACT-5.3', 'A+ B+ A- B-', 'Runtime activity 5.3: A+ B+ A- B-', 3, '5.3', 'M05'),
     ('M05', 'ACT-5.4', 'A+ B+ B- A-', 'Runtime activity 5.4: A+ B+ B- A-', 4, '5.4', 'M05'),
-    ('M05', 'ACT-5.5', 'A+ A- B+ B-', 'Runtime activity 5.5: A+ A- B+ B-', 5, '5.5', 'M05')
+    ('M05', 'ACT-5.5', 'A+ A- B+ B-', 'Runtime activity 5.5: A+ A- B+ B-', 5, '5.5', 'M05'),
+    ('M06', 'ACT-6.1', 'PLC Buzzer Basic Wiring', 'Runtime activity 6.1: PLC Buzzer Basic Wiring', 1, '6.1', 'M06'),
+    ('M06', 'ACT-6.2', 'PLC Activity 2: PLC Input and Output Wiring', 'Runtime activity 6.2: PLC Input and Output Wiring', 2, '6.2', 'M06'),
+    ('M06', 'ACT-6.3', 'PLC Activity 3: PLC Motor Control', 'Runtime activity 6.3: PLC Motor Control', 3, '6.3', 'M06'),
+    ('M06', 'ACT-6.4', 'PLC Activity 4: PLC Sensor Control', 'Runtime activity 6.4: PLC Sensor Control', 4, '6.4', 'M06'),
+    ('M06', 'ACT-6.5', 'PLC Activity 5: PLC Sequence Control', 'Runtime activity 6.5: PLC Sequence Control', 5, '6.5', 'M06')
 ) AS manifest(owner_module_code, simulation_code, title, description, order_no, route_id, runtime_module_code)
   ON manifest.owner_module_code = m.module_code
 JOIN modules runtime_module
@@ -113,7 +118,7 @@ JOIN (
   ON TRUE
 JOIN modules runtime_default
   ON runtime_default.module_code = 'M01'
-WHERE m.module_code NOT IN ('M01', 'M05');
+WHERE m.module_code NOT IN ('M01', 'M05', 'M06');
 
 -- =========================
 -- TRAINEE SIMULATION PROGRESS (deterministic realistic distribution)

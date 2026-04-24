@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Stage, Layer, Circle, Line, Rect, Text, Group } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 
@@ -6,22 +6,148 @@ import { ArrowLeft, Play, Trash2, Undo2, Redo2, Sun, Moon, RefreshCw } from 'luc
 import './SimulationApp.css';
 import PortraitGuard from '../components/PortraitGuard';
 import CyberTransition from '../components/CyberTransition';
+import { completeSimulation } from '../api/trainees';
+import { getActivityAnswerByRouteId } from './constants/activityAnswers';
+import {
+    SIMULATION_STATE_STORAGE_KEY,
+    buildActivityStateKey,
+    getStoredActivityState,
+    getStoredSimulationStates,
+    normalizeActivityModuleId,
+} from './utils/activityState';
 
 import { computePLCWirePath } from './utils/plcWireRouting';
 import { HW_STYLES, PLC_SOLENOID_LABELS, REED_LIGHT_OFFSET_Y } from './config/plcBoardLayout';
 import { GOTT_TRAINER_PORTS, type PlcPortConfig } from './config/plcPinConfiguration';
 import { PlcPanelBackground, PlcPanelText, PlcHardwareJack } from './components/plcBoardUI';
+import { PlcPneumaticAssembly } from './components/PlcPneumaticAssembly';
 
 // IMPORT THE GUIDE
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
 
 interface Connection { id: string; fromPin: string; toPin: string; color: string; points: number[]; }
-interface PLCSimulationAppProps { routeId?: string; onNavigateBack?: () => void; }
+interface SavedPlcActivityState {
+    wires: Array<Pick<Connection, 'id' | 'fromPin' | 'toPin' | 'color'>>;
+    verifiedAt?: string;
+}
 
-export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulationAppProps) {
+interface PlcSimulationRouteEntry {
+    simulationId?: number;
+    routeId: string;
+    activityModuleId?: number | null;
+    orderNo?: number | null;
+    title?: string;
+}
+
+interface PlcValidationResult {
+    passed: boolean;
+    message: string;
+    issues: string[];
+}
+
+interface PLCSimulationAppProps {
+    routeId?: string;
+    moduleId?: number;
+    activityModuleId?: number;
+    simulationId?: number;
+    activityEntries?: PlcSimulationRouteEntry[];
+    initialCompletedRoutes?: string[];
+    onNavigateBack?: () => void;
+}
+
+const routePlcConnections = (
+    connections: Array<Pick<Connection, 'id' | 'fromPin' | 'toPin' | 'color'>>,
+): Connection[] => connections.map((connection, index) => ({
+    ...connection,
+    points: computePLCWirePath(connection.fromPin, connection.toPin, GOTT_TRAINER_PORTS, index),
+}));
+
+const toWireKey = (fromPin: string, toPin: string) => [fromPin, toPin].sort().join('|');
+
+const evaluatePlcActivity = (
+    activity: ReturnType<typeof getActivityAnswerByRouteId>,
+    wires: Connection[],
+): PlcValidationResult => {
+    if (activity.isPlaceholder) {
+        return {
+            passed: false,
+            message: 'Verification is not configured for this PLC activity yet.',
+            issues: ['Final wiring requirements for this route are still pending.'],
+        };
+    }
+
+    const issues: string[] = [];
+    if (activity.rule.minWires && wires.length < activity.rule.minWires) {
+        issues.push(`Add at least ${activity.rule.minWires} wire connection(s).`);
+    }
+
+    const wireSet = new Set(wires.map((wire) => toWireKey(wire.fromPin, wire.toPin)));
+    for (const requirement of activity.rule.customConnections ?? []) {
+        const options = Array.isArray(requirement[0]) ? requirement : [requirement];
+        const matched = options.some(([fromPin, toPin]) => wireSet.has(toWireKey(fromPin, toPin)));
+        if (matched) continue;
+
+        const optionLabel = options
+            .map(([fromPin, toPin]) => `${fromPin} ↔ ${toPin}`)
+            .join(' or ');
+        issues.push(`Missing required connection: ${optionLabel}`);
+    }
+
+    if (issues.length > 0) {
+        return {
+            passed: false,
+            message: 'PLC wiring validation failed.',
+            issues,
+        };
+    }
+
+    return {
+        passed: true,
+        message: `Verified ${activity.title}.`,
+        issues: [],
+    };
+};
+
+export default function PLCSimulationApp({
+    routeId,
+    moduleId,
+    activityModuleId,
+    simulationId,
+    activityEntries = [],
+    initialCompletedRoutes = [],
+    onNavigateBack,
+}: PLCSimulationAppProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
     const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
+    const completionRequestRef = useRef<Set<number>>(new Set());
+
+    const resolvedRouteId = useMemo(() => {
+        const normalizedRouteId = routeId?.trim();
+        return normalizedRouteId || '6.1';
+    }, [routeId]);
+    const resolvedModuleId = useMemo(() => normalizeActivityModuleId(moduleId) ?? 6, [moduleId]);
+    const resolvedActivityModuleId = useMemo(
+        () => normalizeActivityModuleId(activityModuleId)
+            ?? (resolvedRouteId.startsWith('6.') ? 6 : resolvedModuleId),
+        [activityModuleId, resolvedModuleId, resolvedRouteId],
+    );
+    const activityPreset = useMemo(
+        () => getActivityAnswerByRouteId(resolvedRouteId, resolvedActivityModuleId),
+        [resolvedActivityModuleId, resolvedRouteId],
+    );
+    const activityStateKey = useMemo(
+        () => buildActivityStateKey(activityPreset.routeId, resolvedModuleId) ?? activityPreset.routeId,
+        [activityPreset.routeId, resolvedModuleId],
+    );
+    const completedRouteSet = useMemo(() => new Set(initialCompletedRoutes), [initialCompletedRoutes]);
+    const currentActivityEntry = useMemo(() => {
+        if (simulationId) {
+            const matchBySimulation = activityEntries.find((entry) => entry.simulationId === simulationId) ?? null;
+            if (matchBySimulation) return matchBySimulation;
+        }
+        return activityEntries.find((entry) => entry.routeId === resolvedRouteId) ?? null;
+    }, [activityEntries, resolvedRouteId, simulationId]);
 
     const [isCanvasReady, setIsCanvasReady] = useState(false);
 
@@ -38,10 +164,22 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
     const [emoAngle, setEmoAngle] = useState<number>(0);
     const [inputKnobAngles, setInputKnobAngles] = useState<number[]>(Array.from({ length: 12 }, () => 0));
 
-    const [wires, setWires] = useState<Connection[]>([]);
+    const [savedStates, setSavedStates] = useState<Record<string, SavedPlcActivityState>>(
+        () => getStoredSimulationStates<SavedPlcActivityState>(SIMULATION_STATE_STORAGE_KEY),
+    );
+    const [wires, setWires] = useState<Connection[]>(() => {
+        const saved = getStoredActivityState(
+            getStoredSimulationStates<SavedPlcActivityState>(SIMULATION_STATE_STORAGE_KEY),
+            activityPreset.routeId,
+            resolvedModuleId,
+        );
+        return saved ? routePlcConnections(saved.wires) : [];
+    });
     const [wireColor, setWireColor] = useState<string>('#e74c3c');
     const [activePin, setActivePin] = useState<string | null>(null);
     const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
+    const [verificationResult, setVerificationResult] = useState<PlcValidationResult | null>(null);
+    const [isPersistingCompletion, setIsPersistingCompletion] = useState(false);
 
     // IMPERATIVE REFS
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,6 +196,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
     const [historyPast, setHistoryPast] = useState<Connection[][]>([]);
     const [historyFuture, setHistoryFuture] = useState<Connection[][]>([]);
+    const isActivityCompleted = Boolean(savedStates[activityStateKey]) || completedRouteSet.has(activityStateKey);
 
     const SIDEBAR_WIDTH = 360;
     const PADDING = 24;
@@ -304,7 +443,66 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
 
     const handleUndo = () => { if (!historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
     const handleRedo = () => { if (!historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
-    const handleResetBoard = () => { setHistoryPast(prev => [...prev, wires].slice(-50)); setHistoryFuture([]); setWires([]); setSelectedWireId(null); setActivePin(null); setIsAcPowerOn(false); };
+    const handleResetBoard = () => { setHistoryPast(prev => [...prev, wires].slice(-50)); setHistoryFuture([]); setWires([]); setSelectedWireId(null); setActivePin(null); setIsAcPowerOn(false); setVerificationResult(null); };
+
+    useEffect(() => {
+        localStorage.setItem(SIMULATION_STATE_STORAGE_KEY, JSON.stringify(savedStates));
+    }, [savedStates]);
+
+    useEffect(() => {
+        setVerificationResult(null);
+    }, [activityStateKey, wires]);
+
+    const handleVerifyConfiguration = useCallback(async () => {
+        const result = evaluatePlcActivity(activityPreset, wires);
+        setVerificationResult(result);
+        if (!result.passed) return;
+
+        const savedWireSnapshot = wires.map(({ id, fromPin, toPin, color }) => ({
+            id,
+            fromPin,
+            toPin,
+            color,
+        }));
+
+        setSavedStates((prev) => ({
+            ...prev,
+            [activityStateKey]: {
+                wires: savedWireSnapshot,
+                verifiedAt: new Date().toISOString(),
+            },
+        }));
+
+        if (
+            !simulationId
+            || completedRouteSet.has(activityStateKey)
+            || completionRequestRef.current.has(simulationId)
+        ) {
+            return;
+        }
+
+        completionRequestRef.current.add(simulationId);
+        setIsPersistingCompletion(true);
+
+        try {
+            await completeSimulation(simulationId, { bestScore: 100 });
+            setVerificationResult({
+                passed: true,
+                message: `${activityPreset.title} verified and saved.`,
+                issues: [],
+            });
+        } catch (error) {
+            console.error('Failed to persist PLC simulation completion', error);
+            setVerificationResult({
+                passed: true,
+                message: `${activityPreset.title} verified locally, but server progress sync failed.`,
+                issues: [],
+            });
+        } finally {
+            completionRequestRef.current.delete(simulationId);
+            setIsPersistingCompletion(false);
+        }
+    }, [activityPreset, activityStateKey, completedRouteSet, simulationId, wires]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedWire(); } };
@@ -331,7 +529,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                             <button onClick={handleBackNavigation} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence"><ArrowLeft size={20} /></button>
                             <div>
                                 <h1 className="font-black text-lg text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2"><Play size={16} className="text-cyan-600 dark:text-cyan-500" /> Laboratory Sequence</h1>
-                                <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: GOTT PLC Trainer • Task: {routeId || 'Default'}</p>
+                                <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: GOTT PLC Trainer • Task: {currentActivityEntry?.title || activityPreset.title || resolvedRouteId}</p>
                             </div>
                         </div>
                         {/* TOOLBAR - ADD ID HERE */}
@@ -371,14 +569,54 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                             </div>
                             <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
                                 <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-                                    <h4 className="text-sm font-bold text-slate-800 dark:text-white">Active Task: Powering the System</h4>
-                                    <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-mono">You must act as the hardware technician to simulate wiring and powering the physical GOTT PLC Trainer.</p>
-                                    <ul className="text-[11px] text-slate-600 dark:text-slate-300 space-y-2 list-decimal pl-4 leading-relaxed">
-                                        <li>Toggle the physical rocker switch in the **INPUT AC** panel to the ON position. Note the PLC's PWR LED illuminates.</li>
-                                        <li>Verify internal power rails by wiring <strong>24V</strong> supply output to PLC Input COM.</li>
-                                        <li>Establish safe grounding of the logic rail by wiring PLC Output COM1 to <strong>0V</strong> supply output.</li>
-                                    </ul>
-                                    <button type="button" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-colors shadow-md">Verify Configuration</button>
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div>
+                                            <h4 className="text-sm font-bold text-slate-800 dark:text-white">{activityPreset.title}</h4>
+                                            <p className="mt-1 text-[10px] font-mono uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Route {activityPreset.routeId}</p>
+                                        </div>
+                                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
+                                            isActivityCompleted
+                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
+                                                : activityPreset.isPlaceholder
+                                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+                                                    : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200'
+                                        }`}>
+                                            {isActivityCompleted ? 'Verified' : activityPreset.isPlaceholder ? 'Pending' : 'Active'}
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-mono">
+                                        {activityPreset.instruction || 'Follow the assigned PLC trainer wiring task and verify the current route.'}
+                                    </p>
+                                    {verificationResult ? (
+                                        <div className={`rounded-lg border px-3 py-2 text-[11px] leading-relaxed ${
+                                            verificationResult.passed
+                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                                : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
+                                        }`}>
+                                            <p>{verificationResult.message}</p>
+                                            {verificationResult.issues.length > 0 ? (
+                                                <ul className="mt-2 list-disc space-y-1 pl-4">
+                                                    {verificationResult.issues.map((issue) => (
+                                                        <li key={issue}>{issue}</li>
+                                                    ))}
+                                                </ul>
+                                            ) : null}
+                                        </div>
+                                    ) : null}
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleVerifyConfiguration()}
+                                        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-colors shadow-md"
+                                        disabled={isPersistingCompletion}
+                                    >
+                                        {isPersistingCompletion
+                                            ? 'Saving Progress...'
+                                            : isActivityCompleted
+                                                ? 'Configuration Verified'
+                                                : activityPreset.isPlaceholder
+                                                    ? 'Verification Pending'
+                                                    : 'Verify Configuration'}
+                                    </button>
                                 </div>
                             </div>
                         </aside>
@@ -412,14 +650,7 @@ export default function PLCSimulationApp({ routeId, onNavigateBack }: PLCSimulat
                                             <PlcPanelBackground id="buzzer" x={460} y={575} width={140} height={115} />
                                             <PlcPanelBackground id="manual" x={615} y={575} width={635} height={115} />
 
-                                            <Group x={690} y={30}>
-                                                <Rect width={560} height={420} fill="#e2e8f0" cornerRadius={6} />
-                                                <Rect width={560} height={24} fill="#cbd5e1" cornerRadius={6} />
-                                                <Rect x={50} y={80} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
-                                                <Rect x={250} y={90} width={120} height={20} fill="#cbd5e1" cornerRadius={4} />
-                                                <Rect x={50} y={200} width={200} height={40} fill="#94a3b8" cornerRadius={4} />
-                                                <Rect x={180} y={210} width={190} height={20} fill="#cbd5e1" cornerRadius={4} />
-                                            </Group>
+                                            <PlcPneumaticAssembly x={690} y={30} width={560} height={420} />
                                         </Layer>
 
                                         {/* LAYER 2: WIRES (MIDDLE - Drawn OVER backgrounds, but UNDER text and ports!) */}

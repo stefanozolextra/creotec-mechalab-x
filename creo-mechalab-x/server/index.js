@@ -161,6 +161,46 @@ const ACTIVE_SIMULATION_MANIFEST = [
         simulationCode: "ACT-5.5",
         title: "A+ A- B+ B-",
     },
+    {
+        routeId: "6.1",
+        ownerModuleCode: "M06",
+        runtimeModuleCode: "M06",
+        orderNo: 1,
+        simulationCode: "ACT-6.1",
+        title: "PLC Buzzer Basic Wiring",
+    },
+    {
+        routeId: "6.2",
+        ownerModuleCode: "M06",
+        runtimeModuleCode: "M06",
+        orderNo: 2,
+        simulationCode: "ACT-6.2",
+        title: "PLC Activity 2: PLC Input and Output Wiring",
+    },
+    {
+        routeId: "6.3",
+        ownerModuleCode: "M06",
+        runtimeModuleCode: "M06",
+        orderNo: 3,
+        simulationCode: "ACT-6.3",
+        title: "PLC Activity 3: PLC Motor Control",
+    },
+    {
+        routeId: "6.4",
+        ownerModuleCode: "M06",
+        runtimeModuleCode: "M06",
+        orderNo: 4,
+        simulationCode: "ACT-6.4",
+        title: "PLC Activity 4: PLC Sensor Control",
+    },
+    {
+        routeId: "6.5",
+        ownerModuleCode: "M06",
+        runtimeModuleCode: "M06",
+        orderNo: 5,
+        simulationCode: "ACT-6.5",
+        title: "PLC Activity 5: PLC Sequence Control",
+    },
 ];
 const ACTIVE_SIMULATION_MANIFEST_BY_ROUTE_ID = new Map(
     ACTIVE_SIMULATION_MANIFEST.map((entry) => [entry.routeId, entry]),
@@ -631,6 +671,10 @@ function resolveSimulationRouteId(row, moduleCode = null) {
         return `5.${orderNo}`;
     }
 
+    if (moduleCode === "M06" && orderNo <= 9) {
+        return `6.${orderNo}`;
+    }
+
     return String(orderNo);
 }
 
@@ -654,6 +698,7 @@ function inferRuntimeModuleCodeFromRoute(routeId) {
     const normalizedRouteId = normalizeRouteIdValue(routeId);
     if (!normalizedRouteId) return null;
     if (normalizedRouteId.startsWith("5.")) return "M05";
+    if (normalizedRouteId.startsWith("6.")) return "M06";
     return "M01";
 }
 
@@ -1947,6 +1992,20 @@ async function ensureSimulationInventoryCompatibility() {
                         manifestEntry.routeId,
                         runtimeModuleId,
                     ],
+                );
+            }
+
+            const module6Id = moduleIdByCode.get("M06") || null;
+            const module1Id = moduleIdByCode.get("M01") || null;
+            if (module6Id) {
+                await client.query(
+                    `UPDATE simulations
+                     SET module_id = NULL,
+                         is_required = FALSE
+                     WHERE module_id = $1
+                       AND COALESCE(NULLIF(TRIM(route_id), ''), order_no::TEXT) = ANY($2::TEXT[])
+                       AND ($3::BIGINT IS NULL OR runtime_module_id = $3 OR runtime_module_id IS NULL)`,
+                    [module6Id, ["1", "2"], module1Id],
                 );
             }
 

@@ -8,6 +8,11 @@ import { activityAnswer as m5Activity2Answer } from './M5/activity-2';
 import { activityAnswer as m5Activity3Answer } from './M5/activity-3';
 import { activityAnswer as m5Activity4Answer } from './M5/activity-4';
 import { activityAnswer as m5Activity5Answer } from './M5/activity-5';
+import { activity1Answer as m6Activity1Answer } from './M6 (PLC)/activity-1';
+import { activity2Answer as m6Activity2Answer } from './M6 (PLC)/activity-2';
+import { activity3Answer as m6Activity3Answer } from './M6 (PLC)/activity-3';
+import { activity4Answer as m6Activity4Answer } from './M6 (PLC)/activity-4';
+import { activity5Answer as m6Activity5Answer } from './M6 (PLC)/activity-5';
 import type { ActivityAnswerDefinition } from './types';
 import {
   DEFAULT_ACTIVITY_MODULE_ID,
@@ -35,9 +40,26 @@ const M5_ACTIVITY_ANSWERS = createActivityAnswerMap([
   m5Activity5Answer,
 ]);
 
+const M6_ACTIVITY_ANSWERS = createActivityAnswerMap([
+  m6Activity1Answer,
+  m6Activity2Answer,
+  m6Activity3Answer,
+  m6Activity4Answer,
+  m6Activity5Answer,
+]);
+
+const inferActivityModuleIdFromRouteId = (routeId?: string): number | null => {
+  const normalizedRouteId = routeId?.trim();
+  if (!normalizedRouteId) return null;
+  if (normalizedRouteId.startsWith('5.')) return 5;
+  if (normalizedRouteId.startsWith('6.')) return 6;
+  return null;
+};
+
 export const ACTIVITY_ANSWER_PACKS: Record<number, Record<string, ActivityAnswerDefinition>> = {
   [DEFAULT_ACTIVITY_MODULE_ID]: M1_ACTIVITY_ANSWERS,
   5: M5_ACTIVITY_ANSWERS,
+  6: M6_ACTIVITY_ANSWERS,
 };
 
 export const ACTIVITY_ANSWERS = ACTIVITY_ANSWER_PACKS[DEFAULT_ACTIVITY_MODULE_ID];
@@ -56,7 +78,9 @@ export const getActivityAnswerByRouteId = (
   routeId?: string,
   moduleId?: number | null,
 ): ActivityAnswerDefinition => {
-  const answers = getActivityAnswersForModule(moduleId);
+  const answers = getActivityAnswersForModule(
+    inferActivityModuleIdFromRouteId(routeId) ?? normalizeActivityModuleId(moduleId),
+  );
   return routeId ? (answers[routeId] ?? DEFAULT_ACTIVITY_ANSWER) : DEFAULT_ACTIVITY_ANSWER;
 };
 

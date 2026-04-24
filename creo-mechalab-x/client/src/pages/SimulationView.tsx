@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams, useSearchParams } from 'react-rout
 import { AlertTriangle, ArrowLeft, BookOpen } from 'lucide-react';
 import CyberTransition from '../components/CyberTransition';
 import SimulationApp from '../simulation/SimulationApp';
+import PLCSimulationApp from '../simulation/PLCSimulationApp';
 import { getTraineeDashboard } from '../api/trainees';
 import {
     buildActivityStateKey,
@@ -125,13 +126,19 @@ export default function SimulationView() {
                         return left.routeId.localeCompare(right.routeId);
                     });
 
+                const inferredRouteModuleId = simulationRouteId.startsWith('6.')
+                    ? 6
+                    : simulationRouteId.startsWith('5.')
+                        ? 5
+                        : null;
                 const fallbackEntry: SimulationActivityEntry = {
                     simulationId,
                     routeId: simulationRouteId,
-                    activityModuleId: resolveSimulationRuntimeModuleId(
-                        requestedActivityModuleId,
-                        effectiveModuleId,
-                    ),
+                    activityModuleId: inferredRouteModuleId
+                        ?? resolveSimulationRuntimeModuleId(
+                            requestedActivityModuleId,
+                            effectiveModuleId,
+                        ),
                     orderNo: 1,
                     title: simulationRouteId,
                 };
@@ -171,9 +178,18 @@ export default function SimulationView() {
         return activityEntries.find((entry) => entry.routeId === simulationRouteId) ?? null;
     }, [activityEntries, simulationId, simulationRouteId]);
 
-    const effectiveActivityModuleId = currentActivityEntry?.activityModuleId
+    const inferredRouteModuleId = simulationRouteId.startsWith('6.')
+        ? 6
+        : simulationRouteId.startsWith('5.')
+            ? 5
+            : undefined;
+    const effectiveActivityModuleId = inferredRouteModuleId
+        ?? currentActivityEntry?.activityModuleId
         ?? resolveSimulationRuntimeModuleId(requestedActivityModuleId, resolvedModuleId)
         ?? undefined;
+    const shouldRenderPlcSimulation = simulationRouteId.startsWith('6.')
+        || effectiveActivityModuleId === 6
+        || resolvedModuleId === 6;
 
     return (
         <CyberTransition>
@@ -216,16 +232,29 @@ export default function SimulationView() {
                     </div>
                 </div>
             ) : (
-                <SimulationApp
-                    key={`${resolvedModuleId ?? 'legacy'}:${effectiveActivityModuleId ?? 'default'}:${simulationRouteId}:${simulationId ?? 'anonymous'}`}
-                    routeId={simulationRouteId}
-                    moduleId={resolvedModuleId ?? undefined}
-                    activityModuleId={effectiveActivityModuleId}
-                    simulationId={simulationId}
-                    activityEntries={activityEntries}
-                    initialCompletedRoutes={completedRoutes}
-                    onNavigateBack={() => navigate('/dashboard')}
-                />
+                shouldRenderPlcSimulation ? (
+                    <PLCSimulationApp
+                        key={`plc:${resolvedModuleId ?? 'legacy'}:${effectiveActivityModuleId ?? 'default'}:${simulationRouteId}:${simulationId ?? 'anonymous'}`}
+                        routeId={simulationRouteId}
+                        moduleId={resolvedModuleId ?? undefined}
+                        activityModuleId={effectiveActivityModuleId}
+                        simulationId={simulationId}
+                        activityEntries={activityEntries}
+                        initialCompletedRoutes={completedRoutes}
+                        onNavigateBack={() => navigate('/dashboard')}
+                    />
+                ) : (
+                    <SimulationApp
+                        key={`${resolvedModuleId ?? 'legacy'}:${effectiveActivityModuleId ?? 'default'}:${simulationRouteId}:${simulationId ?? 'anonymous'}`}
+                        routeId={simulationRouteId}
+                        moduleId={resolvedModuleId ?? undefined}
+                        activityModuleId={effectiveActivityModuleId}
+                        simulationId={simulationId}
+                        activityEntries={activityEntries}
+                        initialCompletedRoutes={completedRoutes}
+                        onNavigateBack={() => navigate('/dashboard')}
+                    />
+                )
             )}
         </CyberTransition>
     );
