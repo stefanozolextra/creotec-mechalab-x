@@ -1,16 +1,21 @@
-import { Circle, Group, Line, Rect, Text } from 'react-konva';
+import { Circle, Group, Line, Rect } from 'react-konva';
 
 import { HW_STYLES } from '../config/plcBoardLayout';
+
+export type PlcCylinderId = 'A' | 'B' | 'C';
+export type PlcCylinderPosition = 'retracted' | 'extended';
+export type PlcCylinderPositions = Record<PlcCylinderId, PlcCylinderPosition>;
 
 interface PlcPneumaticAssemblyProps {
     x: number;
     y: number;
     width: number;
     height: number;
+    cylinderPositions?: Partial<PlcCylinderPositions>;
 }
 
 type AssemblySpec = {
-    id: 'A' | 'B' | 'C';
+    id: PlcCylinderId;
     cylinderY: number;
     valveY: number;
 };
@@ -22,6 +27,7 @@ const CYLINDER_STACK_X = 220;
 const CYLINDER_BODY_WIDTH = 138;
 const CYLINDER_BODY_HEIGHT = 34;
 const CYLINDER_ROD_WIDTH = 56;
+const CYLINDER_RETRACTED_ROD_WIDTH = 14;
 
 const VALVE_STACK_X = 112;
 const VALVE_OUTER_NOZZLE_WIDTH = 18;
@@ -50,15 +56,22 @@ const ASSEMBLIES: readonly AssemblySpec[] = [
     { id: 'C', cylinderY: 160 + ASSEMBLY_OFFSET_Y, valveY: 334 + ASSEMBLY_OFFSET_Y },
 ] as const;
 
-const renderCylinder = (id: AssemblySpec['id'], y: number) => {
+const DEFAULT_CYLINDER_POSITIONS: PlcCylinderPositions = {
+    A: 'retracted',
+    B: 'retracted',
+    C: 'retracted',
+};
+
+const renderCylinder = (id: AssemblySpec['id'], y: number, position: PlcCylinderPosition) => {
     const rodY = y + (CYLINDER_BODY_HEIGHT / 2) - 4;
+    const rodWidth = position === 'extended' ? CYLINDER_ROD_WIDTH : CYLINDER_RETRACTED_ROD_WIDTH;
 
     return (
         <Group key={`cylinder-${id}`} listening={false}>
             <Rect
                 x={CYLINDER_STACK_X + 4}
                 y={y + 4}
-                width={CYLINDER_BODY_WIDTH + CYLINDER_ROD_WIDTH}
+                width={CYLINDER_BODY_WIDTH + rodWidth}
                 height={CYLINDER_BODY_HEIGHT}
                 fill="rgba(148,163,184,0.15)"
                 cornerRadius={8}
@@ -81,14 +94,14 @@ const renderCylinder = (id: AssemblySpec['id'], y: number) => {
             <Rect
                 x={CYLINDER_STACK_X + CYLINDER_BODY_WIDTH}
                 y={rodY}
-                width={CYLINDER_ROD_WIDTH}
+                width={rodWidth}
                 height={8}
                 fill="#bdc3c7"
                 stroke="#7f8c8d"
                 strokeWidth={1}
             />
             <Rect
-                x={CYLINDER_STACK_X + CYLINDER_BODY_WIDTH + CYLINDER_ROD_WIDTH - 6}
+                x={CYLINDER_STACK_X + CYLINDER_BODY_WIDTH + rodWidth - 6}
                 y={rodY - 3}
                 width={6}
                 height={14}
@@ -106,17 +119,6 @@ const renderCylinder = (id: AssemblySpec['id'], y: number) => {
                 stroke="#cbd5e1"
                 strokeWidth={2}
                 lineCap="round"
-            />
-            <Text
-                text={`Cylinder ${id}`}
-                x={CYLINDER_STACK_X + 22}
-                y={y + 11}
-                width={94}
-                align="center"
-                fontSize={12}
-                fontStyle="bold"
-                fontFamily={HW_STYLES.technicalSans}
-                fill="#475569"
             />
         </Group>
     );
@@ -287,30 +289,37 @@ const renderTubeRuns = (id: AssemblySpec['id'], cylinderY: number, valveY: numbe
     );
 };
 
-export const PlcPneumaticAssembly = ({ x, y, width, height }: PlcPneumaticAssemblyProps) => (
-    <Group x={x} y={y} listening={false}>
-        <Rect
-            width={width}
-            height={height}
-            fill="#e2e8f0"
-            stroke={HW_STYLES.panelBorder}
-            strokeWidth={2}
-            cornerRadius={6}
-        />
-        <Rect width={width} height={HEADER_HEIGHT} fill="#cbd5e1" stroke={HW_STYLES.panelBorder} strokeWidth={1} cornerRadius={6} />
-        <Rect
-            x={INNER_PADDING}
-            y={HEADER_HEIGHT + INNER_PADDING}
-            width={width - INNER_PADDING * 2}
-            height={height - HEADER_HEIGHT - INNER_PADDING * 1.6}
-            fill="#edf3f8"
-            stroke="#d6dee7"
-            strokeWidth={1.5}
-            cornerRadius={12}
-        />
+export const PlcPneumaticAssembly = ({ x, y, width, height, cylinderPositions = DEFAULT_CYLINDER_POSITIONS }: PlcPneumaticAssemblyProps) => {
+    const resolvedCylinderPositions: PlcCylinderPositions = {
+        ...DEFAULT_CYLINDER_POSITIONS,
+        ...cylinderPositions,
+    };
 
-        {ASSEMBLIES.map((assembly) => renderTubeRuns(assembly.id, assembly.cylinderY, assembly.valveY))}
-        {ASSEMBLIES.map((assembly) => renderCylinder(assembly.id, assembly.cylinderY))}
-        {ASSEMBLIES.map((assembly) => renderValveAssembly(assembly.id, assembly.valveY))}
-    </Group>
-);
+    return (
+        <Group x={x} y={y} listening={false}>
+            <Rect
+                width={width}
+                height={height}
+                fill="#e2e8f0"
+                stroke={HW_STYLES.panelBorder}
+                strokeWidth={2}
+                cornerRadius={6}
+            />
+            <Rect width={width} height={HEADER_HEIGHT} fill="#cbd5e1" stroke={HW_STYLES.panelBorder} strokeWidth={1} cornerRadius={6} />
+            <Rect
+                x={INNER_PADDING}
+                y={HEADER_HEIGHT + INNER_PADDING}
+                width={width - INNER_PADDING * 2}
+                height={height - HEADER_HEIGHT - INNER_PADDING * 1.6}
+                fill="#edf3f8"
+                stroke="#d6dee7"
+                strokeWidth={1.5}
+                cornerRadius={12}
+            />
+
+            {ASSEMBLIES.map((assembly) => renderTubeRuns(assembly.id, assembly.cylinderY, assembly.valveY))}
+            {ASSEMBLIES.map((assembly) => renderCylinder(assembly.id, assembly.cylinderY, resolvedCylinderPositions[assembly.id]))}
+            {ASSEMBLIES.map((assembly) => renderValveAssembly(assembly.id, assembly.valveY))}
+        </Group>
+    );
+};

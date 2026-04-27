@@ -1,16 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Stage, Layer, Circle, Line, Rect, Text, Group } from 'react-konva';
 import type { KonvaEventObject } from 'konva/lib/Node';
 
-import { ArrowLeft, Play, Trash2, Undo2, Redo2, Sun, Moon, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Play, Trash2, Undo2, Redo2, Sun, Moon, RefreshCw, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react';
 import './SimulationApp.css';
 import PortraitGuard from '../components/PortraitGuard';
 import CyberTransition from '../components/CyberTransition';
 import { completeSimulation } from '../api/trainees';
-import { getActivityAnswerByRouteId } from './constants/activityAnswers';
+import { getActivityAnswerByRouteId, getActivityRouteIds } from './constants/activityAnswers';
+import { PLC_DEVICE_LIBRARY, type PlcDeviceId, type PlcDeviceZone } from './constants/plcDeviceLibrary';
 import {
     SIMULATION_STATE_STORAGE_KEY,
     buildActivityStateKey,
+    buildSimulationPath,
     getStoredActivityState,
     getStoredSimulationStates,
     normalizeActivityModuleId,
@@ -20,7 +23,7 @@ import { computePLCWirePath } from './utils/plcWireRouting';
 import { HW_STYLES, PLC_SOLENOID_LABELS, REED_LIGHT_OFFSET_Y } from './config/plcBoardLayout';
 import { GOTT_TRAINER_PORTS, type PlcPortConfig } from './config/plcPinConfiguration';
 import { PlcPanelBackground, PlcPanelText, PlcHardwareJack } from './components/plcBoardUI';
-import { PlcPneumaticAssembly } from './components/PlcPneumaticAssembly';
+import { PlcPneumaticAssembly, type PlcCylinderId, type PlcCylinderPositions } from './components/PlcPneumaticAssembly';
 
 // IMPORT THE GUIDE
 import TutorialGuide, { type TutorialStep } from '../components/TutorialGuide';
@@ -43,6 +46,9 @@ interface PlcValidationResult {
     passed: boolean;
     message: string;
     issues: string[];
+    displayIssues: string[];
+    diagnosticIssues: string[];
+    wrongConnections: Array<{ fromPin: string; toPin: string }>;
 }
 
 interface PLCSimulationAppProps {
@@ -64,48 +70,208 @@ const routePlcConnections = (
 
 const toWireKey = (fromPin: string, toPin: string) => [fromPin, toPin].sort().join('|');
 
+const PLC_DEVICE_USE_ZONES = [
+    {
+        id: 'input',
+        title: 'Input Device',
+    },
+    {
+        id: 'output',
+        title: 'Output/Control Device',
+    },
+] as const;
+
+interface AssignedPlcDevice {
+    deviceId: PlcDeviceId;
+    quantity: number;
+}
+
+type AssignedPlcDevices = Record<PlcDeviceZone, AssignedPlcDevice[]>;
+type PlcDeviceDragState = { deviceId: PlcDeviceId; source: PlcDeviceZone | 'library' } | null;
+
+const PLC_DEVICE_QUANTITY_LIMITS: Partial<Record<PlcDeviceId, number>> = {
+    'solenoid-valve': 3,
+    'limit-switch': 4,
+    'magnetic-reed-switch-sensor': 6,
+};
+
+type Activity61OutputCommand = 'extend' | 'retract' | null;
+
+const ACTIVITY_61_ROUTE_ID = '6.1';
+const ACTIVITY_61_REQUIRED_INPUT_DEVICE_COUNTS: Partial<Record<PlcDeviceId, number>> = {
+    'push-button': 1,
+};
+const ACTIVITY_61_REQUIRED_OUTPUT_DEVICE_COUNTS: Partial<Record<PlcDeviceId, number>> = {
+    'plc-module': 1,
+    'solenoid-valve': 1,
+};
+const createRetractedPlcCylinderPositions = (): PlcCylinderPositions => ({
+    A: 'retracted',
+    B: 'retracted',
+    C: 'retracted',
+});
+const ACTIVITY_61_REED_LIGHT_PAIRS: Array<{ cylinderId: PlcCylinderId; retPortId: string; extPortId: string }> = [
+    { cylinderId: 'A', retPortId: 'reed_ret_1.1', extPortId: 'reed_ext_1.2' },
+    { cylinderId: 'B', retPortId: 'reed_ret_2.1', extPortId: 'reed_ext_2.2' },
+    { cylinderId: 'C', retPortId: 'reed_ret_3.1', extPortId: 'reed_ext_3.2' },
+];
+
+const createEmptyAssignedPlcDevices = (): AssignedPlcDevices => ({ input: [], output: [] });
+const isPlcDeviceId = (value: string): value is PlcDeviceId =>
+    PLC_DEVICE_LIBRARY.some((device) => device.id === value);
+const getPlcDeviceById = (deviceId: PlcDeviceId) =>
+    PLC_DEVICE_LIBRARY.find((device) => device.id === deviceId) ?? PLC_DEVICE_LIBRARY[0];
+const getPlcDeviceQuantityLimit = (deviceId: PlcDeviceId) => PLC_DEVICE_QUANTITY_LIMITS[deviceId] ?? 1;
+const getAssignedPlcDeviceCounts = (devices: AssignedPlcDevice[]) =>
+    devices.reduce<Partial<Record<PlcDeviceId, number>>>((counts, device) => {
+        counts[device.deviceId] = (counts[device.deviceId] ?? 0) + device.quantity;
+        return counts;
+    }, {});
+const hasExactAssignedPlcDeviceCounts = (
+    devices: AssignedPlcDevice[],
+    requiredCounts: Partial<Record<PlcDeviceId, number>>,
+) => {
+    const actualCounts = getAssignedPlcDeviceCounts(devices);
+    const comparedDeviceIds = new Set<PlcDeviceId>([
+        ...(Object.keys(requiredCounts) as PlcDeviceId[]),
+        ...(Object.keys(actualCounts) as PlcDeviceId[]),
+    ]);
+
+    return Array.from(comparedDeviceIds).every((deviceId) =>
+        (actualCounts[deviceId] ?? 0) === (requiredCounts[deviceId] ?? 0),
+    );
+};
+const uniqueStrings = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
+const createPassingPlcValidationResult = (message: string): PlcValidationResult => ({
+    passed: true,
+    message,
+    issues: [],
+    displayIssues: [],
+    diagnosticIssues: [],
+    wrongConnections: [],
+});
+const createFailingPlcValidationResult = (
+    message: string,
+    displayIssues: string[],
+    diagnosticIssues: string[] = displayIssues,
+    wrongConnections: Array<{ fromPin: string; toPin: string }> = [],
+): PlcValidationResult => ({
+    passed: false,
+    message,
+    issues: uniqueStrings(displayIssues),
+    displayIssues: uniqueStrings(displayIssues),
+    diagnosticIssues: uniqueStrings(diagnosticIssues),
+    wrongConnections,
+});
+
+const getPlcConnectionOptions = (
+    requirement: NonNullable<ReturnType<typeof getActivityAnswerByRouteId>['rule']['customConnections']>[number],
+) => Array.isArray(requirement[0]) ? requirement : [requirement];
+
+const getValidPlcWireKeys = (activity: ReturnType<typeof getActivityAnswerByRouteId>) => {
+    const validWireKeys = new Set<string>();
+
+    for (const requirement of activity.rule.customConnections ?? []) {
+        for (const [fromPin, toPin] of getPlcConnectionOptions(requirement)) {
+            validWireKeys.add(toWireKey(fromPin, toPin));
+        }
+    }
+
+    return validWireKeys;
+};
+
+const getWrongPlcConnectionsForActivity = (
+    activity: ReturnType<typeof getActivityAnswerByRouteId>,
+    wires: Connection[],
+) => {
+    if (activity.routeId !== ACTIVITY_61_ROUTE_ID) return [];
+
+    const validWireKeys = getValidPlcWireKeys(activity);
+    if (!validWireKeys.size) return [];
+
+    return wires
+        .filter((wire) => !validWireKeys.has(toWireKey(wire.fromPin, wire.toPin)))
+        .map(({ fromPin, toPin }) => ({ fromPin, toPin }));
+};
+
+const validateActivity61RequiredDevices = (
+    routeId: string,
+    assignedDevices: AssignedPlcDevices,
+): PlcValidationResult => {
+    if (routeId !== ACTIVITY_61_ROUTE_ID) {
+        return createPassingPlcValidationResult('Required devices verified.');
+    }
+
+    const hasRequiredInputDevices = hasExactAssignedPlcDeviceCounts(
+        assignedDevices.input,
+        ACTIVITY_61_REQUIRED_INPUT_DEVICE_COUNTS,
+    );
+    const hasRequiredOutputDevices = hasExactAssignedPlcDeviceCounts(
+        assignedDevices.output,
+        ACTIVITY_61_REQUIRED_OUTPUT_DEVICE_COUNTS,
+    );
+
+    if (hasRequiredInputDevices && hasRequiredOutputDevices) {
+        return createPassingPlcValidationResult('Required devices verified.');
+    }
+
+    return createFailingPlcValidationResult(
+        'Required devices are missing or placed incorrectly.',
+        ['Required devices are missing or placed incorrectly.'],
+        [
+            `Input devices exact count valid: ${hasRequiredInputDevices}`,
+            `Output/control devices exact count valid: ${hasRequiredOutputDevices}`,
+        ],
+    );
+};
+
 const evaluatePlcActivity = (
     activity: ReturnType<typeof getActivityAnswerByRouteId>,
     wires: Connection[],
 ): PlcValidationResult => {
     if (activity.isPlaceholder) {
-        return {
-            passed: false,
-            message: 'Verification is not configured for this PLC activity yet.',
-            issues: ['Final wiring requirements for this route are still pending.'],
-        };
+        return createFailingPlcValidationResult(
+            'Verification is not configured for this PLC activity yet.',
+            ['Verification is not configured for this PLC activity yet.'],
+            ['Final wiring requirements for this route are still pending.'],
+        );
     }
 
-    const issues: string[] = [];
+    const displayIssues: string[] = [];
+    const diagnosticIssues: string[] = [];
     if (activity.rule.minWires && wires.length < activity.rule.minWires) {
-        issues.push(`Add at least ${activity.rule.minWires} wire connection(s).`);
+        displayIssues.push('PLC wiring validation failed.');
+        diagnosticIssues.push(`Add at least ${activity.rule.minWires} wire connection(s).`);
     }
 
     const wireSet = new Set(wires.map((wire) => toWireKey(wire.fromPin, wire.toPin)));
-    for (const requirement of activity.rule.customConnections ?? []) {
-        const options = Array.isArray(requirement[0]) ? requirement : [requirement];
+    for (const [requirementIndex, requirement] of (activity.rule.customConnections ?? []).entries()) {
+        const options = getPlcConnectionOptions(requirement);
         const matched = options.some(([fromPin, toPin]) => wireSet.has(toWireKey(fromPin, toPin)));
         if (matched) continue;
 
         const optionLabel = options
             .map(([fromPin, toPin]) => `${fromPin} ↔ ${toPin}`)
             .join(' or ');
-        issues.push(`Missing required connection: ${optionLabel}`);
+        diagnosticIssues.push(`Missing required connection: ${optionLabel}`);
+        displayIssues.push('PLC wiring validation failed.');
+
+        if (activity.routeId === ACTIVITY_61_ROUTE_ID) {
+            displayIssues.push(requirementIndex <= 4
+                ? 'Check the required input wiring.'
+                : 'Check the required output/control wiring.');
+        }
     }
 
-    if (issues.length > 0) {
-        return {
-            passed: false,
-            message: 'PLC wiring validation failed.',
-            issues,
-        };
+    if (diagnosticIssues.length > 0) {
+        return createFailingPlcValidationResult(
+            'PLC wiring validation failed.',
+            displayIssues,
+            diagnosticIssues,
+        );
     }
 
-    return {
-        passed: true,
-        message: `Verified ${activity.title}.`,
-        issues: [],
-    };
+    return createPassingPlcValidationResult(`Verified ${activity.title}.`);
 };
 
 export default function PLCSimulationApp({
@@ -117,9 +283,14 @@ export default function PLCSimulationApp({
     initialCompletedRoutes = [],
     onNavigateBack,
 }: PLCSimulationAppProps) {
+    const navigate = useNavigate();
     const containerRef = useRef<HTMLDivElement>(null);
     const [isDarkMode, setIsDarkMode] = useState<boolean>(() => typeof document !== 'undefined' ? document.documentElement.classList.contains('dark') : true);
     const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
+    const [isPlcDeviceDrawerOpen, setIsPlcDeviceDrawerOpen] = useState(false);
+    const [assignedPlcDevices, setAssignedPlcDevices] = useState<AssignedPlcDevices>(() => createEmptyAssignedPlcDevices());
+    const [plcDeviceDragState, setPlcDeviceDragState] = useState<PlcDeviceDragState>(null);
+    const [activePlcDropZone, setActivePlcDropZone] = useState<PlcDeviceZone | null>(null);
     const completionRequestRef = useRef<Set<number>>(new Set());
 
     const resolvedRouteId = useMemo(() => {
@@ -141,13 +312,44 @@ export default function PLCSimulationApp({
         [activityPreset.routeId, resolvedModuleId],
     );
     const completedRouteSet = useMemo(() => new Set(initialCompletedRoutes), [initialCompletedRoutes]);
-    const currentActivityEntry = useMemo(() => {
-        if (simulationId) {
-            const matchBySimulation = activityEntries.find((entry) => entry.simulationId === simulationId) ?? null;
-            if (matchBySimulation) return matchBySimulation;
+
+    const routeEntries = useMemo<PlcSimulationRouteEntry[]>(() => {
+        if (activityEntries.length > 0) {
+            return [...activityEntries].sort((left, right) => {
+                const leftOrder = left.orderNo ?? Number.MAX_SAFE_INTEGER;
+                const rightOrder = right.orderNo ?? Number.MAX_SAFE_INTEGER;
+                if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+                if ((left.simulationId ?? 0) !== (right.simulationId ?? 0)) {
+                    return (left.simulationId ?? 0) - (right.simulationId ?? 0);
+                }
+                return left.routeId.localeCompare(right.routeId);
+            });
         }
-        return activityEntries.find((entry) => entry.routeId === resolvedRouteId) ?? null;
-    }, [activityEntries, resolvedRouteId, simulationId]);
+
+        return getActivityRouteIds(6).map((entryRouteId, index) => {
+            const fallbackActivity = getActivityAnswerByRouteId(entryRouteId, 6);
+            return {
+                routeId: entryRouteId,
+                activityModuleId: 6,
+                orderNo: index + 1,
+                title: fallbackActivity.title,
+            };
+        });
+    }, [activityEntries]);
+
+    const currentIndex = useMemo(() => {
+        if (simulationId) {
+            const matchBySimulation = routeEntries.findIndex((entry) => entry.simulationId === simulationId);
+            if (matchBySimulation !== -1) return matchBySimulation;
+        }
+
+        return routeEntries.findIndex((entry) => entry.routeId === activityPreset.routeId);
+    }, [activityPreset.routeId, routeEntries, simulationId]);
+
+    const currentRouteEntry = currentIndex >= 0 ? routeEntries[currentIndex] : null;
+    const nextRouteEntry = currentIndex >= 0 && currentIndex < routeEntries.length - 1
+        ? routeEntries[currentIndex + 1]
+        : null;
 
     const [isCanvasReady, setIsCanvasReady] = useState(false);
 
@@ -159,6 +361,8 @@ export default function PLCSimulationApp({
     const [isAcPowerOn, setIsAcPowerOn] = useState<boolean>(false);
     const [isStartPressed, setIsStartPressed] = useState<boolean>(false);
     const [isStopPressed, setIsStopPressed] = useState<boolean>(false);
+    const [plcCylinderPositions, setPlcCylinderPositions] = useState<PlcCylinderPositions>(() => createRetractedPlcCylinderPositions());
+    const [activity61OutputCommand, setActivity61OutputCommand] = useState<Activity61OutputCommand>(null);
     const [activeKnob, setActiveKnob] = useState<'selector' | 'emo' | `input-${number}` | null>(null);
     const [selectorAngle, setSelectorAngle] = useState<number>(0);
     const [emoAngle, setEmoAngle] = useState<number>(0);
@@ -196,9 +400,15 @@ export default function PLCSimulationApp({
 
     const [historyPast, setHistoryPast] = useState<Connection[][]>([]);
     const [historyFuture, setHistoryFuture] = useState<Connection[][]>([]);
-    const isActivityCompleted = Boolean(savedStates[activityStateKey]) || completedRouteSet.has(activityStateKey);
+    const isPlcRouteCompleted = useCallback((candidateRouteId: string) => {
+        const completionKey = buildActivityStateKey(candidateRouteId, resolvedModuleId) ?? candidateRouteId;
+        return getStoredActivityState(savedStates, candidateRouteId, resolvedModuleId) !== null
+            || completedRouteSet.has(completionKey);
+    }, [completedRouteSet, resolvedModuleId, savedStates]);
 
     const SIDEBAR_WIDTH = 360;
+    const DEVICE_DRAWER_OPEN_WIDTH = 320;
+    const DEVICE_DRAWER_COLLAPSED_WIDTH = 60;
     const PADDING = 24;
     const BASE_CANVAS_WIDTH = 1280;
     const BASE_CANVAS_HEIGHT = 720;
@@ -228,7 +438,23 @@ export default function PLCSimulationApp({
     const EMO_KNOB_Y = 645;
     const KNOB_MIN_ANGLE = -45;
     const KNOB_MAX_ANGLE = 45;
+    const plcOutputIndicatorLights: Array<{
+        id: string;
+        x: number;
+        y: number;
+        command?: Exclude<Activity61OutputCommand, null>;
+    }> = [
+        { id: 'com1-out00', x: UPPER_RELAY_LIGHT_START_X, y: UPPER_RELAY_LIGHT_Y, command: 'extend' },
+        { id: 'com2-out01', x: UPPER_RELAY_LIGHT_START_X + UPPER_RELAY_LIGHT_SPACING, y: UPPER_RELAY_LIGHT_Y, command: 'retract' },
+        { id: 'com3-out02', x: UPPER_RELAY_LIGHT_START_X + UPPER_RELAY_LIGHT_SPACING * 2, y: UPPER_RELAY_LIGHT_Y },
+        { id: 'out03', x: UPPER_RELAY_LIGHT_START_X + UPPER_RELAY_LIGHT_SPACING * 3, y: UPPER_RELAY_LIGHT_Y },
+        { id: 'com4-out04', x: BOTTOM_RELAY_LIGHT_START_X, y: BOTTOM_RELAY_LIGHT_Y },
+        { id: 'out05', x: BOTTOM_RELAY_LIGHT_START_X + BOTTOM_RELAY_LIGHT_SPACING, y: BOTTOM_RELAY_LIGHT_Y },
+        { id: 'out06', x: BOTTOM_RELAY_LIGHT_START_X + BOTTOM_RELAY_LIGHT_SPACING * 2, y: BOTTOM_RELAY_LIGHT_Y },
+        { id: 'out07', x: BOTTOM_RELAY_LIGHT_START_X + BOTTOM_RELAY_LIGHT_SPACING * 3, y: BOTTOM_RELAY_LIGHT_Y },
+    ];
 
+    const plcDeviceDrawerWidth = isPlcDeviceDrawerOpen ? DEVICE_DRAWER_OPEN_WIDTH : DEVICE_DRAWER_COLLAPSED_WIDTH;
     const availableCanvasWidth = viewport.width - SIDEBAR_WIDTH - PADDING * 2;
     const availableCanvasHeight = viewport.height - PADDING * 2;
     const canvasScale = Math.max(0.1, Math.min(availableCanvasWidth / BASE_CANVAS_WIDTH, availableCanvasHeight / BASE_CANVAS_HEIGHT));
@@ -249,6 +475,15 @@ export default function PLCSimulationApp({
             window.history.back();
         }
     };
+
+    const navigateToPlcRouteEntry = useCallback((entry: PlcSimulationRouteEntry) => {
+        navigate(buildSimulationPath({
+            routeId: entry.routeId,
+            moduleId: resolvedModuleId,
+            activityModuleId: entry.activityModuleId ?? resolvedActivityModuleId,
+            simulationId: entry.simulationId,
+        }));
+    }, [navigate, resolvedActivityModuleId, resolvedModuleId]);
 
     const showTooltip = useCallback((x: number, y: number, desc: string) => {
         if (tooltipRef.current && tooltipTextRef.current) {
@@ -441,9 +676,14 @@ export default function PLCSimulationApp({
         });
     }, [selectedWireId]);
 
+    const resetActivity61Runtime = useCallback(() => {
+        setPlcCylinderPositions(createRetractedPlcCylinderPositions());
+        setActivity61OutputCommand(null);
+    }, []);
+
     const handleUndo = () => { if (!historyPast.length) return; const previous = historyPast[historyPast.length - 1]; setHistoryPast((prev) => prev.slice(0, -1)); setHistoryFuture((prev) => [wires, ...prev]); setWires(previous); };
     const handleRedo = () => { if (!historyFuture.length) return; const next = historyFuture[0]; setHistoryFuture((prev) => prev.slice(1)); setHistoryPast((prev) => [...prev, wires]); setWires(next); };
-    const handleResetBoard = () => { setHistoryPast(prev => [...prev, wires].slice(-50)); setHistoryFuture([]); setWires([]); setSelectedWireId(null); setActivePin(null); setIsAcPowerOn(false); setVerificationResult(null); };
+    const handleResetBoard = () => { setHistoryPast(prev => [...prev, wires].slice(-50)); setHistoryFuture([]); setWires([]); setSelectedWireId(null); setActivePin(null); setIsAcPowerOn(false); setVerificationResult(null); resetActivity61Runtime(); };
 
     useEffect(() => {
         localStorage.setItem(SIMULATION_STATE_STORAGE_KEY, JSON.stringify(savedStates));
@@ -451,10 +691,38 @@ export default function PLCSimulationApp({
 
     useEffect(() => {
         setVerificationResult(null);
-    }, [activityStateKey, wires]);
+    }, [activityStateKey, assignedPlcDevices, wires]);
 
     const handleVerifyConfiguration = useCallback(async () => {
-        const result = evaluatePlcActivity(activityPreset, wires);
+        const wiringResult = evaluatePlcActivity(activityPreset, wires);
+        const deviceResult = validateActivity61RequiredDevices(activityPreset.routeId, assignedPlcDevices);
+        const wrongConnections = getWrongPlcConnectionsForActivity(activityPreset, wires);
+        const wrongConnectionDiagnostics = wrongConnections.map(
+            ({ fromPin, toPin }) => `Wrong connection: ${fromPin} ↔ ${toPin}`,
+        );
+        const result: PlcValidationResult = wiringResult.passed && deviceResult.passed
+            ? {
+                ...wiringResult,
+                diagnosticIssues: uniqueStrings([
+                    ...wiringResult.diagnosticIssues,
+                    ...wrongConnectionDiagnostics,
+                ]),
+                wrongConnections,
+            }
+            : createFailingPlcValidationResult(
+                wiringResult.passed ? deviceResult.message : wiringResult.message,
+                [
+                    ...(!wiringResult.passed ? wiringResult.displayIssues : []),
+                    ...(!deviceResult.passed ? deviceResult.displayIssues : []),
+                ],
+                [
+                    ...(!wiringResult.passed ? wiringResult.diagnosticIssues : []),
+                    ...(!deviceResult.passed ? deviceResult.diagnosticIssues : []),
+                    ...wrongConnectionDiagnostics,
+                ],
+                wrongConnections,
+            );
+
         setVerificationResult(result);
         if (!result.passed) return;
 
@@ -486,23 +754,15 @@ export default function PLCSimulationApp({
 
         try {
             await completeSimulation(simulationId, { bestScore: 100 });
-            setVerificationResult({
-                passed: true,
-                message: `${activityPreset.title} verified and saved.`,
-                issues: [],
-            });
+            setVerificationResult(createPassingPlcValidationResult(`${activityPreset.title} verified and saved.`));
         } catch (error) {
             console.error('Failed to persist PLC simulation completion', error);
-            setVerificationResult({
-                passed: true,
-                message: `${activityPreset.title} verified locally, but server progress sync failed.`,
-                issues: [],
-            });
+            setVerificationResult(createPassingPlcValidationResult(`${activityPreset.title} verified locally, but server progress sync failed.`));
         } finally {
             completionRequestRef.current.delete(simulationId);
             setIsPersistingCompletion(false);
         }
-    }, [activityPreset, activityStateKey, completedRouteSet, simulationId, wires]);
+    }, [activityPreset, activityStateKey, assignedPlcDevices, completedRouteSet, simulationId, wires]);
 
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => { if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); deleteSelectedWire(); } };
@@ -510,10 +770,285 @@ export default function PLCSimulationApp({
         return () => window.removeEventListener('keydown', onKeyDown);
     }, [deleteSelectedWire]);
 
+    const hasLadderDiagram = Boolean(activityPreset.diagram?.trim());
+    const isPlcRouteCompleteForProgress = useCallback((candidateRouteId: string) => {
+        return (candidateRouteId === activityPreset.routeId && verificationResult?.passed === true)
+            || isPlcRouteCompleted(candidateRouteId);
+    }, [activityPreset.routeId, isPlcRouteCompleted, verificationResult]);
+    const canProceedToNextActivity = isPlcRouteCompleteForProgress(activityPreset.routeId);
+    const isCurrentSessionVerified = verificationResult?.passed === true;
+    const isActivity61Route = activityPreset.routeId === ACTIVITY_61_ROUTE_ID;
+    const isActivity61PowerOn = isActivity61Route && isAcPowerOn;
+    const isActivity61RuntimeEnabled = isActivity61PowerOn && isCurrentSessionVerified;
+    const shouldShowWrongWireHighlights = verificationResult !== null && !verificationResult.passed;
+    const plcAnswerPercent = isCurrentSessionVerified ? '100%' : '0%';
+    const nextActivityTitle = nextRouteEntry?.title
+        ?? (nextRouteEntry ? getActivityAnswerByRouteId(nextRouteEntry.routeId, nextRouteEntry.activityModuleId ?? 6).title : '');
+    const visiblePlcFeedbackIssues = useMemo(() => {
+        if (!verificationResult || verificationResult.passed) {
+            return [];
+        }
+
+        return uniqueStrings(verificationResult.displayIssues.length
+            ? verificationResult.displayIssues
+            : verificationResult.issues);
+    }, [verificationResult]);
+    const wrongWireKeySet = useMemo(() => {
+        if (!shouldShowWrongWireHighlights) {
+            return new Set<string>();
+        }
+
+        return new Set(getWrongPlcConnectionsForActivity(activityPreset, wires).map(({ fromPin, toPin }) => toWireKey(fromPin, toPin)));
+    }, [activityPreset, shouldShowWrongWireHighlights, wires]);
+
+    useEffect(() => {
+        if (!isActivity61RuntimeEnabled) {
+            resetActivity61Runtime();
+        }
+    }, [isActivity61RuntimeEnabled, resetActivity61Runtime]);
+
+    const handleAcPowerToggle = useCallback(() => {
+        resetActivity61Runtime();
+        setIsAcPowerOn((previous) => !previous);
+    }, [resetActivity61Runtime]);
+
+    const handleStartButtonDown = useCallback(() => {
+        setIsStartPressed(true);
+
+        if (!isActivity61RuntimeEnabled) {
+            return;
+        }
+
+        setPlcCylinderPositions((previous) => ({
+            ...previous,
+            B: 'extended',
+        }));
+        setActivity61OutputCommand('extend');
+    }, [isActivity61RuntimeEnabled]);
+
+    const handleStopButtonDown = useCallback(() => {
+        setIsStopPressed(true);
+
+        if (!isActivity61RuntimeEnabled) {
+            return;
+        }
+
+        setPlcCylinderPositions((previous) => ({
+            ...previous,
+            B: 'retracted',
+        }));
+        setActivity61OutputCommand('retract');
+    }, [isActivity61RuntimeEnabled]);
+
+    const handleStartButtonRelease = useCallback(() => {
+        setIsStartPressed(false);
+    }, []);
+
+    const handleStopButtonRelease = useCallback(() => {
+        setIsStopPressed(false);
+    }, []);
+
+    const selectedPlcDeviceCounts = useMemo(() => {
+        const counts: Partial<Record<PlcDeviceId, number>> = {};
+
+        for (const { deviceId, quantity } of [...assignedPlcDevices.input, ...assignedPlcDevices.output]) {
+            counts[deviceId] = (counts[deviceId] ?? 0) + quantity;
+        }
+
+        return counts;
+    }, [assignedPlcDevices]);
+
+    const placePlcDeviceInZone = useCallback((deviceId: PlcDeviceId, zone: PlcDeviceZone) => {
+        setAssignedPlcDevices((previous) => {
+            const existingDevice = previous[zone].find((entry) => entry.deviceId === deviceId);
+            const quantityLimit = getPlcDeviceQuantityLimit(deviceId);
+
+            if (!existingDevice) {
+                return {
+                    ...previous,
+                    [zone]: [...previous[zone], { deviceId, quantity: 1 }],
+                };
+            }
+
+            if (existingDevice.quantity >= quantityLimit) {
+                return previous;
+            }
+
+            return {
+                ...previous,
+                [zone]: previous[zone].map((entry) =>
+                    entry.deviceId === deviceId
+                        ? { ...entry, quantity: Math.min(quantityLimit, entry.quantity + 1) }
+                        : entry,
+                ),
+            };
+        });
+    }, []);
+
+    const removePlcDeviceFromZone = useCallback((zone: PlcDeviceZone, deviceId: PlcDeviceId) => {
+        setAssignedPlcDevices((previous) => ({
+            ...previous,
+            [zone]: previous[zone].filter((entry) => entry.deviceId !== deviceId),
+        }));
+    }, []);
+
+    const adjustPlcDeviceQuantity = useCallback((zone: PlcDeviceZone, deviceId: PlcDeviceId, delta: -1 | 1) => {
+        setAssignedPlcDevices((previous) => ({
+            ...previous,
+            [zone]: previous[zone].map((entry) => {
+                if (entry.deviceId !== deviceId) {
+                    return entry;
+                }
+
+                const quantityLimit = getPlcDeviceQuantityLimit(deviceId);
+                const nextQuantity = Math.max(1, Math.min(quantityLimit, entry.quantity + delta));
+                return { ...entry, quantity: nextQuantity };
+            }),
+        }));
+    }, []);
+
+    const handlePlcDeviceDragStart = useCallback(
+        (deviceId: PlcDeviceId, source: PlcDeviceZone | 'library', event: DragEvent<HTMLElement>) => {
+            event.dataTransfer.effectAllowed = source === 'library' ? 'copyMove' : 'move';
+            event.dataTransfer.setData('text/plain', deviceId);
+            setPlcDeviceDragState({ deviceId, source });
+        },
+        [],
+    );
+
+    const handlePlcDeviceDragEnd = useCallback(() => {
+        setPlcDeviceDragState(null);
+        setActivePlcDropZone(null);
+    }, []);
+
+    const handlePlcDropZoneDragOver = useCallback((zone: PlcDeviceZone, event: DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+        setActivePlcDropZone(zone);
+    }, []);
+
+    const handlePlcDropZoneLeave = useCallback((zone: PlcDeviceZone) => {
+        setActivePlcDropZone((current) => (current === zone ? null : current));
+    }, []);
+
+    const handlePlcDropZoneDrop = useCallback(
+        (zone: PlcDeviceZone, event: DragEvent<HTMLDivElement>) => {
+            event.preventDefault();
+
+            const rawDeviceId = event.dataTransfer.getData('text/plain').trim();
+            const deviceId = isPlcDeviceId(rawDeviceId) ? rawDeviceId : plcDeviceDragState?.deviceId;
+
+            if (deviceId) {
+                placePlcDeviceInZone(deviceId, zone);
+            }
+
+            setPlcDeviceDragState(null);
+            setActivePlcDropZone(null);
+        },
+        [placePlcDeviceInZone, plcDeviceDragState],
+    );
+
+    const renderPlcDeviceDropZone = (zone: PlcDeviceZone, title: string) => {
+        const devices = assignedPlcDevices[zone];
+        const isActive = activePlcDropZone === zone;
+
+        return (
+            <div
+                onDragOver={(event) => handlePlcDropZoneDragOver(zone, event)}
+                onDragLeave={() => handlePlcDropZoneLeave(zone)}
+                onDrop={(event) => handlePlcDropZoneDrop(zone, event)}
+                className={`min-h-[86px] rounded-2xl border border-dashed p-3 transition-colors ${
+                    isActive
+                        ? 'border-cyan-500 bg-cyan-50/60 dark:border-cyan-400 dark:bg-cyan-500/10'
+                        : 'border-slate-300 bg-white dark:border-slate-700 dark:bg-slate-900/60'
+                }`}
+            >
+                <h5 className="text-sm font-black text-slate-800 dark:text-slate-100">{title}</h5>
+
+                {devices.length === 0 ? (
+                    <p className="mt-2.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">Drag device here.</p>
+                ) : (
+                    <div className="mt-2.5 flex flex-wrap gap-2">
+                        {devices.map(({ deviceId, quantity }) => {
+                            const device = getPlcDeviceById(deviceId);
+                            const quantityLimit = getPlcDeviceQuantityLimit(deviceId);
+                            const supportsQuantity = quantityLimit > 1;
+
+                            return (
+                                <div
+                                    key={`${zone}-${device.id}`}
+                                    draggable
+                                    onDragStart={(event) => handlePlcDeviceDragStart(device.id, zone, event)}
+                                    onDragEnd={handlePlcDeviceDragEnd}
+                                    className="group relative flex min-h-[76px] min-w-[142px] cursor-grab items-center gap-3 rounded-xl border border-slate-200 bg-white px-2.5 py-2 shadow-sm transition-colors hover:border-cyan-400 dark:border-slate-700 dark:bg-slate-800 dark:hover:border-cyan-500"
+                                    title={device.label}
+                                >
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-50 p-2 dark:bg-slate-900/80">
+                                        <img src={device.image} alt={device.label} className="h-full w-full object-contain" />
+                                    </div>
+
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-700 dark:text-slate-100">
+                                            {device.label}
+                                        </p>
+                                        {supportsQuantity ? (
+                                            <div className="mt-2">
+                                                <div className="inline-flex items-center overflow-hidden rounded-lg border border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => adjustPlcDeviceQuantity(zone, device.id, -1)}
+                                                        disabled={quantity <= 1}
+                                                        className="flex h-6 w-6 items-center justify-center text-sm font-black transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-slate-800"
+                                                        aria-label={`Decrease ${device.label} quantity`}
+                                                    >
+                                                        -
+                                                    </button>
+                                                    <span className="min-w-[30px] border-x border-slate-200 px-2 text-center text-[10px] font-black dark:border-slate-700">
+                                                        x{quantity}
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => adjustPlcDeviceQuantity(zone, device.id, 1)}
+                                                        disabled={quantity >= quantityLimit}
+                                                        className="flex h-6 w-6 items-center justify-center text-sm font-black transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-35 dark:hover:bg-slate-800"
+                                                        aria-label={`Increase ${device.label} quantity`}
+                                                    >
+                                                        +
+                                                    </button>
+                                                </div>
+                                                <p className="mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-slate-400 dark:text-slate-500">
+                                                    Max {quantityLimit}
+                                                </p>
+                                            </div>
+                                        ) : (
+                                            <p className="mt-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                                Selected
+                                            </p>
+                                        )}
+                                    </div>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => removePlcDeviceFromZone(zone, device.id)}
+                                        className="absolute -top-1.5 -right-1.5 flex h-[18px] w-[18px] items-center justify-center rounded-full border border-slate-200 bg-white text-[10px] font-black text-slate-500 shadow-sm transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-red-500/20 dark:hover:text-red-400"
+                                        aria-label={`Remove ${device.label}`}
+                                    >
+                                        x
+                                    </button>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     // TUTORIAL STEPS
     const tutorialSteps: TutorialStep[] = [
         { message: "Welcome to the GOTT PLC Trainer. Here you will simulate physical hardware wiring for PLC controllers." },
-        { targetId: "tour-plc-guide", message: "Your Hardware Guide dictates the specific wiring tasks you must complete to power and configure the system." },
+        { targetId: "tour-plc-guide", message: "This panel contains your active PLC reference, validation controls, and device-use zones." },
+        { targetId: "tour-plc-toolbox", message: "Your PLC Device Library is located here. Device selection will be connected to validation in a later phase." },
         { targetId: "tour-plc-workspace", message: "This is your main interface. Click the terminal jacks to route wires between the power supply, PLC inputs/outputs, and relays." },
         { targetId: "tour-plc-toolbar", message: "Use these tools to change your wire colors, delete incorrect routes, or clear the board." },
         { message: "Be careful not to cross-wire the 24V and 0V lines. Good luck, Cadet." }
@@ -529,11 +1064,29 @@ export default function PLCSimulationApp({
                             <button onClick={handleBackNavigation} className="p-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-cyan-400 rounded-lg transition-colors shadow-sm" title="Abort Sequence"><ArrowLeft size={20} /></button>
                             <div>
                                 <h1 className="font-black text-lg text-slate-900 dark:text-white uppercase tracking-widest flex items-center gap-2"><Play size={16} className="text-cyan-600 dark:text-cyan-500" /> Laboratory Sequence</h1>
-                                <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: GOTT PLC Trainer • Task: {currentActivityEntry?.title || activityPreset.title || resolvedRouteId}</p>
+                                <p className="text-[10px] text-slate-500 dark:text-cyan-500/70 font-mono tracking-widest uppercase">Target: GOTT PLC Trainer • Task: {currentRouteEntry?.title || activityPreset.title || resolvedRouteId}</p>
                             </div>
                         </div>
                         {/* TOOLBAR - ADD ID HERE */}
                         <div id="tour-plc-toolbar" className="flex items-center gap-3">
+                            {nextRouteEntry ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (!canProceedToNextActivity) return;
+                                        navigateToPlcRouteEntry(nextRouteEntry);
+                                    }}
+                                    disabled={!canProceedToNextActivity}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none disabled:cursor-not-allowed dark:disabled:bg-slate-800 dark:disabled:text-slate-600 text-white text-xs font-black uppercase tracking-widest rounded-xl transition-all shadow-[0_0_15px_rgba(16,185,129,0.4)]"
+                                    title={canProceedToNextActivity ? `Next: ${nextActivityTitle}` : 'Complete the current PLC activity to unlock the next activity.'}
+                                >
+                                    Next Activity <ChevronRight size={16} strokeWidth={3} />
+                                </button>
+                            ) : (
+                                <div className="hidden sm:flex items-center px-4 py-2.5 rounded-xl border border-slate-300 bg-slate-100 text-[10px] font-black uppercase tracking-widest text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
+                                    Final Activity
+                                </div>
+                            )}
                             <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-300 dark:border-slate-700 shadow-inner">
                                 <button onClick={deleteSelectedWire} disabled={!selectedWireId} className="p-2 text-slate-700 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 disabled:opacity-30 rounded-lg" title="Delete Selected Wire"><Trash2 size={16} /></button>
                                 <div className="w-px h-6 bg-slate-300 dark:bg-slate-700 mx-1" />
@@ -560,68 +1113,150 @@ export default function PLCSimulationApp({
                         </div>
                     </header>
 
-                    <main className="flex-1 flex flex-row w-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-950" ref={containerRef}>
+                    <main className="relative flex-1 flex flex-row w-full min-h-0 overflow-hidden bg-slate-200 dark:bg-slate-950" ref={containerRef}>
 
-                        {/* HARDWARE GUIDE - ADD ID HERE */}
+                        {/* PLC CONTROL SIDEBAR - mirrors SimulationApp left sidebar structure */}
                         <aside id="tour-plc-guide" className="w-[360px] flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 z-10 shadow-lg transition-colors duration-300">
                             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0 bg-slate-50 dark:bg-slate-800/50">
-                                <h3 className="font-black text-slate-800 dark:text-cyan-400 uppercase tracking-widest text-sm">Hardware Guide</h3>
+                                <h2 className="font-black text-slate-900 dark:text-white text-[1.35rem]">Controls</h2>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
-                                <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div>
-                                            <h4 className="text-sm font-bold text-slate-800 dark:text-white">{activityPreset.title}</h4>
-                                            <p className="mt-1 text-[10px] font-mono uppercase tracking-widest text-cyan-600 dark:text-cyan-400">Route {activityPreset.routeId}</p>
-                                        </div>
-                                        <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-widest ${
-                                            isActivityCompleted
-                                                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
-                                                : activityPreset.isPlaceholder
-                                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
-                                                    : 'bg-slate-200 text-slate-600 dark:bg-slate-700 dark:text-slate-200'
-                                        }`}>
-                                            {isActivityCompleted ? 'Verified' : activityPreset.isPlaceholder ? 'Pending' : 'Active'}
-                                        </span>
+                            <div className="flex-1 min-h-0 overflow-y-auto p-4 flex flex-col gap-3 custom-scrollbar">
+                                <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40">
+                                    <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">List of Devices to Use</h4>
+                                    <div className="mt-3 space-y-3">
+                                        {PLC_DEVICE_USE_ZONES.map((zone) => (
+                                            <div key={zone.id}>
+                                                {renderPlcDeviceDropZone(zone.id, zone.title)}
+                                            </div>
+                                        ))}
                                     </div>
-                                    <p className="text-[11px] text-slate-600 dark:text-slate-300 leading-relaxed font-mono">
-                                        {activityPreset.instruction || 'Follow the assigned PLC trainer wiring task and verify the current route.'}
-                                    </p>
-                                    {verificationResult ? (
-                                        <div className={`rounded-lg border px-3 py-2 text-[11px] leading-relaxed ${
-                                            verificationResult.passed
-                                                ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
-                                                : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
-                                        }`}>
-                                            <p>{verificationResult.message}</p>
-                                            {verificationResult.issues.length > 0 ? (
-                                                <ul className="mt-2 list-disc space-y-1 pl-4">
-                                                    {verificationResult.issues.map((issue) => (
-                                                        <li key={issue}>{issue}</li>
-                                                    ))}
-                                                </ul>
-                                            ) : null}
+                                </section>
+
+                                <section className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50/90 p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800/40 flex flex-col">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <h4 className="text-[1.05rem] font-black text-slate-900 dark:text-white">Ladder Program</h4>
+                                        <div
+                                            className={`inline-flex min-w-[56px] items-center justify-center rounded-xl border px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] ${
+                                                isCurrentSessionVerified
+                                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
+                                                    : 'border-slate-200 bg-white text-slate-500 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-300'
+                                            }`}
+                                        >
+                                            {plcAnswerPercent}
                                         </div>
-                                    ) : null}
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleVerifyConfiguration()}
-                                        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed text-white py-2.5 rounded-lg text-xs font-black uppercase tracking-widest transition-colors shadow-md"
-                                        disabled={isPersistingCompletion}
-                                    >
-                                        {isPersistingCompletion
-                                            ? 'Saving Progress...'
-                                            : isActivityCompleted
-                                                ? 'Configuration Verified'
-                                                : activityPreset.isPlaceholder
-                                                    ? 'Verification Pending'
-                                                    : 'Verify Configuration'}
-                                    </button>
-                                </div>
+                                    </div>
+
+                                    <div className="mt-4 flex flex-col gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleVerifyConfiguration()}
+                                            className="rounded-xl bg-[#223a5a] px-4 py-3 text-sm font-black tracking-widest uppercase text-white shadow-sm transition-colors hover:bg-[#1a304d] disabled:opacity-60 disabled:cursor-not-allowed dark:bg-cyan-600 dark:hover:bg-cyan-500 w-full"
+                                            disabled={isPersistingCompletion}
+                                        >
+                                            {isPersistingCompletion
+                                                ? 'Saving Progress...'
+                                                : 'Verify Configuration'}
+                                        </button>
+
+                                        {verificationResult ? (
+                                            <div className={`rounded-xl border px-4 py-3 text-sm shadow-sm ${
+                                                verificationResult.passed
+                                                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200'
+                                                    : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200'
+                                            }`}>
+                                                <p className="font-black">
+                                                    {verificationResult.passed ? 'Answer is correct.' : 'Answer is incorrect.'}
+                                                </p>
+                                                {verificationResult.passed ? (
+                                                    <p className="mt-1 text-xs font-semibold">
+                                                        {verificationResult.message}
+                                                    </p>
+                                                ) : null}
+                                                {visiblePlcFeedbackIssues.length > 0 ? (
+                                                    <div className="mt-3 space-y-1.5 text-xs leading-5">
+                                                        {visiblePlcFeedbackIssues.map((issue) => (
+                                                            <p key={issue}>{issue}</p>
+                                                        ))}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                        ) : null}
+                                    </div>
+
+                                    <div className="mt-5 flex flex-col">
+                                        <p className="text-base font-black text-slate-900 dark:text-white">{activityPreset.title}</p>
+                                        <p className="mt-1 text-xs leading-5 text-slate-600 dark:text-slate-300">
+                                            {activityPreset.instruction || 'Follow the assigned PLC trainer wiring task and verify the current route.'}
+                                        </p>
+                                        <div className="mt-3 h-[220px] rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900">
+                                            {hasLadderDiagram ? (
+                                                <img src={activityPreset.diagram} alt={activityPreset.title} className="h-full w-full rounded-xl object-contain" />
+                                            ) : (
+                                                <div className="flex h-full items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-5 text-center dark:border-slate-700 dark:bg-slate-950/60">
+                                                    <p className="text-xs font-semibold leading-5 text-slate-500 dark:text-slate-400">
+                                                        No ladder program available yet for this PLC activity.
+                                                    </p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </section>
                             </div>
                         </aside>
 
                         <div className="flex-1 relative flex items-center justify-center p-6">
+
+                            {/* PLC ACTIVITY PROGRESS HUD */}
+                            <div className="absolute top-8 left-1/2 -translate-x-1/2 z-30 flex items-center bg-white/90 dark:bg-slate-900/90 backdrop-blur-md px-6 py-2.5 rounded-full border border-slate-200/50 dark:border-slate-700/50 shadow-lg">
+                                {routeEntries.map((entry, index) => {
+                                    const isNodeCompleted = isPlcRouteCompleteForProgress(entry.routeId);
+                                    const isCurrent = index === currentIndex;
+                                    const prevNodeEntry = index > 0 ? routeEntries[index - 1] : null;
+                                    const prevCompleted = prevNodeEntry ? isPlcRouteCompleteForProgress(prevNodeEntry.routeId) : true;
+                                    const isUnlocked = index === 0 || isNodeCompleted || isCurrent || prevCompleted;
+                                    const activityTitle = entry.title || getActivityAnswerByRouteId(
+                                        entry.routeId,
+                                        entry.activityModuleId ?? resolvedActivityModuleId,
+                                    ).title;
+
+                                    let nodeClasses = 'w-8 h-8 rounded-full flex items-center justify-center text-xs font-black transition-all ';
+
+                                    if (isNodeCompleted) {
+                                        nodeClasses += 'bg-emerald-500 text-white ';
+                                        if (isCurrent) {
+                                            nodeClasses += 'scale-110 shadow-[0_0_15px_rgba(16,185,129,0.5)] ring-2 ring-emerald-500 ring-offset-2 ring-offset-slate-50 dark:ring-offset-slate-900 cursor-default ';
+                                        } else {
+                                            nodeClasses += 'hover:bg-emerald-400 shadow-sm cursor-pointer ';
+                                        }
+                                    } else if (isCurrent) {
+                                        nodeClasses += 'bg-cyan-500 text-white shadow-[0_0_10px_rgba(6,182,212,0.5)] scale-110 cursor-default ';
+                                    } else if (isUnlocked) {
+                                        nodeClasses += 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-2 border-slate-200 dark:border-slate-700 hover:border-cyan-400 dark:hover:border-cyan-500 hover:text-cyan-600 dark:hover:text-cyan-400 cursor-pointer shadow-sm ';
+                                    } else {
+                                        nodeClasses += 'bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-60 ';
+                                    }
+
+                                    return (
+                                        <div key={entry.routeId} className="flex items-center">
+                                            {index > 0 && (
+                                                <div className={`w-8 h-1 mx-1 rounded-full ${prevCompleted ? 'bg-emerald-400 dark:bg-emerald-500/80' : 'bg-slate-200 dark:bg-slate-700'}`} />
+                                            )}
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (!isUnlocked || isCurrent) return;
+                                                    navigateToPlcRouteEntry(entry);
+                                                }}
+                                                disabled={!isUnlocked}
+                                                className={nodeClasses}
+                                                title={activityTitle}
+                                            >
+                                                {isNodeCompleted ? <CheckCircle2 size={16} strokeWidth={3} /> : index + 1}
+                                            </button>
+                                        </div>
+                                    );
+                                })}
+                            </div>
 
                             {/* MAIN CANVAS - ADD ID HERE */}
                             <div id="tour-plc-workspace" className="relative shadow-2xl rounded-lg border-4 border-slate-400 dark:border-slate-800 bg-[#e2e8f0] overflow-hidden flex items-center justify-center" style={{ width: BASE_CANVAS_WIDTH * canvasScale, height: BASE_CANVAS_HEIGHT * canvasScale }}>
@@ -650,25 +1285,27 @@ export default function PLCSimulationApp({
                                             <PlcPanelBackground id="buzzer" x={460} y={575} width={140} height={115} />
                                             <PlcPanelBackground id="manual" x={615} y={575} width={635} height={115} />
 
-                                            <PlcPneumaticAssembly x={690} y={30} width={560} height={420} />
+                                            <PlcPneumaticAssembly x={690} y={30} width={560} height={420} cylinderPositions={plcCylinderPositions} />
                                         </Layer>
 
                                         {/* LAYER 2: WIRES (MIDDLE - Drawn OVER backgrounds, but UNDER text and ports!) */}
                                         <Layer scaleX={canvasScale} scaleY={canvasScale} id="interactive-wiring-layer">
                                             {wires.map((wire) => {
                                                 const isSelected = selectedWireId === wire.id;
+                                                const isWrong = wrongWireKeySet.has(toWireKey(wire.fromPin, wire.toPin));
                                                 return (
                                                     <Line
                                                         key={`wire-${wire.id}`}
                                                         points={wire.points}
-                                                        stroke={wire.color}
+                                                        stroke={isWrong ? '#ef4444' : wire.color}
                                                         strokeWidth={isSelected ? 10 : 8}
-                                                        opacity={isSelected ? 1 : 0.85}
+                                                        opacity={isSelected ? 1 : isWrong ? 0.95 : 0.85}
                                                         hitStrokeWidth={20}
                                                         lineCap="round"
                                                         lineJoin="round"
-                                                        shadowColor={isSelected ? '#f1c40f' : 'rgba(0,0,0,0.5)'}
-                                                        shadowBlur={isSelected ? 15 : 6}
+                                                        dash={isWrong ? [14, 8] : undefined}
+                                                        shadowColor={isSelected ? '#f1c40f' : isWrong ? 'rgba(239,68,68,0.8)' : 'rgba(0,0,0,0.5)'}
+                                                        shadowBlur={isSelected ? 15 : isWrong ? 10 : 6}
                                                         shadowOffsetY={isSelected ? 0 : 8}
                                                         onMouseDown={(e) => { e.cancelBubble = true; setSelectedWireId(wire.id); setWireColor(wire.color); }}
                                                         onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
@@ -700,8 +1337,8 @@ export default function PLCSimulationApp({
 
                                             {/* Switch Group */}
                                             <Group x={65} y={70} id="ac-switch-group"
-                                                onClick={() => setIsAcPowerOn(prev => !prev)}
-                                                onTap={() => setIsAcPowerOn(prev => !prev)}
+                                                onClick={handleAcPowerToggle}
+                                                onTap={handleAcPowerToggle}
                                                 onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
                                                 onMouseLeave={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'default'; }}
                                             >
@@ -801,36 +1438,68 @@ export default function PLCSimulationApp({
                                             </Group>
 
                                             {/* Reed Lights (No Rect outline) */}
-                                            {[
-                                                ['reed_ret_1.1', 'reed_ext_1.2'],
-                                                ['reed_ret_2.1', 'reed_ext_2.2'],
-                                                ['reed_ret_3.1', 'reed_ext_3.2'],
-                                            ].map((pair, i) => {
-                                                const ret = GOTT_TRAINER_PORTS[pair[0]];
-                                                const ext = GOTT_TRAINER_PORTS[pair[1]];
+                                            {ACTIVITY_61_REED_LIGHT_PAIRS.map((pair, i) => {
+                                                const ret = GOTT_TRAINER_PORTS[pair.retPortId];
+                                                const ext = GOTT_TRAINER_PORTS[pair.extPortId];
                                                 if (!ret || !ext) return null;
                                                 const lightRadius = 16;
                                                 const lightStroke = 4;
+                                                const cylinderPosition = plcCylinderPositions[pair.cylinderId];
+                                                const lights = [
+                                                    {
+                                                        portId: pair.retPortId,
+                                                        isOn: isActivity61PowerOn && cylinderPosition === 'retracted',
+                                                    },
+                                                    {
+                                                        portId: pair.extPortId,
+                                                        isOn: isActivity61PowerOn && cylinderPosition === 'extended',
+                                                    },
+                                                ];
+
                                                 return (
                                                     <Group key={`reed-pair-border-${i}`} listening={false}>
-                                                        {[0, 1].map(j => (
-                                                            <Circle key={`reed-light-${pair[j]}`} x={GOTT_TRAINER_PORTS[pair[j]].x} y={GOTT_TRAINER_PORTS[pair[j]].y + REED_LIGHT_OFFSET_Y} radius={lightRadius} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={lightStroke} />
-                                                        ))}
+                                                        {lights.map(({ portId, isOn }) => {
+                                                            const port = GOTT_TRAINER_PORTS[portId];
+                                                            return (
+                                                                <Circle
+                                                                    key={`reed-light-${portId}`}
+                                                                    x={port.x}
+                                                                    y={port.y + REED_LIGHT_OFFSET_Y}
+                                                                    radius={lightRadius}
+                                                                    fill={isOn ? HW_STYLES.switchRedOn : HW_STYLES.switchRedOff}
+                                                                    stroke="#cbd5e1"
+                                                                    strokeWidth={lightStroke}
+                                                                    shadowColor={HW_STYLES.switchRedOn}
+                                                                    shadowBlur={isOn ? 10 : 0}
+                                                                />
+                                                            );
+                                                        })}
                                                     </Group>
                                                 );
                                             })}
 
-                                            {/* Relay Lights */}
-                                            {[...Array(4)].map((_, i) => (
-                                                <Circle key={`relay-light-${i}`} x={UPPER_RELAY_LIGHT_START_X + i * UPPER_RELAY_LIGHT_SPACING} y={UPPER_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
-                                            ))}
-                                            {[...Array(4)].map((_, i) => (
-                                                <Circle key={`relay-light-bottom-${i}`} x={BOTTOM_RELAY_LIGHT_START_X + i * BOTTOM_RELAY_LIGHT_SPACING} y={BOTTOM_RELAY_LIGHT_Y} radius={16} fill={HW_STYLES.switchRedOff} stroke="#cbd5e1" strokeWidth={4} listening={false} />
-                                            ))}
+                                            {/* Output Indicator Lights */}
+                                            {plcOutputIndicatorLights.map(({ id, x, y, command }) => {
+                                                const isOn = Boolean(command) && isActivity61RuntimeEnabled && activity61OutputCommand === command;
+                                                return (
+                                                    <Circle
+                                                        key={`output-indicator-light-${id}`}
+                                                        x={x}
+                                                        y={y}
+                                                        radius={16}
+                                                        fill={isOn ? HW_STYLES.switchRedOn : HW_STYLES.switchRedOff}
+                                                        stroke="#cbd5e1"
+                                                        strokeWidth={4}
+                                                        shadowColor={HW_STYLES.switchRedOn}
+                                                        shadowBlur={isOn ? 10 : 0}
+                                                        listening={false}
+                                                    />
+                                                );
+                                            })}
 
                                             {/* Start Button */}
                                             <Group x={START_BUTTON_X} y={START_BUTTON_Y}
-                                                onMouseDown={() => setIsStartPressed(true)} onMouseUp={() => setIsStartPressed(false)} onMouseLeave={() => setIsStartPressed(false)}
+                                                onMouseDown={handleStartButtonDown} onMouseUp={handleStartButtonRelease} onMouseLeave={handleStartButtonRelease}
                                                 onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
                                             >
                                                 <Group y={isStartPressed ? 2 : 0}>
@@ -842,7 +1511,7 @@ export default function PLCSimulationApp({
 
                                             {/* Stop Button */}
                                             <Group x={STOP_BUTTON_X} y={STOP_BUTTON_Y}
-                                                onMouseDown={() => setIsStopPressed(true)} onMouseUp={() => setIsStopPressed(false)} onMouseLeave={() => setIsStopPressed(false)}
+                                                onMouseDown={handleStopButtonDown} onMouseUp={handleStopButtonRelease} onMouseLeave={handleStopButtonRelease}
                                                 onMouseEnter={(e) => { const container = e.target.getStage()?.container(); if (container) container.style.cursor = 'pointer'; }}
                                             >
                                                 <Group y={isStopPressed ? 2 : 0}>
@@ -908,6 +1577,93 @@ export default function PLCSimulationApp({
                                 )}
                             </div>
                         </div>
+
+                        {/* PLC DEVICE LIBRARY SIDEBAR - mirrors SimulationApp right drawer structure */}
+                        <aside
+                            id="tour-plc-toolbox"
+                            className="absolute inset-y-0 right-0 z-20 overflow-hidden border-l border-slate-200 bg-white shadow-[-18px_0_30px_-22px_rgba(15,23,42,0.6)] transition-[width] duration-300 dark:border-slate-800 dark:bg-slate-900"
+                            style={{ width: plcDeviceDrawerWidth }}
+                        >
+                            {isPlcDeviceDrawerOpen ? (
+                                <div className="flex h-full flex-col">
+                                    <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-4 py-4 dark:border-slate-800 dark:bg-slate-800/50">
+                                        <div>
+                                            <p className="text-[10px] font-black uppercase tracking-[0.32em] text-slate-500 dark:text-cyan-500/70">Device Dock</p>
+                                            <h3 className="mt-1 text-sm font-black uppercase tracking-widest text-slate-900 dark:text-white">List of Devices</h3>
+                                            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">Quick access to the installed trainer devices.</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsPlcDeviceDrawerOpen(false)}
+                                            className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                            aria-label="Collapse device drawer"
+                                            title="Collapse device drawer"
+                                        >
+                                            <ChevronRight size={18} />
+                                        </button>
+                                    </div>
+
+                                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
+                                        <div className="grid grid-cols-3 gap-3">
+                                            {PLC_DEVICE_LIBRARY.map((device) => {
+                                                const selectedCount = selectedPlcDeviceCounts[device.id] ?? 0;
+
+                                                return (
+                                                    <button
+                                                        key={device.id}
+                                                        type="button"
+                                                        draggable
+                                                        onDragStart={(event) => handlePlcDeviceDragStart(device.id, 'library', event)}
+                                                        onDragEnd={handlePlcDeviceDragEnd}
+                                                        className={`group relative flex h-[124px] flex-col items-center justify-start rounded-2xl border bg-white px-2 pt-3 pb-2 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md dark:bg-slate-900/70 ${
+                                                            selectedCount > 0
+                                                                ? 'border-emerald-400 dark:border-emerald-500/50'
+                                                                : 'border-slate-200 hover:border-cyan-400 dark:border-slate-700 dark:hover:border-cyan-500/70'
+                                                        }`}
+                                                        title={`${device.label}: ${device.description}`}
+                                                    >
+                                                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-50 p-2 dark:bg-slate-800/80">
+                                                            <img src={device.image} alt={device.label} className="h-full w-full object-contain" />
+                                                        </div>
+
+                                                        <span className="mt-2 text-[10px] font-bold leading-[1.15] text-slate-700 group-hover:text-slate-900 dark:text-slate-200 dark:group-hover:text-white line-clamp-2">
+                                                            {device.label}
+                                                        </span>
+
+                                                        {selectedCount > 0 && (
+                                                            <div className="absolute bottom-2 left-1/2 w-10/12 -translate-x-1/2 rounded-full bg-emerald-50 py-0.5 text-[8px] font-black uppercase tracking-[0.15em] text-emerald-600 ring-1 ring-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:ring-emerald-500/30">
+                                                                Selected x{selectedCount}
+                                                            </div>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="flex h-full flex-col items-center py-4 relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsPlcDeviceDrawerOpen(true)}
+                                        className="inline-flex shrink-0 h-10 w-10 items-center justify-center rounded-xl border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                                        aria-label="Expand device drawer"
+                                        title="Expand device drawer"
+                                    >
+                                        <ChevronLeft size={18} />
+                                    </button>
+
+                                    <div className="flex-1 flex items-center justify-center">
+                                        <div
+                                            className="text-[11px] font-black uppercase tracking-[0.4em] text-slate-400 dark:text-cyan-500/50"
+                                            style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                                        >
+                                            Device Library
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </aside>
                     </main>
 
                     {/* THE SELF MANAGED GUIDE! */}
