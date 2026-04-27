@@ -1,0 +1,11 @@
+{
+  "editor.formatOnSave": true,
+  "sql.connections": [
+    {
+      "previewLimit": 50,
+      "server": "localhost",
+      "driver": "MySQL",
+      "name": "Mechatronics Local"
+    }
+  ]
+}
