@@ -105,26 +105,27 @@ Required:
 
 - `DATABASE_URL` (PostgreSQL connection string)
 - `JWT_SECRET`
+- `NODE_ENV` (`production` on Railway)
 
 Common optional values used by the API:
 
 - `PORT` (default: `4000`)
+- `DATABASE_SSL` (`require` for explicit Supabase SSL enforcement; otherwise auto-detected)
+- `CORS_ORIGIN` (comma-separated browser origin allowlist)
+- `CLIENT_URL` (optional alias for the deployed frontend URL)
+- `RUN_BOOTSTRAP_MIGRATIONS` (`false` by default in production, `true` outside production)
 - `JWT_EXPIRES_IN` (default: `8h`)
 - `ENABLE_DEV_GOD_MODE` (`true` enables the backend-issued Konami/God Mode admin session in non-production only)
 - `DEFAULT_TRAINEE_PASSWORD` (used for CSV import)
 - `RETURN_GENERATED_PASSWORD` (`true` only for non-production password reveal)
 - `ADMIN_EMAILS` (comma-separated allowlist for bootstrap admin behavior)
-- `NODE_ENV`
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_USER`
-- `SMTP_PASS`
-- `SMTP_SECURE` (`true`/`false`)
-- `SMTP_FROM`
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` (optional, required only for persistent lesson PDF storage)
+- `BREVO_API_KEY` and `SMTP_FROM` (optional, required only for credential email delivery)
 
 ### `client/.env`
 
-- `VITE_API_BASE_URL` (default fallback in code: `http://localhost:4000`)
+- Local Vite development can leave `VITE_API_BASE_URL` unset and use same-origin `/api` through the dev proxy.
+- Deployed Vercel builds must set `VITE_API_BASE_URL` to the Railway backend URL or backend custom domain.
 - `VITE_ENABLE_CSV_IMPORT` (feature flag for CSV import UI)
 
 ## Local setup and run
@@ -137,14 +138,8 @@ Common optional values used by the API:
    docker compose up -d
    ```
 
-   This auto-runs SQL files in `mechalabx-db/db/` on first init.
-
-   The API now attempts to apply the quiz compatibility SQL at startup for existing databases too.
-   If your database user cannot run DDL, apply the quiz schema manually:
-
-   ```bash
-   psql "$DATABASE_URL" -f "mechalabx-db/db/06_quizzes.sql"
-   ```
+   This auto-runs SQL files in `mechalabx-db/db/` on first init, including `07_demo_seed.sql` for local demo data.
+   Production Supabase deployments should not apply `07_demo_seed.sql`.
 
 2. **Install backend dependencies and run API**
 
@@ -166,6 +161,59 @@ Common optional values used by the API:
 
 4. Open the frontend URL shown by Vite (usually `http://localhost:5173`).
 
+Local default: bootstrap compatibility migrations run automatically outside production.
+Production default: set `RUN_BOOTSTRAP_MIGRATIONS=false` on Railway and pre-apply the SQL files in Supabase.
+
+## Deployment targets
+
+- Vercel frontend root: `client/`
+- Railway backend root: `server/`
+- Supabase SQL assets: `mechalabx-db/db/`
+
+## Production deployment order
+
+1. Create the Supabase Postgres database.
+2. Apply production-safe SQL in this order:
+   `01_schema.sql`
+   `02_seed.sql`
+   `03_accounts_roles_and_admin_safety.sql`
+   `04_reset_audit_and_export_log.sql`
+   `06_quizzes.sql`
+3. Apply `05_module_resource_files.sql` only when upgrading an older database that does not already have `module_resource_files`.
+4. Optionally run `99_sanity_checks.sql` as a verification step.
+5. Do not run `07_demo_seed.sql` in production. It seeds demo users, a known demo admin, placeholder lesson URLs, and fake progress.
+6. Deploy the Railway backend from `server/` with the production env vars below.
+7. Verify the backend health endpoint before deploying the frontend:
+
+   ```bash
+   curl -i "https://YOUR-RAILWAY-BACKEND/api/health"
+   ```
+
+8. Deploy the Vercel frontend from `client/` with `VITE_API_BASE_URL=https://YOUR-RAILWAY-BACKEND`.
+
+## Production environment checklist
+
+### Vercel
+
+- `VITE_API_BASE_URL=https://YOUR-RAILWAY-BACKEND`
+- `VITE_ENABLE_CSV_IMPORT` only if you want that UI enabled
+
+### Railway
+
+- `DATABASE_URL`
+- `JWT_SECRET`
+- `NODE_ENV=production`
+- `CORS_ORIGIN=https://YOUR-VERCEL-FRONTEND`
+- `DATABASE_SSL=require` (recommended for Supabase)
+- `RUN_BOOTSTRAP_MIGRATIONS=false`
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` if lesson PDF uploads must persist
+- `BREVO_API_KEY` and `SMTP_FROM` if trainee credential emails must send
+
+## Admin bootstrap note
+
+`03_accounts_roles_and_admin_safety.sql` no longer seeds `admin@demo.local` for production.
+Create the first real admin intentionally, either by inserting a standalone admin account via SQL or by allowlisting an existing account email in `ADMIN_EMAILS` so its first login can promote it when zero admins exist.
+
 ## Local testing credentials
 
 - Seeded admin: `admin@demo.local` / `P@ssw0rd!`
@@ -182,18 +230,20 @@ Common optional values used by the API:
 ### Server
 - `npm start` – run API server
 - `npm run sanity:db` – run DB sanity checks script
-- `node server/scripts/smtp-verify.js` – verify SMTP credentials/config
+- `npm run verify:email` – validate Brevo email env wiring (`BREVO_API_KEY` + `SMTP_FROM`)
 - `ADMIN_TOKEN=... bash scripts/seed_25_trainees.sh` – seed 25 mock trainees via admin API
 
-## Phase 4 credentials + SMTP
+## Phase 4 credentials + email delivery
 
-- Configure SMTP with provider credentials and app-specific passwords. Do not use personal mailbox passwords.
+- Configure Brevo API credentials. Do not commit real keys.
 - `POST /api/admin/trainees` returns `email_sent` (`true` if sent) and `password_delivery` (`email`, `manual`, or `failed`).
 - `POST /api/admin/trainees/:id/resend-credentials` enforces cooldown (5 minutes per trainee account).
 - When cooldown is active, resend returns `429` with `retry_after_seconds`.
 
 Production safety checklist:
 - Set `NODE_ENV=production`.
+- Set `CORS_ORIGIN` or `CLIENT_URL` to the deployed frontend URL.
+- Set `RUN_BOOTSTRAP_MIGRATIONS=false` after Supabase SQL has been applied.
 - Set `RETURN_GENERATED_PASSWORD=false`.
 - Never commit `.env` files.
 

@@ -29,8 +29,8 @@ For full repository documentation (architecture, backend, DB, setup), see the ro
 
 Configured in `src/api/http.ts`.
 
-- Default API base URL: `http://localhost:4000`
-- Override via `VITE_API_BASE_URL`
+- Local Vite development uses same-origin `/api` requests and the existing Vite proxy.
+- Deployed builds require `VITE_API_BASE_URL` to point at the Railway backend URL or backend custom domain.
 - Bearer token is attached from session storage
 
 ## Environment variables
@@ -38,8 +38,13 @@ Configured in `src/api/http.ts`.
 Create `client/.env` when needed:
 
 ```bash
-VITE_API_BASE_URL=http://localhost:4000
 VITE_ENABLE_CSV_IMPORT=true
+```
+
+For Vercel production, set:
+
+```bash
+VITE_API_BASE_URL=https://your-railway-backend.example.com
 ```
 
 ## Run locally
@@ -50,6 +55,10 @@ npm run dev
 ```
 
 Then open the Vite URL shown in terminal (typically `http://localhost:5173`).
+
+## Deployment target
+
+- Vercel project root: `client/`
 
 ## Scripts
 

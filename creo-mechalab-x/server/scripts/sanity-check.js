@@ -3,10 +3,36 @@
 require("dotenv").config();
 const { Pool } = require("pg");
 
+const LOCAL_DATABASE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "host.docker.internal"]);
+
+function normalizeSslOverride() {
+    return String(process.env.DATABASE_SSL ?? "")
+        .trim()
+        .toLowerCase();
+}
+
+function shouldUseSsl(hostname) {
+    const sslOverride = normalizeSslOverride();
+    if (["true", "1", "yes", "on", "require"].includes(sslOverride)) return true;
+    if (["false", "0", "no", "off", "disable"].includes(sslOverride)) return false;
+    if (LOCAL_DATABASE_HOSTS.has(String(hostname || "").trim().toLowerCase())) return false;
+    return process.env.NODE_ENV === "production";
+}
+
 function buildPoolConfig() {
     const databaseUrl = process.env.DATABASE_URL?.trim();
     if (databaseUrl) {
-        return { connectionString: databaseUrl };
+        let databaseHost = "";
+        try {
+            databaseHost = new URL(databaseUrl).hostname;
+        } catch {
+            databaseHost = "";
+        }
+
+        return {
+            connectionString: databaseUrl,
+            ssl: shouldUseSsl(databaseHost) ? { rejectUnauthorized: false } : false,
+        };
     }
 
     const config = {};
@@ -18,6 +44,7 @@ function buildPoolConfig() {
     if (process.env.PGDATABASE) config.database = process.env.PGDATABASE;
     if (process.env.PGUSER) config.user = process.env.PGUSER;
     if (process.env.PGPASSWORD) config.password = process.env.PGPASSWORD;
+    config.ssl = shouldUseSsl(config.host) ? { rejectUnauthorized: false } : false;
     return config;
 }
 

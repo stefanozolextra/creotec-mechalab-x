@@ -2,13 +2,16 @@ import { getAuthToken, isGodModeSession } from "../utils/auth";
 
 // In local Vite dev, use same-origin `/api` requests so mobile devices can
 // reach the app through the Vite server and let the dev proxy forward to the API.
-const DEFAULT_API_BASE_URL = import.meta.env.DEV ? "" : "http://localhost:4000";
-
-// NOTE: The backend API must run from server/index.js.
-// server/package.json currently points "start" to server.js (empty file).
 const rawApiBaseUrl = import.meta.env.VITE_API_BASE_URL?.trim() ?? "";
+const normalizedApiBaseUrl = rawApiBaseUrl.replace(/\/+$/, "");
 
-export const API_BASE_URL = (rawApiBaseUrl || DEFAULT_API_BASE_URL).replace(/\/+$/, "");
+if (!import.meta.env.DEV && !normalizedApiBaseUrl) {
+    console.error(
+        "VITE_API_BASE_URL is missing for this production build. API requests will fall back to same-origin /api paths. Set VITE_API_BASE_URL to your Railway backend URL before deploying to Vercel."
+    );
+}
+
+export const API_BASE_URL = import.meta.env.DEV ? "" : normalizedApiBaseUrl;
 
 export class ApiError extends Error {
     status: number;

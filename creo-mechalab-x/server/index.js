@@ -21,8 +21,57 @@ const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supaba
 const BUCKET_NAME = "mechalab-pdfs";
 // ----------------------
 
+const NODE_ENV = process.env.NODE_ENV?.trim() || "development";
+const IS_PRODUCTION = NODE_ENV === "production";
+const DEV_CORS_ORIGIN_PATTERN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i;
+
+function normalizeOriginValue(value) {
+    return String(value || "")
+        .trim()
+        .replace(/\/+$/, "")
+        .toLowerCase();
+}
+
+function parseConfiguredCorsOrigins(...values) {
+    return new Set(
+        values
+            .flatMap((value) => String(value || "").split(","))
+            .map((value) => normalizeOriginValue(value))
+            .filter(Boolean)
+    );
+}
+
+const configuredCorsOrigins = parseConfiguredCorsOrigins(
+    process.env.CORS_ORIGIN,
+    process.env.CLIENT_URL
+);
+
+function isAllowedCorsOrigin(origin) {
+    if (!origin) return true;
+
+    const normalizedOrigin = normalizeOriginValue(origin);
+    if (configuredCorsOrigins.has(normalizedOrigin)) return true;
+    if (!IS_PRODUCTION && DEV_CORS_ORIGIN_PATTERN.test(origin)) return true;
+    return false;
+}
+
+if (IS_PRODUCTION && configuredCorsOrigins.size === 0) {
+    console.warn(
+        "CORS_ORIGIN/CLIENT_URL is not configured. Browser requests from the deployed frontend will be rejected until an allowed origin is set."
+    );
+}
+
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin(origin, callback) {
+        if (isAllowedCorsOrigin(origin)) {
+            callback(null, true);
+            return;
+        }
+
+        callback(null, false);
+    },
+}));
 app.use(express.json());
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -39,7 +88,7 @@ const SHOULD_RETURN_GENERATED_PASSWORD =
     process.env.RETURN_GENERATED_PASSWORD?.trim().toLowerCase() === "true";
 const BATCH_CODE_REGEX = /^\d{4}-(CTT|IMM)\d{2}$/;
 const RESEND_CREDENTIALS_COOLDOWN_MS = 5 * 60 * 1000;
-let hasLoggedMissingSmtpConfig = false;
+let hasLoggedMissingEmailConfig = false;
 
 function parsePositiveIntEnv(name, fallback) {
     const raw = process.env[name];
@@ -49,9 +98,20 @@ function parsePositiveIntEnv(name, fallback) {
     return parsed;
 }
 
+function parseBooleanEnv(name, fallback = false) {
+    const raw = process.env[name];
+    if (raw == null || String(raw).trim() === "") return fallback;
+
+    const normalized = String(raw).trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "off"].includes(normalized)) return false;
+    return fallback;
+}
+
 const DASHBOARD_CACHE_TTL_MS = parsePositiveIntEnv("DASHBOARD_CACHE_TTL_MS", 10_000);
 const ACTIVITYLOGS_CACHE_TTL_MS = parsePositiveIntEnv("ACTIVITYLOGS_CACHE_TTL_MS", 10_000);
 const MAX_CACHE_ENTRIES = parsePositiveIntEnv("MAX_CACHE_ENTRIES", 100);
+const RUN_BOOTSTRAP_MIGRATIONS = parseBooleanEnv("RUN_BOOTSTRAP_MIGRATIONS", !IS_PRODUCTION);
 const MODULE_TITLE_MAX_LENGTH = 150;
 const LESSON_TITLE_MAX_LENGTH = 150;
 const QUIZ_TITLE_MAX_LENGTH = 150;
@@ -304,9 +364,9 @@ function isBootstrapAdminEmail(email) {
 }
 
 function logAdminCreateCredentialEmailFailure(errorMessage) {
-    if (errorMessage === "SMTP is not configured.") {
-        if (hasLoggedMissingSmtpConfig) return;
-        hasLoggedMissingSmtpConfig = true;
+    if (errorMessage === "Email delivery is not configured.") {
+        if (hasLoggedMissingEmailConfig) return;
+        hasLoggedMissingEmailConfig = true;
     }
 
     console.error("Admin create trainee credential email failed:", errorMessage);
@@ -2493,7 +2553,7 @@ function isMissingQuizSchemaError(error) {
 }
 
 function getQuizSchemaApplyMessage() {
-    return 'Quiz schema is unavailable. The server attempts to apply "mechalabx-db/db/06_quizzes.sql" automatically at startup. If the database user cannot run DDL, apply it manually with: psql "$DATABASE_URL" -f "mechalabx-db/db/06_quizzes.sql"';
+    return 'Quiz schema is unavailable. Apply "mechalabx-db/db/06_quizzes.sql" manually before production startup, or set RUN_BOOTSTRAP_MIGRATIONS=true for a one-time compatibility bootstrap in environments that allow DDL.';
 }
 
 function normalizeQuizTextField(value, maxLength) {
@@ -8476,9 +8536,14 @@ async function ensureAdminActionLogsTable() {
 }
 
 async function startServer() {
-    await ensureAdminActionLogsTable();
-    await ensureSimulationInventoryCompatibility();
-    await ensureQuizSchemaCompatibility();
+    if (RUN_BOOTSTRAP_MIGRATIONS) {
+        await ensureAdminActionLogsTable();
+        await ensureSimulationInventoryCompatibility();
+        await ensureQuizSchemaCompatibility();
+    } else {
+        console.log("Skipping bootstrap migrations at startup (RUN_BOOTSTRAP_MIGRATIONS=false).");
+    }
+
     app.listen(PORT, "0.0.0.0", () => console.log(`✅ API running on port ${PORT}`));
 }
 

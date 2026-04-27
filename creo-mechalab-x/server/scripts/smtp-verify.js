@@ -1,19 +1,24 @@
-require('dotenv').config();
-const nodemailer = require('nodemailer');
+#!/usr/bin/env node
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT || 587),
-  secure: String(process.env.SMTP_SECURE).toLowerCase() === 'true',
-  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-});
+require("dotenv").config();
 
-transporter.verify()
-  .then(() => {
-    console.log('✅ SMTP verify OK');
+const { readEmailDeliveryConfig } = require("../utils/mailer");
+
+try {
+    const config = readEmailDeliveryConfig();
+
+    if (!config.isValid) {
+        console.error("Email delivery config is incomplete.");
+        console.error("Required: BREVO_API_KEY and SMTP_FROM.");
+        process.exit(1);
+    }
+
+    console.log("Email delivery config looks valid for Brevo API usage.");
+    console.log(`Sender email: ${config.sender.email}`);
+    console.log(`Sender name: ${config.sender.name}`);
+    console.log("This check validates local configuration only and does not contact Brevo.");
     process.exit(0);
-  })
-  .catch((e) => {
-    console.error('❌ SMTP verify failed:', e.code || '', e.response || e.message);
+} catch (error) {
+    console.error("Email delivery config verify failed:", error?.message || error);
     process.exit(1);
-  });
+}

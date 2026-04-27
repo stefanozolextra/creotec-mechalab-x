@@ -42,8 +42,8 @@ const databaseHost = parsedDatabaseUrl?.hostname?.trim().toLowerCase() || "";
 const databaseSslOverride = String(process.env.DATABASE_SSL ?? "").trim().toLowerCase();
 
 function shouldUseDatabaseSsl() {
-    if (databaseSslOverride === "true" || databaseSslOverride === "require") return true;
-    if (databaseSslOverride === "false" || databaseSslOverride === "disable") return false;
+    if (["true", "1", "yes", "on", "require"].includes(databaseSslOverride)) return true;
+    if (["false", "0", "no", "off", "disable"].includes(databaseSslOverride)) return false;
     if (localDatabaseHosts.has(databaseHost)) return false;
     return process.env.NODE_ENV === "production";
 }

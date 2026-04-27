@@ -95,19 +95,10 @@ UPDATE accounts
 SET is_system_protected = TRUE
 WHERE role = 'admin';
 
--- 6) Bootstrap one protected admin if no admin/protected account exists.
-INSERT INTO accounts (trainee_id, login_email, password_hash, is_active, role, is_system_protected)
-SELECT
-  NULL,
-  'admin@demo.local',
-  '$2b$10$AtjhTJ8XjKO/PJHy3pfkBOIASTsUOD6WVj7af0nR4keZKcg2fRzKm',
-  TRUE,
-  'admin',
-  TRUE
-WHERE NOT EXISTS (
-  SELECT 1
-  FROM accounts
-  WHERE role = 'admin' OR is_system_protected = TRUE
-);
+-- 6) Do not auto-seed a hardcoded demo admin here.
+-- Create the first real admin intentionally:
+--   - by inserting a standalone admin account via SQL, or
+--   - by allowlisting an existing account email in ADMIN_EMAILS so the first
+--     login can promote it when zero admins exist.
 
 COMMIT;

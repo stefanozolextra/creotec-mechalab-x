@@ -1,4 +1,4 @@
-\set ON_ERROR_STOP on
+-- Supabase SQL editor compatible. When using psql, pass -v ON_ERROR_STOP=1 if desired.
 
 BEGIN;
 SET TRANSACTION READ ONLY;

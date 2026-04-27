@@ -1,5 +1,8 @@
 -- =========================
 -- PHASE 5: MODULE RESOURCE FILE METADATA
+-- Structural backfill for older databases.
+-- Fresh databases created from 01_schema.sql already have this table, so this
+-- file is typically skipped in new Supabase deployments.
 -- =========================
 
 BEGIN;
